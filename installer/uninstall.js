@@ -5,6 +5,7 @@
 // run/, the launchers, the install marker). User data (data/, drops/, backups/) stays
 // unless --purge; purged user data goes to the Recycle Bin, never a direct delete.
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { layout } = require('./paths');
 const { exists, recycleWindows } = require('./fsutil');
@@ -77,20 +78,15 @@ async function uninstall(o) {
     lines.push('uninstall incomplete: ' + problems.join('; ') + ' - close any program using ' + L.home + ' and run claude-console uninstall again');
     return rep;
   }
-  // claude-console.cmd is the batch file running this very command: cmd.exe reads it
-  // again after node exits, so it goes a few seconds later from a detached process
-  // (deleting it now prints "The batch file cannot be found" and exit 1).
   const cmdFile = path.join(L.home, 'claude-console.cmd');
-  if (exists(cmdFile)) {
-    rep.removed.push('claude-console.cmd');
-    (o.deleteLater || deleteLaterWindows)([cmdFile], o.purge ? L.home : null);
-  }
+  if (exists(cmdFile)) rep.removed.push('claude-console.cmd');
   const user = USER.filter((d) => exists(path.join(L.home, d)));
   if (o.purge) {
     const recycle = o.recycle || recycleWindows;
     for (const d of user) { await recycle(path.join(L.home, d)); rep.removed.push(d); }
     let left = [];
-    try { left = fs.readdirSync(L.home); } catch (e) { left = []; }
+    // claude-console.cmd is not "left": the cleanup below removes it, then the folder.
+    try { left = fs.readdirSync(L.home).filter((n) => n !== 'claude-console.cmd'); } catch (e) { left = []; }
     if (!left.length) { try { fs.rmdirSync(L.home); } catch (e) { /* in use */ } }
     lines.push('uninstalled; user data moved to the Recycle Bin' + (left.length ? ' (left in ' + L.home + ': ' + left.join(', ') + ')' : ''));
   } else {
@@ -99,19 +95,105 @@ async function uninstall(o) {
     if (user.length) lines.push('kept your data: ' + user.map((d) => path.join(L.home, d)).join(', ') + ' (remove it too with: claude-console uninstall --purge, or delete the folder)');
   }
   lines.push('Claude Code settings (~/.claude) are not touched; a statusLine entry that points at ' + path.join(L.home, 'statusline.js') + ' can be removed by hand.');
+  // claude-console.cmd is the batch file running this very command, and cmd.exe checks
+  // it again after node exits ("The system cannot find the path specified." / "The batch
+  // file cannot be found." and exit 1 once it is gone). CON-0.1.2: it, and for --purge
+  // the emptied folder, go from a cleanup script in %TEMP% that first waits for this
+  // process and the .cmd that ran it to exit; started last, after all other work.
+  if (exists(cmdFile)) (o.deleteLater || deleteLaterWindows)([cmdFile], o.purge ? L.home : null);
   return rep;
 }
 
-// A hidden, detached cmd waits ~3 s, deletes the files, then removes the home when
-// it is empty (purge only).
-function deleteLaterWindows(files, emptyDir) {
-  const q = (s) => '"' + String(s).replace(/"/g, '') + '"';
-  let line = 'ping -n 4 127.0.0.1 >nul';
-  for (const f of files) line += ' & del /f /q ' + q(f);
-  if (emptyDir) line += ' & rmdir ' + q(emptyDir);
-  const { spawn } = require('child_process');
-  const c = spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/c', line], { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true });
-  c.unref();
+// The cleanup script (VBScript run by wscript.exe: a GUI host, so it runs detached with
+// no console and no window; a detached powershell.exe exits at once without a console,
+// measured). Arguments: the CLI's pid (node), its parent's pid, the files ("|"-joined),
+// and for --purge the folder. The parent is waited for too when it is the cmd.exe
+// running claude-console.cmd (`cmd /c` from PowerShell or Apps & features), not when it
+// is an interactive cmd that stays open. A pid counts as alive only with the creation
+// time first seen (no wait on a reused pid). Nothing is removed before the waits end
+// (10 min cap); then the files, the folder when empty, and the script itself.
+function cleanupScript() {
+  return [
+    "' Claude Console uninstall cleanup (written to %TEMP% by claude-console uninstall).",
+    'Option Explicit',
+    'Dim args, fso, wmi, cliPid, parentPid, files, folder, deadline, cliBorn, parentBorn, waitParent, p, f, i',
+    'Set args = WScript.Arguments',
+    'If args.Count < 3 Then WScript.Quit 2',
+    'cliPid = CLng(args(0))',
+    'parentPid = CLng(args(1))',
+    'files = Split(args(2), "|")',
+    'folder = ""',
+    'If args.Count > 3 Then folder = args(3)',
+    'Set fso = CreateObject("Scripting.FileSystemObject")',
+    'Set wmi = GetObject("winmgmts:{impersonationLevel=impersonate}!\\\\.\\root\\cimv2")',
+    'Function Born(pid)',
+    '  Dim r, q',
+    '  r = ""',
+    '  If pid > 0 Then',
+    '    For Each q In wmi.ExecQuery("SELECT CreationDate FROM Win32_Process WHERE ProcessId=" & pid)',
+    '      r = q.CreationDate & ""',
+    '    Next',
+    '  End If',
+    '  Born = r',
+    'End Function',
+    'cliBorn = Born(cliPid)',
+    'waitParent = False',
+    'If parentPid > 0 Then',
+    '  For Each p In wmi.ExecQuery("SELECT Name, CommandLine, CreationDate FROM Win32_Process WHERE ProcessId=" & parentPid)',
+    '    If LCase(p.Name & "") = "cmd.exe" And InStr(1, p.CommandLine & "", "claude-console.cmd", 1) > 0 Then',
+    '      waitParent = True',
+    '      parentBorn = p.CreationDate & ""',
+    '    End If',
+    '  Next',
+    'End If',
+    'deadline = DateAdd("s", 600, Now)',
+    'Do While Now < deadline',
+    '  If cliBorn <> "" Then',
+    '    If Born(cliPid) <> cliBorn Then cliBorn = ""',
+    '  End If',
+    '  If waitParent Then',
+    '    If Born(parentPid) <> parentBorn Then waitParent = False',
+    '  End If',
+    '  If cliBorn = "" And Not waitParent Then Exit Do',
+    '  WScript.Sleep 200',
+    'Loop',
+    'WScript.Sleep 500',
+    'On Error Resume Next',
+    'For Each f In files',
+    '  If f <> "" Then',
+    '    For i = 1 To 20',
+    '      If Not fso.FileExists(f) Then Exit For',
+    '      Err.Clear',
+    '      fso.DeleteFile f, True',
+    '      If fso.FileExists(f) Then WScript.Sleep 500',
+    '    Next',
+    '  End If',
+    'Next',
+    'If folder <> "" Then',
+    '  If fso.FolderExists(folder) Then',
+    '    If fso.GetFolder(folder).Files.Count = 0 And fso.GetFolder(folder).SubFolders.Count = 0 Then fso.DeleteFolder folder, True',
+    '  End If',
+    'End If',
+    'fso.DeleteFile WScript.ScriptFullName, True',
+    '',
+  ].join('\n');
 }
 
-module.exports = { uninstall, CODE, FILES, USER, deleteLaterWindows };
+// Writes the cleanup script to %TEMP% (the install folder is about to go) and starts it
+// detached with no stdio, so the terminal sees nothing from it.
+// o (tests): spawn, tmpdir, pid, ppid. Returns the script path.
+function deleteLaterWindows(files, emptyDir, o) {
+  o = o || {};
+  const pid = o.pid || process.pid;
+  const file = path.join(o.tmpdir || os.tmpdir(), 'claude-console-cleanup-' + pid + '.vbs');
+  fs.writeFileSync(file, cleanupScript());
+  const wscript = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'wscript.exe');
+  const args = ['//B', '//Nologo', file, String(pid), String(o.ppid || process.ppid), files.join('|')];
+  if (emptyDir) args.push(emptyDir);
+  const c = (o.spawn || require('child_process').spawn)(wscript, args, { detached: true, stdio: 'ignore', windowsHide: true });
+  if (c.on) c.on('error', () => {}); // no wscript: the .cmd stays, uninstall already reported
+  c.unref();
+  return file;
+}
+
+module.exports = { uninstall, CODE, FILES, USER, deleteLaterWindows, cleanupScript };

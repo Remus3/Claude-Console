@@ -235,5 +235,6 @@ test('uninstall: a server that will not die is reported, not ignored', async () 
 test('claude-console.cmd passes the CLI exit code on (exit /b alone returned 0 from PowerShell)', () => {
   const f = launcher.launcherFiles('C:\\h', '0.1.1', 'C:\\node.exe');
   const line = f.cmd.split('\n').find((l) => l.includes('claude-console.js'));
-  assert.ok(/ & if errorlevel 1 \(exit \/b 1\) else exit \/b 0$/.test(line), line);
+  // CON-0.1.2: the exact code (call expands %errorlevel% at run time); purge.test.js runs it.
+  assert.ok(/ & call exit \/b %%errorlevel%%$/.test(line), line);
 });

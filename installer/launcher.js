@@ -27,11 +27,12 @@ function launcherFiles(home, version, nodePath) {
   const cmd = [
     '@echo off',
     'rem Claude Console CLI (written by the installer; rewritten on every update).',
-    // Exit on the same line: `uninstall` deletes this file (a few seconds later) and an
+    // Exit on the same line: `uninstall` deletes this file (once cmd has exited) and an
     // update rewrites it, so cmd must not read another line from it afterwards.
     // CON-0.1.1: a bare `exit /b` returned 0 to PowerShell after a failed command (a
-    // failed uninstall looked fine); `if errorlevel 1` is read at run time.
-    '"' + nodePath + '" "' + bin + '" %* --home "' + L.home + '" & if errorlevel 1 (exit /b 1) else exit /b 0',
+    // failed uninstall looked fine). CON-0.1.2: `call` expands %errorlevel% at run time,
+    // so node's own exit code reaches the caller; nothing after node names this folder.
+    '"' + nodePath + '" "' + bin + '" %* --home "' + L.home + '" & call exit /b %%errorlevel%%',
     '',
   ].join('\n');
   // CON-SHIP-SETUP: a stable status-line path for ~/.claude*/settings.json; it follows
