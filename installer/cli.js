@@ -5,7 +5,7 @@
 //
 //   install    [--source DIR] [--no-shortcuts] [--ignore-prereqs]
 //   start      [--open]                start the installed version hidden
-//   stop                               POST /api/shutdown to the running server
+//   stop       [--force] [--timeout S] POST /api/shutdown, then wait for the server pid to exit
 //   status                             marker, legacy layouts, running server
 //   update     [--check] [--from DIR | --zip FILE] [--yes]
 //   rollback                           switch the marker back to the previous version
@@ -84,7 +84,7 @@ async function run(argv, deps) {
   }
 
   if (cmd === 'uninstall') {
-    const r = await require('./uninstall').uninstall({ home: L.home, purge: !!a.purge, port, removeShell: deps.removeShell, recycle: deps.recycle, postShutdown: deps.postShutdown, deleteLater: deps.deleteLater });
+    const r = await require('./uninstall').uninstall(Object.assign(procDeps(deps), { home: L.home, purge: !!a.purge, port, removeShell: deps.removeShell, recycle: deps.recycle, deleteLater: deps.deleteLater, rm: deps.rm, retryMs: deps.retryMs }));
     emit(r, r.lines);
     return r.ok ? 0 : 1;
   }
@@ -149,9 +149,12 @@ async function run(argv, deps) {
   }
 
   if (cmd === 'stop') {
-    const ok = await (deps.postShutdown || postShutdown)(port, readToken(L.run));
-    emit({ stopped: ok }, [ok ? 'stopped' : 'no console answered on port ' + port]);
-    return ok ? 0 : 1;
+    // CON-0.1.1: "stopped" only once the server PROCESS is gone (not just the port).
+    const stopper = require('./stop');
+    const timeoutMs = a.timeout && a.timeout !== true ? Math.max(1, +a.timeout) * 1000 : 10000;
+    const r = await stopper.stopServer(Object.assign(procDeps(deps), { run: L.run, home: L.home, port, token: readToken(L.run), force: !!a.force, timeoutMs }));
+    emit(Object.assign({ stopped: r.ok }, r), [stopper.stopLine(r, port)]);
+    return r.ok ? 0 : 1;
   }
 
   if (cmd === 'rollback') {
@@ -266,10 +269,15 @@ async function cmdUpdate(a, L, deps, emit, out, port) {
   return r.status === 'rolled-back' ? 1 : 0;
 }
 
+// Process probes for stop / uninstall (tests inject fakes; none = the real ones).
+function procDeps(deps) {
+  return { postShutdown: deps.postShutdown, isAlive: deps.isAlive, kill: deps.kill, sleep: deps.sleep, listServers: deps.listServers };
+}
+
 const HELP = [
   'claude-console <command> [--home DIR] [--json]',
   '  install    [--source DIR] [--repo OWNER/NAME] [--no-shortcuts]   install or repair (a re-run repairs)',
-  '  start [--open] | stop | status',
+  '  start [--open] | stop [--force] [--timeout S] | status   stop waits for the server process to exit',
   '  update     [--check] [--from DIR | --zip FILE] [--yes]           restarts the console when no pane is busy',
   '  rollback',
   '  reinstall  shows the pre-flight report and the exact confirm phrase; then:',

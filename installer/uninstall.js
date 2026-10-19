@@ -9,12 +9,15 @@ const path = require('path');
 const { layout } = require('./paths');
 const { exists, recycleWindows } = require('./fsutil');
 const { readToken } = require('./detect');
+const stopper = require('./stop');
 
 const CODE = ['app', '.base', 'cache', 'reports', 'run'];
 const FILES = ['install.json', 'launch.vbs', 'claude-console.cmd', 'statusline.js', 'autoupdate.vbs', 'register-autoupdate.ps1'];
 const USER = ['data', 'drops', 'backups'];
 
-// o: home, purge, port, removeShell(home), recycle(path), postShutdown(port, token)
+// o: home, purge, port, removeShell(home), recycle(path), postShutdown(port, token),
+// and the stop.js probes (isAlive, kill, sleep, listServers, timeoutMs), rm, retryMs.
+// Anything left behind = ok false and ONE "uninstall incomplete: ..." line.
 async function uninstall(o) {
   const L = layout(o.home);
   const lines = [];
@@ -23,33 +26,65 @@ async function uninstall(o) {
     lines.push('nothing to uninstall: ' + L.home + ' does not exist');
     return rep;
   }
-  const stop = o.postShutdown || require('./cli').postShutdown;
-  if (await stop(o.port || 7800, readToken(L.run))) {
-    lines.push('stopped the running console');
-    await new Promise((r) => setTimeout(r, 1500)); // let it release node-pty and its files
+  const sleep = o.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const retryMs = o.retryMs || 1000;
+  const problems = [];
+  // CON-0.1.1: stop = the server PROCESS is gone (it holds app\<v> open), not just the
+  // port; one that will not quit is killed (uninstall means it), and a leftover server
+  // of an older version, found by its command line, goes the same way.
+  const stopOpts = { run: L.run, home: L.home, port: o.port || 7800, token: readToken(L.run), force: true, timeoutMs: o.timeoutMs || 10000, postShutdown: o.postShutdown, isAlive: o.isAlive, kill: o.kill, sleep, listServers: o.listServers };
+  const st = await stopper.stopServer(stopOpts);
+  if (st.alive.length) problems.push('the console server (pid ' + st.alive.join(', ') + ') would not stop');
+  else if (st.running) {
+    lines.push('stopped the running console' + (st.killed.length ? ' (killed pid ' + st.killed.join(', ') + ')' : ''));
+    await sleep(500); // let it release node-pty and its files
   }
   try {
     const out = await (o.removeShell || require('./launcher').removeShellWindows)(L.home);
     for (const l of out || []) if (l) lines.push(l);
   } catch (e) {
-    rep.ok = false;
-    lines.push('could not remove shortcuts / Apps & features / PATH: ' + e.message);
+    problems.push('shortcuts / Apps & features / PATH (' + e.message + ')');
   }
+  const rm = o.rm || fs.rmSync;
+  const errs = {};
   for (const d of CODE) {
     const p = path.join(L.home, d);
-    if (exists(p)) { fs.rmSync(p, { recursive: true, force: true, maxRetries: 3 }); rep.removed.push(d); }
+    for (let i = 0; i < 5 && exists(p); i++) {
+      try {
+        rm(p, { recursive: true, force: true, maxRetries: 3 });
+        delete errs[d];
+      } catch (e) {
+        errs[d] = e;
+        if (i === 1) await stopper.stopServer(Object.assign({}, stopOpts, { postShutdown: async () => false, timeoutMs: 2000 }));
+        await sleep(retryMs);
+      }
+    }
+    if (!exists(p)) rep.removed.push(d);
+  }
+  for (const f of FILES) {
+    const p = path.join(L.home, f);
+    if (!exists(p) || f === 'claude-console.cmd') continue;
+    try { fs.unlinkSync(p); rep.removed.push(f); } catch (e) { errs[f] = e; }
+  }
+  // Never report success while files remain: what is still there, and why.
+  const left = CODE.concat(FILES).filter((x) => x !== 'claude-console.cmd' && exists(path.join(L.home, x)));
+  if (left.length) {
+    const why = left.map((x) => errs[x]).find((e) => e);
+    problems.push('could not remove ' + left.map((x) => path.join(L.home, x)).join(', ') + (why ? ' (' + (why.code || '') + (why.code ? ': ' : '') + why.message + ')' : ''));
+  }
+  if (problems.length) {
+    rep.ok = false;
+    lines.push('uninstall incomplete: ' + problems.join('; ') + ' - close any program using ' + L.home + ' and run claude-console uninstall again');
+    return rep;
   }
   // claude-console.cmd is the batch file running this very command: cmd.exe reads it
   // again after node exits, so it goes a few seconds later from a detached process
   // (deleting it now prints "The batch file cannot be found" and exit 1).
-  const later = [];
-  for (const f of FILES) {
-    const p = path.join(L.home, f);
-    if (!exists(p)) continue;
-    if (f === 'claude-console.cmd') { later.push(p); rep.removed.push(f); continue; }
-    try { fs.unlinkSync(p); rep.removed.push(f); } catch (e) { rep.ok = false; lines.push('could not remove ' + p + ': ' + e.message); }
+  const cmdFile = path.join(L.home, 'claude-console.cmd');
+  if (exists(cmdFile)) {
+    rep.removed.push('claude-console.cmd');
+    (o.deleteLater || deleteLaterWindows)([cmdFile], o.purge ? L.home : null);
   }
-  if (later.length) (o.deleteLater || deleteLaterWindows)(later, o.purge ? L.home : null);
   const user = USER.filter((d) => exists(path.join(L.home, d)));
   if (o.purge) {
     const recycle = o.recycle || recycleWindows;

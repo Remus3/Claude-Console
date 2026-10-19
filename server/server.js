@@ -563,6 +563,9 @@ async function createConsoleServer(opts) {
     }
     if (p === '/api/shutdown' && m === 'POST') {
       send(res, 200, { ok: true });
+      // CON-0.1.1: exit even when close() cannot finish (a leaked handle, a peer that
+      // never lets go); a server that only stops listening keeps its app dir in use.
+      if (opts.exitOnShutdown) setTimeout(() => process.exit(0), shutdownGraceMs).unref();
       setTimeout(() => close().then(() => { if (opts.exitOnShutdown) process.exit(0); }), 100);
       return undefined;
     }
@@ -699,6 +702,7 @@ async function createConsoleServer(opts) {
     for (const t of pruneTimers) t.unref();
   }
 
+  const shutdownGraceMs = opts.shutdownGraceMs || 3000;
   let closed = false;
   async function close() {
     if (closed) return;
@@ -710,10 +714,15 @@ async function createConsoleServer(opts) {
     healthRunner.abort('server closed during the run');
     for (const t of pruneTimers) { clearTimeout(t); clearInterval(t); }
     await panes.closeAll();
-    for (const c of eventClients) {
+    // CON-0.1.1: server.close() waits for every open connection, so end them all: every
+    // WebSocket (events AND panes; a pane's ws.close() waits for the peer's close
+    // frame), then every HTTP connection, idle or mid-request. Bounded either way.
+    for (const c of new Set([...eventClients, ...wss.clients])) {
       try { c.terminate(); } catch (e) { /* gone */ }
     }
-    await new Promise((r) => server.close(() => r()));
+    const done = new Promise((r) => server.close(() => r()));
+    try { server.closeAllConnections(); } catch (e) { /* Node < 18.2 */ }
+    await Promise.race([done, new Promise((r) => setTimeout(r, shutdownGraceMs).unref())]);
     if (opts.writeRunFiles) {
       try { fs.unlinkSync(path.join(cfg.runDir, 'server.json')); } catch (e) { /* none */ }
     }
@@ -785,7 +794,10 @@ async function main() {
   log('listening on 127.0.0.1:' + srv.port + ' pid ' + process.pid + ' claude=' + (srv.panes.claudePath || 'NOT FOUND'));
   console.log('Claude Console on http://127.0.0.1:' + srv.port + ' (token in run/token)');
   if (wantOpen) openWindow(srv.cfg, srv.port, srv.token);
-  const stop = () => srv.close().then(() => process.exit(0));
+  const stop = () => {
+    setTimeout(() => process.exit(0), 3000).unref();
+    srv.close().then(() => process.exit(0));
+  };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
   process.on('uncaughtException', (e) => log('uncaught: ' + (e && e.stack || e)));

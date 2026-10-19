@@ -167,7 +167,7 @@ test('install: --repo sets updates.repo; shell integration gets the version; a r
   const local = JSON.parse(r(path.join(home, 'data', 'console.local.json')));
   assert.strictEqual(local.updates.repo, 'Remus3/claude-console');
   assert.deepStrictEqual(fk.calls.shell[0][2], { version: '1.0.0', repo: 'Remus3/claude-console' });
-  assert.ok(/& exit \/b\s*$/m.test(r(path.join(home, 'claude-console.cmd'))), 'the CLI .cmd survives deleting itself');
+  assert.ok(/& if errorlevel 1 \(exit \/b 1\) else exit \/b 0\s*$/m.test(r(path.join(home, 'claude-console.cmd'))), 'the CLI .cmd exits on its own line, exit code kept');
   // Re-run, same version: repair - a deleted shipped file and node_modules come back.
   const app = paths.layout(home).app('1.0.0');
   fs.rmSync(path.join(app, 'public', 'index.html'));

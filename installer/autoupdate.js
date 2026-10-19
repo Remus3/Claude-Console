@@ -44,11 +44,13 @@ async function defaultServerInfo(L, port) {
   return { version: info.version, panes };
 }
 
-// Default restart: ask the server to quit, wait until the port is free, start the
+// Default restart: ask the server to quit, wait until its PROCESS has exited (killed
+// after 10 s: no pane is busy by now; CON-0.1.1, an old server that only stopped
+// listening kept the old app dir in use), wait until the port is free, start the
 // installed version hidden (same path as the launcher).
 async function defaultRestart(L, marker, port) {
-  const { postShutdown, startServer } = require('./cli');
-  await postShutdown(port, readToken(L.run));
+  const { startServer } = require('./cli');
+  await require('./stop').stopServer({ run: L.run, home: L.home, port, token: readToken(L.run), force: true });
   for (let i = 0; i < 40; i++) {
     if (!(await probeServer(port, null, 500))) break;
     await new Promise((r) => setTimeout(r, 250));
