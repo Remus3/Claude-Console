@@ -1,0 +1,8 @@
+Claude Console
+Copyright 2026 Remus3
+
+Licensed under the Apache License, Version 2.0. See the LICENSE file in this
+directory for the full terms.
+
+Third-party packages installed by npm keep their own licenses (see
+node_modules/<package>/LICENSE after `npm ci`).

@@ -1,0 +1,4 @@
+{
+  "_comment": "Project tools shown as child rows under their project. Add your own in data/tools.local.json (same shape).",
+  "tools": []
+}

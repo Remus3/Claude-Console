@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Console</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/vendor/xterm.css">
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header id="topbar">
+  <div class="brand-box">
+    <button id="btn-sidebar" class="icon" aria-pressed="true" title="Hide the Projects sidebar (Ctrl+Alt+B)">&#9776;</button>
+  </div>
+  <div id="usage-strip" role="group" aria-label="Usage">
+    <button id="us-summary" class="small" type="button" aria-expanded="false" aria-controls="us-slots" title="Usage: highest used percent; tap for every slot">Use <span class="us-sum-v">--</span></button>
+    <div id="us-slots"></div>
+    <button id="us-gear" class="icon small" type="button" aria-expanded="false" aria-controls="us-pop" title="Usage strip: choose the slots">&#9881;</button>
+    <div id="us-pop" role="group" aria-label="Usage slots" hidden></div>
+  </div>
+  <div id="res-strip" role="group" aria-label="Resource usage"><div id="res-items"></div></div>
+  <div class="top-actions">
+    <button id="btn-font-dn" title="Smaller default font">A-</button>
+    <span id="font-size-label" class="muted"></span>
+    <button id="btn-font-up" title="Larger default font">A+</button>
+    <button id="upd-badge" type="button" class="upd-badge" title="An update is available" hidden>Update available</button>
+    <button id="btn-status" title="Show/hide the status panel">Status</button>
+    <button id="btn-settings" title="Settings">Settings</button>
+    <button id="btn-quit" class="danger" title="Stop the server and every pane">Quit</button>
+  </div>
+</header>
+<div id="main">
+  <nav id="side-rail" aria-label="Projects (collapsed)">
+    <button id="rail-new" title="New pane: claude or shell (choose project, kind, account)">+</button>
+    <ul id="rail-projects"></ul>
+  </nav>
+  <aside id="sidebar">
+    <div class="side-head">
+      <span class="side-title">Projects</span>
+      <button id="btn-rescan" class="small" title="Rediscover repos">Rescan</button>
+      <button id="btn-sched" class="small" title="Scheduled tasks of the console and each repo: view, add, alter, remove">Tasks</button>
+      <span class="grow"></span>
+      <button id="btn-new" class="small" title="New pane: claude or shell (choose project, kind, account)">+ New pane</button>
+    </div>
+    <ul id="project-list"></ul>
+    <div class="side-foot muted" id="side-foot"></div>
+  </aside>
+  <section id="workspace">
+    <div id="grid"></div>
+    <div id="empty" class="empty">
+      <h2>No panes open</h2>
+      <p>Click a project on the left to start <b>claude</b> in it, or <b>+</b> for a new pane (claude or shell). Right-click a project: new pane there.</p>
+      <p class="muted">Composer: type below a pane, <b>Enter</b> sends, <b>Shift+Enter</b> is a new line. <b>Ctrl+Shift+F</b> searches a pane's scrollback.</p>
+    </div>
+  </section>
+  <aside id="statuspanel">
+    <div class="side-head"><span>Status</span><span id="status-age" class="muted"></span></div>
+    <div id="status-list"></div>
+  </aside>
+</div>
+<footer id="taskbar"><span class="muted tb-label">Minimized</span><div id="tb-items"></div><span id="tb-version" class="muted" title="Claude Console version"></span></footer>
+
+<dialog id="dlg-new">
+  <form method="dialog" id="form-new">
+    <h3>New pane</h3>
+    <label>Project <select name="project" id="new-project"></select></label>
+    <fieldset class="folder-pick" id="new-folder">
+      <legend>Working folder</legend>
+      <div class="fp-row">
+        <select id="new-drive" aria-label="Drive"></select>
+        <input id="new-cwd" name="cwd" placeholder="Empty: project or console folder. Type a path, Enter browses" autocomplete="off" spellcheck="false" aria-label="Working folder path">
+        <button type="button" id="fp-up" title="Up one folder (Alt+Up)">Up</button>
+      </div>
+      <nav class="fp-crumbs" id="fp-crumbs" aria-label="Folder path"></nav>
+      <div class="fp-list" id="fp-list" role="list" aria-label="Subfolders"></div>
+      <p class="fp-note muted small" id="fp-note"></p>
+    </fieldset>
+    <label>Kind
+      <select name="kind" id="new-kind"><option value="claude">claude</option><option value="shell">shell</option></select>
+    </label>
+    <label class="for-claude">Account <select name="account" id="new-account"></select></label>
+    <label class="for-shell">Shell <select name="shell" id="new-shell"></select></label>
+    <label>Extra args <input name="args" id="new-args" placeholder="e.g. --continue"></label>
+    <div class="dlg-actions"><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="primary">Open</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-settings">
+  <form method="dialog" id="form-settings">
+    <h3>Settings</h3>
+    <label>Theme <select name="theme" id="set-theme"><option value="system">system</option><option value="dark">dark</option><option value="light">light</option></select> <button type="button" id="btn-theme" class="small" title="Toggle light/dark now">Toggle</button></label>
+    <label>Default terminal font size <input name="fontSize" type="number" min="9" max="40"></label>
+    <fieldset class="proj-admin type-admin" id="set-type">
+      <legend>Text size (console chrome; each pane keeps its own A- / A+)</legend>
+      <div class="ts-grid">
+        <label>Base px <input name="ts-base" type="number" min="10" max="24" step="0.5"></label>
+        <label>Header (top bar) <input name="ts-header" type="number" min="-8" max="8" step="0.5"></label>
+        <label>Subheader (titles) <input name="ts-sub" type="number" min="-8" max="8" step="0.5"></label>
+        <label>Body <input name="ts-body" type="number" min="-8" max="8" step="0.5"></label>
+        <label>Nested / secondary <input name="ts-secondary" type="number" min="-8" max="8" step="0.5"></label>
+        <label>Mono (rows, paths) <input name="ts-mono" type="number" min="-8" max="8" step="0.5"></label>
+        <label>Badges / meters <input name="ts-badge" type="number" min="-8" max="8" step="0.5"></label>
+      </div>
+      <div class="ha-row"><span class="muted small" id="ts-note">Levels are offsets from the base, in px. Changes show at once; Cancel undoes them.</span><button type="button" id="ts-reset" class="small">Reset to defaults</button></div>
+    </fieldset>
+    <fieldset class="proj-admin flow-admin" id="set-flow">
+      <legend>Pane workflow rows (above each terminal and on the status cards)</legend>
+      <label>Rows shown (0 hides the strip) <input name="flowRows" type="number" min="0" max="12" step="1"></label>
+      <div class="fs-checks">
+        <label class="check"><input type="checkbox" name="fs-running"> running</label>
+        <label class="check"><input type="checkbox" name="fs-stale"> stale</label>
+        <label class="check"><input type="checkbox" name="fs-failed"> failed</label>
+        <label class="check"><input type="checkbox" name="fs-pending"> pending</label>
+        <label class="check"><input type="checkbox" name="fs-idle"> idle</label>
+        <label class="check"><input type="checkbox" name="fs-done"> done</label>
+      </div>
+    </fieldset>
+    <label>Font family <input name="fontFamily"></label>
+    <label>Line height <input name="lineHeight" type="number" min="1" max="2" step="0.05"></label>
+    <label>Scrollback lines <input name="scrollback" type="number" min="1000" max="100000" step="1000"></label>
+    <div class="acct-pair">
+      <label>Main / orchestrator account (interactive panes) <select name="defaultAccount" id="set-account"></select></label>
+      <label>Headless lane account <select name="headlessAccount" id="set-headless"></select></label>
+    </div>
+    <p class="muted small set-route" id="set-route" role="status"></p>
+    <label>Default shell <select name="defaultShell" id="set-shell"></select></label>
+    <fieldset class="proj-admin keys-admin" id="set-keys">
+      <legend>Pane key buttons (unticked = hidden)</legend>
+      <div class="fs-checks">
+        <label class="check"><input type="checkbox" name="key-esc"> Esc</label>
+        <label class="check"><input type="checkbox" name="key-ctrlc"> ^C</label>
+        <label class="check"><input type="checkbox" name="key-enter"> Enter</label>
+        <label class="check" title="Ctrl+X Ctrl+S: claude sends the typed or queued message now"><input type="checkbox" name="key-ctrlx"> ^X^S (send now)</label>
+        <label class="check"><input type="checkbox" name="key-stab"> S-Tab</label>
+        <label class="check"><input type="checkbox" name="key-up"> Up</label>
+        <label class="check"><input type="checkbox" name="key-down"> Down</label>
+        <label class="check"><input type="checkbox" name="key-left"> Left</label>
+        <label class="check"><input type="checkbox" name="key-right"> Right</label>
+      </div>
+    </fieldset>
+    <fieldset class="proj-admin chips-admin">
+      <legend>Quick chips (sent with Enter; unticked = hidden)</legend>
+      <ul id="set-chips" class="set-chips"></ul>
+      <button type="button" id="chip-add" class="small">+ Add chip</button>
+    </fieldset>
+    <label class="check"><input type="checkbox" name="idleBadge"> Badge panes waiting for input</label>
+    <label class="check"><input type="checkbox" name="desktopNotify"> Desktop notification when a hidden pane needs you</label>
+    <label class="check"><input type="checkbox" name="hideCliChrome"> Composer-only claude panes: hide claude's own input box and status rows (this window)</label>
+    <fieldset class="proj-admin health-admin">
+      <legend>Health &amp; cleanup</legend>
+      <div class="ha-row"><span class="muted small" id="health-last">No health check run yet.</span><button type="button" id="btn-health" class="small">Run health check...</button></div>
+      <div class="ha-row"><span class="muted small" id="health-sched">Scheduled health check: loading.</span></div>
+      <div class="ha-row"><span class="muted small">Watchdog: memory and handle growth, paging, crashes (observe only).</span><button type="button" id="btn-watch" class="small" title="Watchdog readings (observe only)">Watchdog readings...</button></div>
+    </fieldset>
+    <fieldset class="proj-admin health-admin" id="set-updates">
+      <legend>Updates &amp; repair</legend>
+      <div class="ha-row"><span class="muted small" id="upd-state" role="status">Checking...</span><span><button type="button" id="btn-upd-check" class="small">Check now</button> <button type="button" id="btn-upd-apply" class="small">Update now</button></span></div>
+      <div class="ha-row"><span class="muted small" id="upd-last"></span><button type="button" id="btn-upd-contrib" class="small">Contribute?</button></div>
+      <div class="ha-row"><span class="muted small">Repair restores missing files and keeps your tweaks. Fresh and factory reinstall run from the CLI after Quit (claude-console reinstall).</span><button type="button" id="btn-upd-repair" class="small">Repair...</button></div>
+      <div class="ha-row" id="upd-repair-row" hidden><span class="muted small" id="upd-repair-what"></span><span><input id="upd-repair-phrase" autocomplete="off" spellcheck="false" autocapitalize="off" aria-label="Confirmation phrase"> <button type="button" id="btn-upd-repair-go" class="small danger">Repair</button></span></div>
+      <label class="check"><input type="checkbox" id="upd-auto"> Auto-update inside the update window, only when no pane is busy</label>
+    </fieldset>
+    <fieldset class="proj-admin">
+      <legend>Projects</legend>
+      <ul id="set-projects" class="set-projects"></ul>
+    </fieldset>
+    <p class="muted small" id="settings-info"></p>
+    <div class="dlg-actions"><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="primary">Save</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-health" aria-labelledby="hc-title">
+  <form method="dialog" id="form-health">
+    <h3 id="hc-title">Health check and cleanup</h3>
+    <p class="muted small" id="hc-intro">Tick the steps to run. Deterministic steps cost $0 / 0 tokens; the LLM step's cost is estimated from past runs. Every delete goes to the Recycle Bin unless the step says otherwise.</p>
+    <div id="hc-steps" class="hc-steps"></div>
+    <p class="small hc-total" id="hc-total"></p>
+    <div id="hc-report" class="hc-report" hidden></div>
+    <fieldset id="hs-box" class="hs-box">
+      <legend>Schedule (read-only steps, no deletes)</legend>
+      <p class="small" id="hs-line">Scheduled health check: loading.</p>
+      <p class="small muted" id="hs-last"></p>
+      <div class="hs-row">
+        <label class="check"><input type="checkbox" id="hs-on"> Run on a schedule</label>
+        <label class="hs-at-l">at <input type="time" id="hs-at" value="07:30"></label>
+        <span class="hs-days" id="hs-days" title="No day ticked = every day"><label class="check"><input type="checkbox" class="hs-day" value="Sun">Sun</label><label class="check"><input type="checkbox" class="hs-day" value="Mon">Mon</label><label class="check"><input type="checkbox" class="hs-day" value="Tue">Tue</label><label class="check"><input type="checkbox" class="hs-day" value="Wed">Wed</label><label class="check"><input type="checkbox" class="hs-day" value="Thu">Thu</label><label class="check"><input type="checkbox" class="hs-day" value="Fri">Fri</label><label class="check"><input type="checkbox" class="hs-day" value="Sat">Sat</label></span>
+        <button type="button" id="hs-save" class="small">Save schedule</button>
+      </div>
+      <p class="rm-note small" id="hs-note" role="alert"></p>
+    </fieldset>
+    <p class="rm-note small" id="hc-note" role="alert"></p>
+    <div class="dlg-actions"><button value="cancel" formnovalidate>Close</button><button type="button" id="hc-go" class="primary">Run</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-sched" aria-labelledby="sc-title">
+  <form method="dialog" id="form-sched">
+    <div class="sc-head">
+      <h3 id="sc-title">Scheduled tasks</h3>
+      <select id="sc-filter" aria-label="Show tasks of"><option value="">All</option></select>
+      <span class="grow"></span>
+      <button type="button" id="sc-refresh" class="small">Refresh</button>
+    </div>
+    <p class="small" id="sc-sum">Loading.</p>
+    <details class="sc-facts-d"><summary class="small muted">Machine facts (CLAUDE.md)</summary><ul id="sc-facts" class="small muted"></ul></details>
+    <div id="sc-list" class="sc-list"></div>
+    <details id="sc-add" class="sc-add">
+      <summary id="sc-add-sum">Add a task</summary>
+      <div id="sc-form" class="sc-form">
+        <label>Name <input id="sc-name" maxlength="80" autocomplete="off" spellcheck="false"></label>
+        <label>Folder <input id="sc-folder" value="\" maxlength="200" autocomplete="off" spellcheck="false"></label>
+        <label>Program (full path) <input id="sc-exe" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
+        <label>Arguments <input id="sc-args" maxlength="1024" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
+        <label>Start in <input id="sc-workdir" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
+        <label>Trigger <select id="sc-kind"><option value="once">once</option><option value="daily" selected>daily</option><option value="weekly">weekly</option><option value="logon">logon</option><option value="boot">boot</option></select></label>
+        <label class="sc-t sc-t-time">Time <input type="time" id="sc-at" value="04:00"></label>
+        <label class="sc-t sc-t-once">Date <input type="date" id="sc-date"></label>
+        <span class="sc-t sc-t-weekly sc-days" id="sc-days"><label class="check"><input type="checkbox" class="sc-day" value="Sun">Sun</label><label class="check"><input type="checkbox" class="sc-day" value="Mon">Mon</label><label class="check"><input type="checkbox" class="sc-day" value="Tue">Tue</label><label class="check"><input type="checkbox" class="sc-day" value="Wed">Wed</label><label class="check"><input type="checkbox" class="sc-day" value="Thu">Thu</label><label class="check"><input type="checkbox" class="sc-day" value="Fri">Fri</label><label class="check"><input type="checkbox" class="sc-day" value="Sat">Sat</label></span>
+        <label class="sc-t sc-t-delay">Delay (seconds) <input id="sc-delay" inputmode="numeric" autocomplete="off"></label>
+        <label>Repeat every (minutes, optional) <input id="sc-every" inputmode="numeric" autocomplete="off"></label>
+        <label class="sc-new">Description <input id="sc-desc" maxlength="200" autocomplete="off"></label>
+        <label class="check sc-new"><input type="checkbox" id="sc-enabled" checked> Enabled</label>
+        <p class="muted small">Every change backs up the task XML first and is read back; a mismatch rolls back. Boot and logon triggers add work to every boot.</p>
+        <div class="sc-form-actions"><button type="button" id="sc-cancel-edit" class="small" hidden>Cancel edit</button><button type="button" id="sc-go" class="primary small">Add task</button></div>
+      </div>
+    </details>
+    <p class="rm-note small" id="sc-note" role="alert"></p>
+    <div class="dlg-actions"><button value="cancel" formnovalidate>Close</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-watch" aria-labelledby="wd-title">
+  <form method="dialog" id="form-watch">
+    <h3 id="wd-title">Watchdog readings</h3>
+    <p class="small" id="wd-head" role="status">Loading.</p>
+    <div id="wd-body" class="wd-body"></div>
+    <p class="muted small">Observe only: these are measurements. Nothing is sent and no process is touched.</p>
+    <p class="rm-note small" id="wd-note"></p>
+    <div class="dlg-actions"><button value="cancel" formnovalidate>Close</button><button type="button" id="wd-sample" class="small">Sample now</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-remove" aria-labelledby="rm-title">
+  <form method="dialog" id="form-remove">
+    <h3 id="rm-title">Remove project</h3>
+    <p id="rm-what"></p>
+    <p class="rm-safe">This removes the project from the console. Files on disk are not touched.</p>
+    <label>Type <b>DELETE PROJECT</b> to confirm <input id="rm-phrase" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
+    <p class="rm-note small" id="rm-note" role="alert"></p>
+    <div class="dlg-actions"><button value="cancel" formnovalidate>Cancel</button><button type="button" id="rm-go" class="danger-solid" disabled>Remove</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-tool" aria-labelledby="tl-title">
+  <form method="dialog" id="form-tool">
+    <h3 id="tl-title">Edit tool</h3>
+    <p id="tl-what"></p>
+    <label class="tl-name-row">Name <input id="tl-name" maxlength="80" autocomplete="off" spellcheck="false"></label>
+    <label class="tl-path-row">Path <input id="tl-path" autocomplete="off" spellcheck="false" autocapitalize="off"><span class="muted small" id="tl-path-hint"></span></label>
+    <label class="tl-add-row">Arguments (optional, programs only) <input id="tl-args" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
+    <label class="tl-add-row">Start in folder (optional, programs only) <input id="tl-cwd" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
+    <label class="tl-add-row">Add to <select id="tl-target"></select></label>
+    <p class="rm-safe tl-safe">This removes the entry from the console. Files and programs on disk are not touched.</p>
+    <p class="rm-note small" id="tl-note" role="alert"></p>
+    <div class="dlg-actions"><button value="cancel" formnovalidate>Cancel</button><button type="button" id="tl-go" class="primary">Save</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-group" aria-labelledby="gr-title">
+  <form method="dialog" id="form-group">
+    <h3 id="gr-title">New group</h3>
+    <p id="gr-what"></p>
+    <label class="gr-name-row">Name <input id="gr-name" maxlength="80" autocomplete="off" spellcheck="false"></label>
+    <p class="rm-safe gr-safe" id="gr-safe">Its projects and tools go back to their usual place. Nothing on disk is touched.</p>
+    <p class="rm-note small" id="gr-note" role="alert"></p>
+    <div class="dlg-actions"><button value="cancel" formnovalidate>Cancel</button><button type="button" id="gr-go" class="primary">Create</button></div>
+  </form>
+</dialog>
+
+
+<script src="/vendor/xterm.js"></script>
+<script src="/vendor/addon-fit.js"></script>
+<script src="/vendor/addon-search.js"></script>
+<script src="/vendor/addon-web-links.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

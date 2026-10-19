@@ -1,0 +1,28 @@
+{
+  "_comment": "CON-SHIP-SETUP: what the console ships for Claude Code. `claude-console setup` shows a plan and writes only after confirmation; it never edits ~/.claude* silently. {node} and {statusline} are filled in at plan time ({statusline} = the install home shim statusline.js, or statusline/statusline.js in a checkout).",
+  "items": [
+    {
+      "id": "cmd-done",
+      "kind": "command",
+      "src": "claude/commands/done.md",
+      "name": "done",
+      "default": true,
+      "why": "The composer quick chip /done runs this end-of-session command (a project's own /done wins)."
+    },
+    {
+      "id": "statusline",
+      "kind": "settings",
+      "default": false,
+      "why": "Status line for the plain CLI: account | model | repo (branch +dirty) | context % | 5h / 7d quota.",
+      "settings": {
+        "statusLine": { "type": "command", "command": "\"{node}\" \"{statusline}\"" }
+      }
+    },
+    {
+      "id": "pane-hooks",
+      "kind": "runtime",
+      "default": true,
+      "why": "Turn-state hooks for console panes. Passed per pane as an additive --settings file (run/pane-hooks.json); nothing is installed and no global settings change."
+    }
+  ]
+}

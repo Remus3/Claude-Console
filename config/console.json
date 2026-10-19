@@ -1,0 +1,74 @@
+{
+  "_comment": "Claude Console config. Local overrides go in data/console.local.json (gitignored, same shape, merged over this).",
+  "host": "127.0.0.1",
+  "port": 7800,
+  "scanRoots": [
+    "C:\\"
+  ],
+  "excludeDirs": [
+    "Windows",
+    "Program Files",
+    "Program Files (x86)",
+    "ProgramData",
+    "$Recycle.Bin",
+    "System Volume Information"
+  ],
+  "projects": {},
+  "extraProjects": [],
+  "boardsFile": null,
+  "defaultProgressDirs": [
+    "ops/loop/control/progress"
+  ],
+  "_accounts": "acct1 = the default Claude config dir (~/.claude). Add more as acctN with a configDir.",
+  "accounts": {
+    "acct1": {
+      "label": "Account 1",
+      "configDir": null
+    }
+  },
+  "defaultAccount": "acct1",
+  "claudePath": null,
+  "claudeArgs": [],
+  "useHooks": true,
+  "shells": {
+    "powershell": {
+      "label": "Windows PowerShell 5.1",
+      "file": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoLogo"
+      ]
+    },
+    "pwsh": {
+      "label": "PowerShell 7",
+      "file": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+      "args": [
+        "-NoLogo"
+      ]
+    },
+    "cmd": {
+      "label": "cmd",
+      "file": "C:\\Windows\\System32\\cmd.exe",
+      "args": []
+    }
+  },
+  "defaultShell": "powershell",
+  "statusIntervalSec": 5,
+  "gitIntervalSec": 20,
+  "idleSeconds": 4,
+  "scrollbackBytes": 400000,
+  "progressMaxAgeHours": 72,
+  "progressMaxPerProject": 8,
+  "progressDoneMaxAgeHours": 1,
+  "progressStaleMaxAgeHours": 2,
+  "_plugins": "Optional plugins are OFF unless configured in data/console.local.json.",
+  "edgePath": null,
+  "_updates": "repo = <owner>/<name> of the public GitHub repo; a placeholder with <> runs no check.",
+  "updates": {
+    "auto": false,
+    "channel": "stable",
+    "checkHours": 24,
+    "window": "04:00-05:00",
+    "check": true,
+    "repo": "Remus3/claude-console"
+  }
+}
