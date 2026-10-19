@@ -1,0 +1,1 @@
+- Never amend a commit or push --tags; a history rewrite goes through a gated tool - why: an amend overwrote history, and a tag push re-created tags that had been deleted on purpose (prevents: history clobber)

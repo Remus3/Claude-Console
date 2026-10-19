@@ -1,0 +1,867 @@
+[
+  {
+    "id": "floor-no-ai-attribution@profile",
+    "op": "profile",
+    "files": [
+      {
+        "file": ".githooks/commit-msg",
+        "orig": [],
+        "copy": [
+          [
+            1,
+            3
+          ]
+        ]
+      },
+      {
+        "file": "git:core.hooksPath",
+        "orig": [],
+        "copy": []
+      }
+    ]
+  },
+  {
+    "id": "floor-no-ai-attribution@git:a02d97ac66",
+    "op": "report",
+    "files": [
+      {
+        "file": "git:a02d97ac66",
+        "orig": [],
+        "copy": []
+      }
+    ]
+  },
+  {
+    "id": "floor-secrets-never-echoed@.env.example:1",
+    "op": "report",
+    "files": [
+      {
+        "file": ".env.example",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      }
+    ],
+    "shape": "github token"
+  },
+  {
+    "id": "floor-secrets-never-echoed@app/lib/fmt.js:2",
+    "op": "report",
+    "files": [
+      {
+        "file": "app/lib/fmt.js",
+        "orig": [
+          [
+            2,
+            2
+          ]
+        ],
+        "copy": []
+      }
+    ],
+    "shape": "aws access key id"
+  },
+  {
+    "id": "floor-secrets-never-echoed@config/settings.ini:3",
+    "op": "report",
+    "files": [
+      {
+        "file": "config/settings.ini",
+        "orig": [
+          [
+            3,
+            3
+          ]
+        ],
+        "copy": []
+      }
+    ],
+    "shape": "openai-style key"
+  },
+  {
+    "id": "conv-handoff-file@profile",
+    "op": "profile",
+    "files": [
+      {
+        "file": "DM-NEXT-SESSION.txt",
+        "orig": [],
+        "copy": [
+          [
+            1,
+            3
+          ]
+        ]
+      },
+      {
+        "file": "CLAUDE.md",
+        "orig": [],
+        "copy": [
+          [
+            3,
+            6
+          ]
+        ]
+      }
+    ],
+    "default": true
+  },
+  {
+    "id": "rule-encoding-ascii-lf@profile",
+    "op": "profile",
+    "files": [
+      {
+        "file": "CLAUDE.md",
+        "orig": [],
+        "copy": [
+          [
+            3,
+            6
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "rule-encoding-ascii-lf@app/data/catalog.csv",
+    "op": "normalise",
+    "files": [
+      {
+        "file": "app/data/catalog.csv",
+        "orig": [
+          [
+            1,
+            13
+          ]
+        ],
+        "copy": [
+          [
+            1,
+            13
+          ]
+        ]
+      }
+    ],
+    "breakRisk": {
+      "class": "crlf-required",
+      "importers": null
+    }
+  },
+  {
+    "id": "rule-encoding-ascii-lf@app/lib/pad.js",
+    "op": "normalise",
+    "files": [
+      {
+        "file": "app/lib/pad.js",
+        "orig": [
+          [
+            1,
+            3
+          ]
+        ],
+        "copy": [
+          [
+            1,
+            3
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "rule-encoding-ascii-lf@app/lib/range.js",
+    "op": "normalise",
+    "files": [
+      {
+        "file": "app/lib/range.js",
+        "orig": [
+          [
+            1,
+            1
+          ],
+          [
+            3,
+            3
+          ]
+        ],
+        "copy": [
+          [
+            1,
+            1
+          ],
+          [
+            3,
+            3
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "rule-encoding-ascii-lf@app/lib/slug.js",
+    "op": "normalise",
+    "files": [
+      {
+        "file": "app/lib/slug.js",
+        "orig": [
+          [
+            1,
+            3
+          ]
+        ],
+        "copy": [
+          [
+            1,
+            3
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "rule-encoding-ascii-lf@app/lib/sum.js",
+    "op": "normalise",
+    "files": [
+      {
+        "file": "app/lib/sum.js",
+        "orig": [
+          [
+            1,
+            3
+          ]
+        ],
+        "copy": [
+          [
+            1,
+            3
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "rule-encoding-ascii-lf@start.bat",
+    "op": "normalise",
+    "files": [
+      {
+        "file": "start.bat",
+        "orig": [
+          [
+            1,
+            2
+          ]
+        ],
+        "copy": [
+          [
+            1,
+            2
+          ]
+        ]
+      }
+    ],
+    "breakRisk": {
+      "class": "crlf-required",
+      "importers": null
+    }
+  },
+  {
+    "id": "conv-gitattributes-lf@.gitattributes",
+    "op": "create",
+    "files": [
+      {
+        "file": ".gitattributes",
+        "orig": [],
+        "copy": [
+          [
+            1,
+            3
+          ]
+        ]
+      }
+    ],
+    "default": true
+  },
+  {
+    "id": "conv-doc-size-budget@CLAUDE.md",
+    "op": "relocate",
+    "files": [
+      {
+        "file": "CLAUDE.md",
+        "orig": [
+          [
+            180,
+            443
+          ]
+        ],
+        "copy": [
+          [
+            180,
+            180
+          ]
+        ]
+      },
+      {
+        "file": "docs/claude-md-archive.md",
+        "orig": [],
+        "copy": [
+          [
+            1,
+            269
+          ]
+        ]
+      }
+    ],
+    "dest": "docs/claude-md-archive.md"
+  },
+  {
+    "id": "conv-doc-size-budget@NOTES.md",
+    "op": "relocate",
+    "files": [
+      {
+        "file": "docs/archive/NOTES.md",
+        "orig": [],
+        "copy": [
+          [
+            1,
+            452
+          ]
+        ]
+      },
+      {
+        "file": "NOTES.md",
+        "orig": [
+          [
+            3,
+            452
+          ]
+        ],
+        "copy": [
+          [
+            3,
+            3
+          ]
+        ]
+      }
+    ],
+    "dest": "docs/archive/NOTES.md"
+  },
+  {
+    "id": "conv-doc-size-budget@app/templates/report.md",
+    "op": "relocate",
+    "files": [
+      {
+        "file": "docs/archive/app/templates/report.md",
+        "orig": [],
+        "copy": [
+          [
+            1,
+            477
+          ]
+        ]
+      },
+      {
+        "file": "app/templates/report.md",
+        "orig": [
+          [
+            1,
+            5
+          ],
+          [
+            7,
+            477
+          ]
+        ],
+        "copy": [
+          [
+            1,
+            1
+          ],
+          [
+            3,
+            3
+          ]
+        ]
+      }
+    ],
+    "breakRisk": {
+      "class": "read-by-path",
+      "importers": [
+        "app/render.js:14"
+      ]
+    },
+    "dest": "docs/archive/app/templates/report.md"
+  },
+  {
+    "id": "conv-doc-size-budget@docs/old-plan.md",
+    "op": "relocate",
+    "files": [
+      {
+        "file": "docs/archive/old-plan.md",
+        "orig": [],
+        "copy": [
+          [
+            1,
+            422
+          ]
+        ]
+      },
+      {
+        "file": "docs/old-plan.md",
+        "orig": [
+          [
+            3,
+            422
+          ]
+        ],
+        "copy": [
+          [
+            3,
+            3
+          ]
+        ]
+      }
+    ],
+    "dest": "docs/archive/old-plan.md"
+  },
+  {
+    "id": "sc-scratch-area@debug.log",
+    "op": "move",
+    "files": [
+      {
+        "file": "debug.log",
+        "orig": [
+          [
+            1,
+            2
+          ]
+        ],
+        "copy": []
+      }
+    ]
+  },
+  {
+    "id": "sc-scratch-area@out (copy).txt",
+    "op": "move",
+    "files": [
+      {
+        "file": "out (copy).txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      }
+    ]
+  },
+  {
+    "id": "sc-scratch-area@scratch_tmp",
+    "op": "move",
+    "files": [
+      {
+        "file": "scratch_tmp/try-01.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-02.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-03.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-04.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-05.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-06.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-07.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-08.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-09.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-10.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-11.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-12.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-13.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-14.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-15.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-16.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-17.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-18.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-19.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-20.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-21.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-22.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-23.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-24.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-25.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-26.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-27.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-28.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-29.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-30.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-31.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-32.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-33.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-34.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-35.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-36.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-37.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-38.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-39.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      },
+      {
+        "file": "scratch_tmp/try-40.txt",
+        "orig": [
+          [
+            1,
+            1
+          ]
+        ],
+        "copy": []
+      }
+    ]
+  }
+]

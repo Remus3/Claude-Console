@@ -1,0 +1,303 @@
+{
+  "schema": 1,
+  "id": "floors",
+  "order": 1,
+  "title": "Safety floors",
+  "summary": "Rules that stay on whatever else you choose: your identity in commits, safe deletes, secrets kept out of files.",
+  "why": "Each floor exists because its absence once cost the author something that could not be recovered. They are shown and explained here, but they cannot be switched off.",
+  "default": "on",
+  "locked": true,
+  "items": [
+    {
+      "id": "floor-no-ai-attribution",
+      "order": 101,
+      "title": "Commits carry your identity only",
+      "does": "Adds the rule that no commit or pull request carries an AI or bot co-author, sign-off or author.",
+      "why": "Code hosts list a contributor for every identity in the default branch history, trailers included, and settings alone did not keep assistant identities out. The hooks that enforce this are in the attribution module.",
+      "risk": "medium",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "hook-git-commit-msg",
+        "hook-git-pre-push-identity",
+        "set-attribution-empty"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/floor-no-ai-attribution.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[nN][oO] [aA][iI] [oO][rR] [bB][oO][tT] [aA][tT][tT][rR][iI][bB][uU][tT][iI][oO][nN]"
+        }
+      ]
+    },
+    {
+      "id": "floor-no-fallback",
+      "order": 102,
+      "title": "Headless runs fail closed",
+      "does": "Adds the rule that a background run with a missing or unreachable route is refused rather than rerouted.",
+      "why": "A silent retry on the interactive login would bill the very account the separate headless route exists to protect, and nobody would notice until the quota ran out.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/floor-no-fallback.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[fF][aA][iI][lL]([sS])? [cC][lL][oO][sS][eE][dD]"
+        }
+      ],
+      "notes": "Inert until the headless module is on; the spawn helper there enforces it."
+    },
+    {
+      "id": "floor-subagent-first-main-session",
+      "order": 103,
+      "title": "Never stop running work to check on it",
+      "does": "Adds the rule that status checks read progress files and never stop, restart or edit a running agent.",
+      "why": "Looking at a running task by poking it has killed the task more than once; a progress file answers the same question without risk.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "conv-progress-files"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/floor-subagent-first-main-session.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[pP][rR][oO][gG][rR][eE][sS][sS] [fF][iI][lL][eE]"
+        }
+      ]
+    },
+    {
+      "id": "floor-recycle-bin",
+      "order": 104,
+      "title": "Irreplaceable deletes go to the Recycle Bin",
+      "does": "Adds the rule that anything which cannot be regenerated is recycled or moved aside, never unlinked.",
+      "why": "A direct delete of almost 10 GB once proved unrecoverable within the hour: no restore point, no shadow copy, no undelete. The Recycle Bin is the cheapest backup there is.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/floor-recycle-bin.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[rR][eE][cC][yY][cC][lL][eE] [bB][iI][nN]"
+        }
+      ]
+    },
+    {
+      "id": "floor-no-untested-reconfig",
+      "order": 105,
+      "title": "Reconfiguring scripts are never trial-run on this machine",
+      "does": "Adds the rule that scripts which change system settings are reviewed and parse-checked here, and executed only on their target or in a sandbox.",
+      "why": "A stubbed trial run once changed a real network and firewall setting because one command was not stubbed. Reading the script costs minutes; repairing the machine costs an evening.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/floor-no-untested-reconfig.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[pP][aA][rR][sS][eE]-[cC][hH][eE][cC][kK]"
+        }
+      ]
+    },
+    {
+      "id": "floor-secrets-never-echoed",
+      "order": 106,
+      "title": "Secrets are references, never values",
+      "does": "Adds the rule that configuration points at where a secret lives, and that errors name the reference only.",
+      "why": "A tracked document once held account emails and ids side by side. A file that never contains a secret cannot leak one, whatever happens to it later.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/floor-secrets-never-echoed.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[sS][eE][cC][rR][eE][tT]"
+        }
+      ]
+    },
+    {
+      "id": "floor-os-settings-backup",
+      "order": 107,
+      "title": "OS changes: backup, one change, read back",
+      "does": "Adds the discipline for system and security settings: save the current state, change one thing, read it back, roll back on a regression.",
+      "why": "When an agent touches the firewall, a network adapter or a service, the safety comes from being able to put it back exactly. Whether an agent may make such changes at all is a separate, opt-in item.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/floor-os-settings-backup.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[rR][eE][aA][dD] [bB][aA][cC][kK]"
+        }
+      ],
+      "notes": "Only the discipline ships here. Letting the agent apply OS changes itself is the item os-self-apply-grant, off by default."
+    },
+    {
+      "id": "kit-fleet-secrets",
+      "order": 108,
+      "title": "Secret-reference helper",
+      "does": "Copies kit_secrets.py, which resolves a secret from an environment variable, file or command and never prints the value, together with the kit's LICENSE and NOTICE.",
+      "why": "Every tool that needs a token asks one helper, so no tool ever has a reason to read or log the raw value.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "floor-secrets-never-echoed"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "kit",
+          "files": [
+            "kit_secrets.py",
+            "LICENSE",
+            "NOTICE"
+          ],
+          "target": "repo:{kit_dir}"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:{kit_dir}/kit_secrets.py"
+        }
+      ]
+    },
+    {
+      "id": "floor-no-telemetry",
+      "order": 109,
+      "title": "No telemetry",
+      "does": "Adds the rule that nothing reports usage, prompts, files or errors anywhere, and that crash reports stay local until you send one.",
+      "why": "The console and this profile run on your machine with your code and accounts. The only network calls are the update check and the ones you start yourself.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/floor-no-telemetry.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[tT][eE][lL][eE][mM][eE][tT][rR][yY]"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+- Stop at junctions, symlinks and mount points when you walk or delete a tree - why: tree walks followed planted links out of the folder they were meant to clean (prevents: escape / data loss)

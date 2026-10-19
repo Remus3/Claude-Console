@@ -1,0 +1,1 @@
+- Launch scripts with an explicit interpreter path, never a bare python3 or py - why: on Windows python3 can be a store stub that hangs, and the launcher can pick an interpreter without your tools (prevents: wrong interpreter)

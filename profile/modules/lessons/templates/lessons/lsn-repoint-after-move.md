@@ -1,0 +1,1 @@
+- After moving a repo, re-point the hooks path, shortcuts, the memory project folder and scheduled tasks - why: after a move, hooks pointed at the recycled copy, a shortcut launched the old folder and readers used a dead memory folder (prevents: stale path)

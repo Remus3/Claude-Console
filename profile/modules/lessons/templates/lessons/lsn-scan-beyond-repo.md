@@ -1,0 +1,1 @@
+- Run secret scans over scratch and shared areas too, not only over the repo - why: a plaintext admin key sat in a shared scratch folder that no scan covered (prevents: secret leak)

@@ -1,0 +1,1 @@
+- Prove every arm of a gate turns red on a planted defect before relying on it - why: arms that nobody had seen fail turned out to check nothing (prevents: vacuous gate)

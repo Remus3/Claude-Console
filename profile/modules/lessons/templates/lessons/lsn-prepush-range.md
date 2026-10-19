@@ -1,0 +1,1 @@
+- In pre-push, grade every commit in the pushed range and read standard input exactly once - why: a check of HEAD alone misses earlier pushed commits, another hook can drain the input first, and an add-then-delete pair escapes a tree scan (prevents: wrong subject scanned)

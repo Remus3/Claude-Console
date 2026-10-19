@@ -1,0 +1,6 @@
+{
+  "_comment": "Copy to ops/machine_insights_host.json (gitignored) and fill in your own layout. Never commit the real file to a public repository.",
+  "repo_roots": ["<drive>:/<path to a repository>"],
+  "reports_dir": "<where reports are written>",
+  "backup_target": "<ssh alias of the backup machine, or empty>"
+}

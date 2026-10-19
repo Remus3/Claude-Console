@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "id": "floors",
+  "order": 1,
+  "title": "Safety floors",
+  "summary": "Rules that stay on whatever else is chosen.",
+  "why": "They protect history, data and the machine; switching them off is never a convenience.",
+  "default": "on",
+  "locked": true,
+  "items": [
+    {
+      "id": "floor-no-ai-attribution",
+      "order": 101,
+      "title": "No AI or bot attribution in commits",
+      "does": "Installs a commit-msg hook that strips AI co-author trailers and a pre-push hook that refuses them.",
+      "why": "Commits carry the author's own identity only.",
+      "risk": "medium",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "git", "key": "core.hooksPath", "value": ".githooks"},
+        {"kind": "file", "target": "repo:.githooks/commit-msg", "template": "templates/commit-msg.sh", "mode": "managed"}
+      ],
+      "detect": [{"file": "repo:.githooks/commit-msg"}],
+      "verify": [{"git-hooks": "repo:.githooks"}]
+    }
+  ]
+}

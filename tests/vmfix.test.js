@@ -276,7 +276,7 @@ test('install.ps1: the one-command install, read statically (never run on this h
   for (const k of [
     "OpenJS.NodeJS.LTS", 'https://nodejs.org/dist/index.json', 'SHASUMS256.txt', 'msiexec.exe',
     "Git.Git", 'git-for-windows/git/releases/latest', '/VERYSILENT',
-    'releases/latest/download/SHA256SUMS.txt', 'Get-FileHash', "'Remus3/claude-console'",
+    'releases/latest/download/SHA256SUMS.txt', 'Get-FileHash', "'Remus3/Claude-Console'",
     "Programs\\claude-console", 'claude-console.js', "'install'", '--repo', '--ignore-prereqs',
     'launch.vbs', 'irm https://claude.ai/install.ps1 | iex', 'RefreshPath', '-Zip',
   ]) assert.ok(s.includes(k), k);

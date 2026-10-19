@@ -1,0 +1,1 @@
+- Run concurrent suites only as far as measured free memory allows, and treat output from a run killed for memory as void - why: low memory killed background suites, and their partial output looked like results (prevents: resource exhaustion)

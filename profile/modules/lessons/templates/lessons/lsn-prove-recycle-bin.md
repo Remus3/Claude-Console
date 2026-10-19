@@ -1,0 +1,1 @@
+- Before a large delete, prove that the Recycle Bin will take it - why: a cached size cap plus a no-confirmation flag deleted a very large copy permanently (prevents: data loss)

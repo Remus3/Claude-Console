@@ -1,0 +1,1 @@
+- Keep evidence you need later in the repo or a sidecar area, never only in the session scratchpad - why: the scratchpad does not survive /clear, and evidence kept only there was lost (prevents: lost evidence)

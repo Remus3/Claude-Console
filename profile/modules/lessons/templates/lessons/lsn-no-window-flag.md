@@ -1,0 +1,1 @@
+- Start every console child process with the no-window creation flag - why: the flag, not a windowless interpreter, stops console windows flashing up, and a detached flag silently disables it (prevents: visible windows)

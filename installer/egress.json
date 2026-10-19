@@ -1,0 +1,283 @@
+{
+  "schema": 1,
+  "note": "Allowed network hosts and the baseline of network-capable code (CON-013 addendum e.1). No telemetry, ever. A new hit, host or a loopback-only file gaining a non-loopback target fails the no-egress tests.",
+  "loopback": [
+    "127.0.0.1",
+    "localhost",
+    "::1"
+  ],
+  "hosts": [
+    {
+      "host": "api.github.com",
+      "kind": "update",
+      "use": "release list (update check)"
+    },
+    {
+      "host": "github.com",
+      "kind": "update",
+      "use": "release download (redirects to the asset host)"
+    },
+    {
+      "host": "objects.githubusercontent.com",
+      "kind": "update",
+      "use": "release asset download"
+    },
+    {
+      "host": "release-assets.githubusercontent.com",
+      "kind": "update",
+      "use": "release asset download"
+    },
+    {
+      "host": "github.com",
+      "kind": "browser",
+      "use": "issue page, opened in the browser after a click"
+    },
+    {
+      "host": "claude.ai",
+      "kind": "browser",
+      "use": "help chat, opened in the browser after a click"
+    }
+  ],
+  "files": [
+    {
+      "file": "installer/autoupdate.js",
+      "class": "loopback",
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "use": "asks the local server whether panes are busy before a restart"
+    },
+    {
+      "file": "installer/cli.js",
+      "class": "loopback",
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "use": "POST /api/shutdown to the local server"
+    },
+    {
+      "file": "installer/contribute.js",
+      "class": "browser",
+      "hosts": [
+        "github.com"
+      ],
+      "use": "issue URL for a contribution, opened after a click"
+    },
+    {
+      "file": "installer/crashreport.js",
+      "class": "browser",
+      "hosts": [
+        "github.com",
+        "claude.ai"
+      ],
+      "use": "crash report issue page, opened after a click"
+    },
+    {
+      "file": "installer/detect.js",
+      "class": "loopback",
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "use": "probes the local server"
+    },
+    {
+      "file": "installer/egress.js",
+      "class": "policy",
+      "hosts": [],
+      "use": "the policy and the test guard itself; makes no call"
+    },
+    {
+      "file": "installer/launcher.js",
+      "class": "shown-text",
+      "hosts": [
+        "github.com"
+      ],
+      "use": "project URL written into the Apps & features entry"
+    },
+    {
+      "file": "installer/prereq.js",
+      "class": "shown-text",
+      "hosts": [
+        "nodejs.org",
+        "git-scm.com"
+      ],
+      "use": "download pages named in a message"
+    },
+    {
+      "file": "public/profile.js",
+      "class": "loopback",
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "use": "the setup profile screens call their own server's /api/profile routes (same origin)"
+    },
+    {
+      "file": "public/setup-paths.js",
+      "class": "shown-text",
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "use": "loopback proxy URL format shown as a placeholder and in a validation message; no request"
+    },
+    {
+      "file": "tools/demo-adopt-seed.js",
+      "class": "loopback",
+      "hosts": [
+        "127.0.0.1",
+        "localhost"
+      ],
+      "use": "writes the adopt demo repo: its server binds 127.0.0.1 and a fake config names localhost; the seed itself makes no request"
+    },
+    {
+      "file": "installer/profile-route.js",
+      "class": "shown-text",
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "use": "kill-switch URL format named in a validation message; no request"
+    },
+    {
+      "file": "installer/recover.js",
+      "class": "browser",
+      "hosts": [
+        "claude.ai"
+      ],
+      "use": "recovery chat, opened after a click"
+    },
+    {
+      "file": "installer/release.js",
+      "class": "update",
+      "hosts": [
+        "api.github.com",
+        "github.com",
+        "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com"
+      ],
+      "use": "update check and download"
+    },
+    {
+      "file": "installer/selftest-run.js",
+      "class": "loopback",
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "use": "self-test against the local server"
+    },
+    {
+      "file": "installer/recover.ps1",
+      "class": "browser",
+      "hosts": [
+        "claude.ai"
+      ],
+      "use": "recovery chat, opened after a click"
+    },
+    {
+      "file": "launch.cmd",
+      "class": "shown-text",
+      "hosts": [
+        "nodejs.org"
+      ],
+      "use": "download page named in a message"
+    },
+    {
+      "file": "launch.vbs",
+      "class": "shown-text",
+      "hosts": [
+        "nodejs.org"
+      ],
+      "use": "download page named in a message"
+    },
+    {
+      "file": "public/app.js",
+      "class": "loopback",
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "use": "the UI talks to its own server (fetch, WebSocket); the w3.org string is the SVG namespace"
+    },
+    {
+      "file": "release/install.ps1",
+      "class": "user-initiated",
+      "hosts": [
+        "github.com",
+        "api.github.com",
+        "nodejs.org",
+        "git-scm.com",
+        "claude.ai"
+      ],
+      "use": "the installer the user runs: release, Node.js and Git downloads; claude.ai/install.ps1 is shown text"
+    },
+    {
+      "file": "server/boards.js",
+      "class": "shown-text",
+      "hosts": [
+        "claude.ai"
+      ],
+      "use": "board URL pattern check; no request"
+    },
+    {
+      "file": "server/claudeenv.js",
+      "class": "shown-text",
+      "hosts": [
+        "claude.ai"
+      ],
+      "use": "the Claude CLI install command shown to the user; not fetched"
+    },
+    {
+      "file": "server/hom.js",
+      "class": "loopback",
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "use": "local bridge socket"
+    },
+    {
+      "file": "server/homctl.js",
+      "class": "loopback",
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "use": "local bridge socket"
+    },
+    {
+      "file": "server/hook.js",
+      "class": "loopback",
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "use": "pane hook posts to the local server"
+    },
+    {
+      "file": "server/localmode.js",
+      "class": "loopback",
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "use": "local proxy for the user-configured headless route"
+    },
+    {
+      "file": "server/scheduler.js",
+      "class": "shown-text",
+      "hosts": [
+        "schemas.microsoft.com"
+      ],
+      "use": "task XML namespace; no request"
+    },
+    {
+      "file": "server/server.js",
+      "class": "loopback",
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "use": "the console server (binds 127.0.0.1 only)"
+    },
+    {
+      "file": "server/tools.js",
+      "class": "loopback",
+      "hosts": [
+        "127.0.0.1"
+      ],
+      "use": "local port probe"
+    }
+  ]
+}

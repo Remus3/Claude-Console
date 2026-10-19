@@ -1,0 +1,30 @@
+# Docs-only complement (setup profile, item ci-workflow-docs-complement). Use it only when
+# the main workflow ignores documentation paths: this workflow runs exactly the tests that
+# read docs, so a docs-only push is never untested. Keep its path list the exact
+# complement of the main workflow's paths-ignore. Set DOC_TEST_COMMAND.
+name: docs
+on:
+  push:
+    paths:
+      - "**/*.md"
+  pull_request:
+    paths:
+      - "**/*.md"
+permissions:
+  contents: read
+jobs:
+  doc-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tests that read docs
+        timeout-minutes: 10
+        env:
+          DOC_TEST_COMMAND: ${{ vars.DOC_TEST_COMMAND }}
+        run: |
+          if [ -z "$DOC_TEST_COMMAND" ]; then echo "set the DOC_TEST_COMMAND repository variable"; exit 1; fi
+          sh -c "$DOC_TEST_COMMAND"

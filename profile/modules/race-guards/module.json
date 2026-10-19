@@ -1,0 +1,249 @@
+{
+  "schema": 1,
+  "id": "race-guards",
+  "order": 6,
+  "title": "Race guards",
+  "summary": "File claims, a commit lock, machine-wide test-suite slots and a guard that keeps tests away from live state.",
+  "why": "When several agents work in one repository at once, conventions like disjoint file lists are not enough; these guards are enforced by hooks and helpers, not by prompts.",
+  "default": "off",
+  "items": [
+    {
+      "id": "kit-fleet-claims",
+      "order": 601,
+      "title": "Per-file claims between agents",
+      "does": "Copies kit_claims.py and adds hooks that claim each file an agent edits, deny another live agent's edit of it, and release the claims when the agent stops.",
+      "why": "Two concurrent agents once edited the same file, and one swept the other's half-finished edit into its own commit.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "kit-fleet-gitlock"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "kit",
+          "files": [
+            "kit_claims.py"
+          ],
+          "target": "repo:{kit_dir}"
+        },
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/kit-fleet-claims.md"
+        },
+        {
+          "kind": "json-merge",
+          "target": "repo:.claude/settings.json",
+          "value": {
+            "hooks": {
+              "PreToolUse": [
+                {
+                  "matcher": "Edit|Write|NotebookEdit|MultiEdit|Bash|PowerShell",
+                  "hooks": [
+                    {
+                      "type": "command",
+                      "command": "\"{python}\" \"$CLAUDE_PROJECT_DIR/{kit_dir}/kit_claims.py\" hook",
+                      "timeout": 10
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "mode": "add"
+        },
+        {
+          "kind": "json-merge",
+          "target": "repo:.claude/settings.json",
+          "value": {
+            "hooks": {
+              "SubagentStop": [
+                {
+                  "hooks": [
+                    {
+                      "type": "command",
+                      "command": "\"{python}\" \"$CLAUDE_PROJECT_DIR/{kit_dir}/kit_claims.py\" release-hook",
+                      "timeout": 10
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "mode": "add"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:.claude/settings.json",
+          "regex": "kit_claims\\.py"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "repo:.claude/settings.json"
+        },
+        {
+          "hook-smoke": "repo:.claude/settings.json"
+        }
+      ]
+    },
+    {
+      "id": "kit-fleet-gitlock",
+      "order": 602,
+      "title": "Commit and push lock",
+      "does": "Copies kit_gitlock.py and the rule that every commit and push runs through it, plus the matching /done commit step.",
+      "why": "Commits from an interactive session, a background run and /done collided in one checkout, and nobody handled the leftover index.lock.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "kit-fleet-claims"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "kit",
+          "files": [
+            "kit_gitlock.py"
+          ],
+          "target": "repo:{kit_dir}"
+        },
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/kit-fleet-gitlock.md"
+        },
+        {
+          "kind": "block",
+          "target": "repo:.claude/commands/done.md",
+          "block": "done-commit-lock",
+          "template": "templates/done/commit-lock.md"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:{kit_dir}/kit_gitlock.py"
+        }
+      ]
+    },
+    {
+      "id": "kit-fleet-suite-gate",
+      "order": 603,
+      "title": "Machine-wide test-suite slots",
+      "does": "Copies kit_suite_gate.py, sets KIT_SUITE_SLOTS to your slot count (2 unless you change it), and adds the rule and /done step that run whole suites through it.",
+      "why": "Four suites running at once starved each other of workers and timing tests failed at random; the number being graded was the machine's load, not the code.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "kit",
+          "files": [
+            "kit_suite_gate.py"
+          ],
+          "target": "repo:{kit_dir}"
+        },
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/kit-fleet-suite-gate.md"
+        },
+        {
+          "kind": "json-merge",
+          "target": "repo:.claude/settings.json",
+          "value": {
+            "env": {
+              "KIT_SUITE_SLOTS": "{suite_slots}"
+            }
+          },
+          "mode": "add"
+        },
+        {
+          "kind": "block",
+          "target": "repo:.claude/commands/done.md",
+          "block": "done-suite-gate",
+          "template": "templates/done/suite-gate.md"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:{kit_dir}/kit_suite_gate.py"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "repo:.claude/settings.json"
+        }
+      ]
+    },
+    {
+      "id": "kit-fleet-test-guard",
+      "order": 604,
+      "title": "Tests isolated from live state",
+      "does": "Copies kit_test_guard.py and adds the lines to tests/conftest.py that install it: a run that changes live control, inbox or outbox files fails.",
+      "why": "A test that writes live state corrupts what running sessions read, and nobody sees it until a session acts on the bad bytes.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "conv-tdd-first"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "kit",
+          "files": [
+            "kit_test_guard.py"
+          ],
+          "target": "repo:{kit_dir}"
+        },
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/kit-fleet-test-guard.md"
+        },
+        {
+          "kind": "block",
+          "target": "repo:tests/conftest.py",
+          "block": "test-guard",
+          "template": "templates/conftest-guard.py"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:tests/conftest.py",
+          "regex": "test_guard"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+# Test selection rules for tools/select_tests.py. One rule per line:
+#   full <glob>                 a change here runs the whole suite
+#   ignore <glob>               a change here needs no tests
+#   map <glob> -> <test> ...    a change here runs these tests
+# A changed path that matches no rule runs the whole suite.
+full pyproject.toml
+full package.json
+full pytest.ini
+full tests/conftest.py
+full .githooks/*
+ignore *.md
+map tests/* -> tests

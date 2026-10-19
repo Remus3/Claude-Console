@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "id": "session",
+  "order": 2,
+  "title": "Session shape: hand-off, checklist, /done",
+  "summary": "One file carries every session into the next; /done closes it verifiably.",
+  "why": "Chat does not survive /clear, so continuity lives in one file at the repo root.",
+  "default": "on",
+  "locked": false,
+  "items": [
+    {
+      "id": "conv-handoff-file",
+      "order": 201,
+      "title": "Hand-off file at the repo root",
+      "does": "Creates {handoff_name} and a rule telling every session to read it first.",
+      "why": "The next session starts from the file, not from memory.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["conv-session-env"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{handoff_name}", "template": "templates/handoff.txt", "mode": "create-only"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "rules", "slot": 5, "template": "templates/rule-handoff.md"}
+      ],
+      "detect": [
+        {"file": "repo:*-NEXT-SESSION.txt"},
+        {"text": "repo:CLAUDE.md", "regex": "NEXT-SESSION\\.txt"}
+      ],
+      "verify": [
+        {"file-ascii-lf": "repo:{handoff_name}"},
+        {"regex": "repo:{handoff_name}", "line1": "^SESSION: \\d+$"}
+      ]
+    },
+    {
+      "id": "conv-session-env",
+      "order": 202,
+      "title": "UTF-8 for Python children",
+      "does": "Sets the user variable PYTHONUTF8=1.",
+      "why": "Hook scripts print non-ASCII paths without crashing.",
+      "risk": "high",
+      "default": "off",
+      "platform": ["win32"],
+      "depends_on": ["conv-handoff-file"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "env", "name": "PYTHONUTF8", "value": "1"}
+      ],
+      "detect": [{"env": "PYTHONUTF8"}],
+      "verify": [{"env-readback": "PYTHONUTF8"}]
+    }
+  ]
+}

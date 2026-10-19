@@ -1,0 +1,16 @@
+{
+  "_about": "Permission floor per kind of unattended run (setup profile, item cfg-headless-tool-floor). The spawn helper reads it; a run kind not listed here is refused. No kind ever gets a skip-permissions flag.",
+  "code": {
+    "permission_mode": "acceptEdits",
+    "allowed_tools": ["Read", "Grep", "Glob", "Edit", "Write", "Bash(git status:*)", "Bash(git diff:*)",
+                      "Bash(npm test:*)", "Bash(python -m pytest:*)"]
+  },
+  "responder": {
+    "permission_mode": "default",
+    "allowed_tools": ["Read", "Grep", "Glob"]
+  },
+  "planner": {
+    "permission_mode": "plan",
+    "allowed_tools": ["Read", "Grep", "Glob"]
+  }
+}

@@ -1,0 +1,1 @@
+- Run generated reports and files through the same content gates as hand-written ones - why: glyphs written into a generated report turned CI red (prevents: self-inflicted red)

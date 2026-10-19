@@ -1,6 +1,6 @@
 # Claude Console installer for Windows 10 / 11.
 #
-#   irm https://github.com/Remus3/claude-console/releases/latest/download/install.ps1 | iex
+#   irm https://github.com/Remus3/Claude-Console/releases/latest/download/install.ps1 | iex
 #
 # What it does, in order (a re-run upgrades or repairs; nothing else on the box changes):
 #   1. Node.js LTS: kept when Node 24+ is on PATH, else installed with winget
@@ -16,14 +16,14 @@
 # once to install it.
 #   4. Installs to %LOCALAPPDATA%\Programs\claude-console (npm ci --omit=dev, a self-test,
 #      Start-menu + Desktop shortcuts, an Apps & features entry, `claude-console` on your
-#      user PATH, updates from Remus3/claude-console).
+#      user PATH, updates from Remus3/Claude-Console).
 #   5. Starts the console.
 # A missing Claude Code CLI never stops the install; it prints the one command to get it.
 #
 # Do not want to run a remote script? Download install.ps1, the release zip and
 # SHA256SUMS.txt into one folder, read the script, then run it locally:  powershell -ExecutionPolicy Bypass -File .\install.ps1 -Zip .\claude-console-<version>.zip
 param(
-  [string]$Repo = 'Remus3/claude-console',
+  [string]$Repo = 'Remus3/Claude-Console',
   [string]$Zip = '',
   [string]$Sums = '',
   [string]$InstallDir = '',

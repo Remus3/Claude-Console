@@ -1,0 +1,327 @@
+{
+  "schema": 1,
+  "id": "maintenance",
+  "order": 12,
+  "title": "Scheduled machine maintenance",
+  "summary": "Scheduled Temp clean-up, transcript retention, a boot-time record and an off-machine backup, all started hidden.",
+  "why": "Machines slow down from the things nobody watches: Temp file counts, transcripts that pile up, backups that never happen. Small scheduled jobs keep each one bounded and measured.",
+  "default": "off",
+  "items": [
+    {
+      "id": "sched-temp-hygiene",
+      "order": 1201,
+      "title": "Temp clean-up every 4 hours",
+      "does": "Installs Temp-Hygiene.ps1 and a hidden task every 4 hours that removes stale scratch folders from Temp; locked folders are refused, the live session folder is never touched.",
+      "why": "Temp file count is boot time: about 0.2 ms per file at logon, so 747,000 files once meant a boot of almost three minutes.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32"
+      ],
+      "depends_on": [
+        "rt-run-hidden"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:{runtime_dir}/Temp-Hygiene.ps1",
+          "template": "templates/runtime/Temp-Hygiene.ps1",
+          "mode": "managed"
+        },
+        {
+          "kind": "task",
+          "name": "ClaudeProfile-TempHygiene",
+          "template": "templates/tasks/temp-hygiene.xml"
+        }
+      ],
+      "verify": [
+        {
+          "task-readback": "ClaudeProfile-TempHygiene"
+        }
+      ],
+      "scope": "machine-specific",
+      "notes": "Scratch is unlinked (it is regenerable); nothing else is touched."
+    },
+    {
+      "id": "sched-claude-retention",
+      "order": 1202,
+      "title": "Weekly transcript retention",
+      "does": "Installs Clean-ClaudeTranscripts.ps1 and a weekly task (Sunday 04:30) that sends transcripts past the measured retention to the Recycle Bin.",
+      "why": "Transcript folders grow without limit. The retention days are proposed from your own age histogram: a round-number guess once would have removed nothing at all.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32"
+      ],
+      "depends_on": [
+        "rt-run-hidden"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:{runtime_dir}/Clean-ClaudeTranscripts.ps1",
+          "template": "templates/runtime/Clean-ClaudeTranscripts.ps1",
+          "mode": "managed"
+        },
+        {
+          "kind": "task",
+          "name": "ClaudeProfile-ClaudeRetention",
+          "template": "templates/tasks/claude-retention.xml"
+        }
+      ],
+      "verify": [
+        {
+          "task-readback": "ClaudeProfile-ClaudeRetention"
+        }
+      ]
+    },
+    {
+      "id": "sched-boot-record",
+      "order": 1203,
+      "title": "Boot time record",
+      "does": "Installs Record-BootTime.ps1 and a task at boot plus 3 minutes that appends this boot's logon timings and Temp counts to a CSV.",
+      "why": "The built-in boot-duration event is missing on some machines, and a trend you do not record cannot be seen.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32"
+      ],
+      "depends_on": [
+        "rt-run-hidden"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:{runtime_dir}/Record-BootTime.ps1",
+          "template": "templates/runtime/Record-BootTime.ps1",
+          "mode": "managed"
+        },
+        {
+          "kind": "task",
+          "name": "ClaudeProfile-BootRecord",
+          "template": "templates/tasks/boot-record.xml"
+        }
+      ],
+      "verify": [
+        {
+          "task-readback": "ClaudeProfile-BootRecord"
+        }
+      ],
+      "scope": "machine-specific"
+    },
+    {
+      "id": "sched-offsite-backup",
+      "order": 1204,
+      "title": "Daily off-machine git backup",
+      "does": "Installs offsite_backup.py and a daily task (05:00) that sends an incremental git bundle to your backup machine over ssh and verifies the copy.",
+      "why": "Without shadow copies on the machine, a force-push or a deleted branch is only recoverable from a copy somewhere else.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "tool-wol"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/tools/offsite_backup.py",
+          "template": "templates/tools/offsite_backup.py",
+          "mode": "managed"
+        },
+        {
+          "kind": "task",
+          "name": "ClaudeProfile-OffsiteBackup",
+          "template": "templates/tasks/offsite-backup.xml"
+        },
+        {
+          "kind": "block",
+          "target": "repo:.claude/commands/done.md",
+          "block": "done-backup",
+          "template": "templates/done/backup.md"
+        }
+      ],
+      "verify": [
+        {
+          "task-readback": "ClaudeProfile-OffsiteBackup"
+        }
+      ],
+      "scope": "machine-specific",
+      "notes": "Off unless you have a second machine; its ssh alias is asked in the wizard."
+    },
+    {
+      "id": "tool-wol",
+      "order": 1205,
+      "title": "Wake-on-LAN sender",
+      "does": "Installs wol.py, which wakes the backup machine with a magic packet and waits for ssh to answer.",
+      "why": "The backup machine can stay switched off until a backup needs it.",
+      "risk": "medium",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/tools/wol.py",
+          "template": "templates/tools/wol.py",
+          "mode": "managed"
+        }
+      ],
+      "scope": "machine-specific"
+    },
+    {
+      "id": "tool-health-check",
+      "order": 1206,
+      "title": "Console health check",
+      "does": "Uses the console's Health button: fixed-id checks for Temp, disk, boot, tasks, drift, worktrees, git objects and progress files.",
+      "why": "One button that answers whether the machine is healthy saves a dozen ad hoc probes.",
+      "risk": "medium",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [],
+      "notes": "Built into the console; this item only records that you want it."
+    },
+    {
+      "id": "sched-health-check",
+      "order": 1207,
+      "title": "Scheduled health check",
+      "does": "Runs the console's delete-free health checks on a schedule and leaves a result file and one status line.",
+      "why": "A problem found at 3 a.m. by a schedule is waiting for you at breakfast instead of surprising you at noon.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32"
+      ],
+      "depends_on": [
+        "tool-health-check"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [],
+      "notes": "Registered from the console's Health panel, which backs up and reads back the task."
+    },
+    {
+      "id": "tool-temp-census",
+      "order": 1208,
+      "title": "Temp census",
+      "does": "Installs temp_census.py, a read-only count of Temp files and sizes per name prefix.",
+      "why": "It tells you which program fills Temp without waiting for the next clean-up run to find out.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/tools/temp_census.py",
+          "template": "templates/tools/temp_census.py",
+          "mode": "managed"
+        }
+      ],
+      "scope": "machine-specific"
+    },
+    {
+      "id": "rt-run-hidden",
+      "order": 1209,
+      "title": "Hidden task launcher",
+      "does": "Installs Run-Hidden.vbs, which starts a PowerShell script from a scheduled task without a console window and passes its exit code back.",
+      "why": "PowerShell 5.1 flashes a console window before it can hide itself; closing that window once killed the task it belonged to.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:{runtime_dir}/Run-Hidden.vbs",
+          "template": "templates/runtime/Run-Hidden.vbs",
+          "mode": "managed"
+        }
+      ]
+    },
+    {
+      "id": "conv-task-codes",
+      "order": 1210,
+      "title": "Task result codes that are not failures",
+      "does": "Adds the fact that scheduled-task results 267009, 267011 and 2147946720 mean running, never run and already running.",
+      "why": "Those three codes were reported as failures again and again; writing them down once ended it.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/conv-task-codes.md"
+        }
+      ]
+    },
+    {
+      "id": "conv-runtime-live",
+      "order": 1211,
+      "title": "Runtime scripts are live",
+      "does": "Adds the rule that scripts run by scheduled tasks are live: copy before editing and parse-check before walking away.",
+      "why": "There is no deploy step between the file and the task, so a syntax error becomes a silently dead task.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "rule-encoding-ascii-lf"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/conv-runtime-live.md"
+        }
+      ]
+    }
+  ]
+}

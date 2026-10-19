@@ -1,0 +1,1 @@
+- Cap fixture and harness sizes, and check free disk before large writes - why: a sparse test file was zero-filled to tens of gigabytes, and a full temp drive truncated files to zero bytes (prevents: disk fill)

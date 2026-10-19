@@ -1,0 +1,1 @@
+- Check out the full git history in every CI job - why: a shallow clone made the history-reading tests skip and assert nothing (prevents: CI blind spot)

@@ -29,6 +29,10 @@ const scheduler = require('./scheduler');
 const { createBackendRoutes } = require('./backendroutes');
 const { HealthSchedule } = require('./healthsched');
 const { Watchdog } = require('./watchdog');
+// CON-013 L5: setup profile, crash report, stop everything / recovery, machine profile.
+const { createProfileRoutes } = require('./profile-routes');
+const { createAdoptRoutes } = require('./adopt-routes');
+const recover = require('../installer/recover');
 
 const VERSION = require('../package.json').version;
 const PUBLIC = path.join(__dirname, '..', 'public');
@@ -49,6 +53,11 @@ const STATIC = {
   // Shared design tokens (UX-1 R4).
   '/tokens.css': 'tokens.css',
   '/favicon.svg': 'favicon.svg',
+  // CON-013 L5: setup profile UI (browser, wizard, adopt, machine advisor) and recovery.
+  '/profile.js': 'profile.js',
+  '/profile.css': 'profile.css',
+  '/setup-paths.js': 'setup-paths.js',
+  '/recovery.js': 'recovery.js',
 };
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 
@@ -127,6 +136,27 @@ async function createConsoleServer(opts) {
   const panes = new PaneManager(cfg, { claudePath });
   const status = new StatusService(cfg, () => projects);
   panes.markerFor = (pid) => status.markers[pid] || null;
+  // CON-013 L5 (addendum e.3): every pane process is recorded in run/spawned/<pid>.json
+  // {pid, kind, name (image), startMs} so "Stop everything" can stop console-spawned
+  // trees by recorded pid only; the record goes when the process exits.
+  const recordPid0 = panes.recordPid.bind(panes);
+  panes.recordPid = (rec) => {
+    recordPid0(rec);
+    const pane = panes.get(rec.paneId);
+    trackSpawn(rec.pid, 'pane', pane && pane.file, rec.startedAt, pane && pane.proc);
+  };
+  function trackSpawn(pid, kind, file, startMs, child) {
+    if (!Number.isInteger(pid) || pid <= 0) return;
+    try { recover.registerSpawn(cfg.runDir, { pid, kind, name: file ? path.basename(String(file)) : null, startMs: startMs || Date.now() }); } catch (e) { return; }
+    const drop = () => recover.unregisterSpawn(cfg.runDir, pid);
+    try { if (child && typeof child.onExit === 'function') child.onExit(drop); else if (child && typeof child.on === 'function') child.on('exit', drop); } catch (e) { /* the record stays; stop-all re-checks the live process first */ }
+  }
+  // Headless children (the optional plugin's jobs) are recorded the same way.
+  const trackedSpawn = (kind) => (file, args, o) => {
+    const c = spawn(file, args, o);
+    trackSpawn(c.pid, kind, file, Date.now(), c);
+    return c;
+  };
   // CON-PUBLIC D/E/F: Settings > "Updates & repair" backend (server/updates.js).
   const updates = createUpdates({ cfg, version: VERSION, panes: () => panes.list(), deps: opts.updatesDeps });
   // CON-PANE-VANISH: pane open / exit / close lines in run/server.log (main() passes
@@ -154,10 +184,14 @@ async function createConsoleServer(opts) {
   // real plugin unless it asks with opts.mainPlugin === true.
   const pluginAllowed = opts.mainPlugin === true || (opts.mainPlugin === undefined && !opts.dataDir);
   const mainCfg = pluginAllowed ? mainPlugin.mainConfig(cfg, cfg.runDir) : null;
-  const mainPl = mainCfg ? new mainPlugin.MainPlugin(mainCfg, { spawn: opts.mainPluginSpawn }) : null;
+  const mainPl = mainCfg ? new mainPlugin.MainPlugin(mainCfg, { spawn: opts.mainPluginSpawn || trackedSpawn('headless') }) : null;
   const memSampler = new health.MemSampler({ intervalMs: opts.memSampleMs, mem: opts.memUsage });
   const healthRunner = new health.HealthRunner({
-    core: health.coreRunners({ panes, dropsDir, mem: memSampler, pruneDrops: opts.healthPruneDrops, listProcesses: opts.healthListProcesses, killTree: opts.healthKillTree }),
+    // CON-013 L5: the machine steps (L9; report-only, off by default) mount beside the
+    // Console steps; their repo list follows the discovered projects.
+    core: Object.assign(health.coreRunners({ panes, dropsDir, mem: memSampler, pruneDrops: opts.healthPruneDrops, listProcesses: opts.healthListProcesses, killTree: opts.healthKillTree }),
+      health.machineRunners(Object.assign({ get repos() { return projects.map((x) => x.dir); } }, opts.machineHealth || {}))),
+    steps: health.CORE_STEPS.concat(health.MACHINE_STEPS),
     plugins: mainPl ? [mainPl] : [],
     busy: () => null,
     suiteHolders: opts.healthSuiteHolders,
@@ -200,6 +234,28 @@ async function createConsoleServer(opts) {
   const watchdog = new Watchdog({ runner: opts.watchdogRunner || (opts.dataDir ? null : scheduler.realRunner), dataDir: cfg.dataDir, cfg, projects: () => projects, consoleRoot: cfg.root });
   watchdog.start();
   const backendRoutes = createBackendRoutes({ scheduler: sched, healthSchedule, watchdog, send, readBody, isLoopback, log: plog });
+  // CON-013 L5: setup profile routes. A server on a non-default data dir (every test and
+  // the isolated e2e) gets no OS adapters, a sandboxed config dir and refusing browser /
+  // clipboard / kill hooks unless opts.profile passes fakes; only the real console
+  // (default data dir) writes the registry, the scheduler or the user's Claude settings.
+  const profileReal = !opts.dataDir;
+  const defAcct = cfg.accounts && cfg.accounts[cfg.defaultAccount];
+  const profileOpts = Object.assign({
+    real: profileReal,
+    profileDir: path.join(__dirname, '..', 'profile'),
+    dataDir: cfg.dataDir,
+    runDir: cfg.runDir,
+    configDir: profileReal ? ((defAcct && defAcct.configDir) || path.join(os.homedir(), '.claude')) : path.join(cfg.dataDir, 'claude-config'),
+    deps: profileReal ? require('../installer/profile-tx').defaultAdapters({ dataDir: cfg.dataDir }) : {},
+    updateDir: path.join(cfg.dataDir, 'profile', 'next'),
+    projects: () => projects,
+    version: VERSION,
+    token,
+  }, opts.profile || {});
+  const profileRoutes = createProfileRoutes({ send, readBody, isLoopback, log: plog, profile: profileOpts });
+  // INTEGRATE-2 (c): /api/profile/adopt on the real L3x facade (openAdopt), ahead of the
+  // profile routes.
+  const adoptRoutes = createAdoptRoutes({ send, readBody, isLoopback, log: plog, profile: profileOpts });
 
   function settings() {
     const s = Object.assign({}, DEFAULT_SETTINGS, readJson(settingsFile, {}));
@@ -224,6 +280,8 @@ async function createConsoleServer(opts) {
     }
     if (!safeEqual(req.headers['x-console-token'], token)) return send(res, 401, { error: 'token required' });
     if (await backendRoutes(req, res, p, m, url)) return;
+    if (await adoptRoutes(req, res, p, m, url)) return;
+    if (await profileRoutes(req, res, p, m, url)) return;
 
     // Composer attachment: raw body (no JSON), loopback peers only, size-capped.
     if (p === '/api/upload' && m === 'POST') {
@@ -693,6 +751,15 @@ async function createConsoleServer(opts) {
   status.start();
   resources.start();
   if (opts.memSample !== false) memSampler.start();
+  // Addendum e.1: every outbound attempt (host + kind only, never a path or query) is
+  // logged to run/egress.log, so "nothing leaves the machine" can be read back.
+  require('../installer/egress').setLog(path.join(cfg.runDir, 'egress.log'));
+  // CON-0.1.3: re-align the Apps & features version after an update made by an older CLI
+  // (launcher.refreshArpForInstall: installed copies only; never a test instance).
+  if (!opts.dataDir && opts.arpRefresh !== false) {
+    const t = setTimeout(() => { require('../installer/launcher').refreshArpForInstall(path.join(__dirname, '..'), VERSION).catch(() => {}); }, 3000);
+    t.unref();
+  }
   // Old composer attachments (day folders > 14 days) go to the Recycle Bin: a minute
   // after start, then daily. Off for test instances unless asked.
   const pruneTimers = [];

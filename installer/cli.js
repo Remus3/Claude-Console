@@ -16,6 +16,10 @@
 //   setup      [--config-dir DIR] [--apply --yes] [--json]   (CON-SHIP-SETUP)
 //   autoupdate [--once]                (CON-AUTOUPDATE)
 //   uninstall  [--purge]               (VMFIX; user data kept unless --purge)
+//   profile    list|view|diff|apply|enable|disable|edit|revert|uninstall|verify|status|
+//              preset|adopt ...       (CON-013 setup profile; dry run unless --apply --yes)
+//   crash-report [--step ID] [--action issue|claude|save --yes]   (CON-013 e.2)
+//   stop-all [--yes] | resume [--yes] | recover-prompt [--yes]     (CON-013 e.3)
 // Common: --home DIR (default %LOCALAPPDATA%\Programs\claude-console), --json, --port N.
 const fs = require('fs');
 const path = require('path');
@@ -158,8 +162,19 @@ async function run(argv, deps) {
   }
 
   if (cmd === 'rollback') {
-    const r = require('./update').rollback(L.home, deps.nodePath);
-    emit(r, ['rolled back v' + r.from + ' -> v' + r.to]);
+    // CON-0.1.3: stop the console first (it runs from the version rolled away from, so
+    // the next update could not move that folder: EBUSY), switch with retries, set the
+    // Apps & features version, start the console again on the previous version.
+    const upd = require('./update');
+    const m = readMarker(L.home);
+    const r = await upd.rollbackSwap({ home: L.home, nodePath: deps.nodePath, npmCi: deps.npmCi, writeArp: deps.writeArp, retry: deps.retry,
+      beforeSwap: swapHook(L, port, deps, m ? 'v' + m.version : 'this install'), restart: () => restartAfterSwap(L, port, deps) });
+    if (r.status === 'blocked') { emit(r, [r.line]); return 1; }
+    const lines = ['rolled back v' + r.from + ' -> v' + r.to];
+    const al = upd.arpLine(r.arp);
+    if (al) lines.push(al);
+    if (r.restarted) lines.push('restarted the console on v' + r.restarted);
+    emit(r, lines);
     return 0;
   }
 
@@ -212,6 +227,8 @@ async function run(argv, deps) {
   }
 
   if (cmd === 'setup') return require('./setup').cliSetup(a, L, deps, emit, out);
+  if (cmd === 'profile') return require('./profile-cli').cliProfile(argv.filter((x, i) => i !== argv.indexOf(cmd)), L, deps, out);
+  if (cmd === 'crash-report' || cmd === 'stop-all' || cmd === 'resume' || cmd === 'recover-prompt') return require('./profile-cli').cliRecover(cmd, argv.filter((x, i) => i !== argv.indexOf(cmd)), L, deps, out);
   if (cmd === 'autoupdate') return require('./autoupdate').cliAutoupdate(a, L, deps, emit, out, port);
 
   out('unknown command: ' + cmd);
@@ -235,8 +252,17 @@ async function cmdUpdate(a, L, deps, emit, out, port) {
   }
   if (!a.yes) { out('release ready: ' + releaseDir + '; apply with --yes'); return 0; }
   const d = m ? null : await detect(Object.assign({ home: L.home, port, skipProbe: true }, deps.detectOpts || {}));
-  const r = await upd.applyUpdate({ home: L.home, releaseDir, legacyDir: d && d.legacy[0] ? d.legacy[0].path : undefined, npmCi: deps.npmCi, selftest: deps.selftest, nodePath: deps.nodePath, reintegrate: deps.reintegrate, force: !!a.force });
+  const r = await upd.applyUpdate({ home: L.home, releaseDir, legacyDir: d && d.legacy[0] ? d.legacy[0].path : undefined, npmCi: deps.npmCi, selftest: deps.selftest, nodePath: deps.nodePath, reintegrate: deps.reintegrate, force: !!a.force,
+    writeArp: deps.writeArp, retry: deps.retry, beforeSwap: m ? swapHook(L, port, deps, null) : null });
+  if (r.status === 'blocked') {
+    const bl = [r.line];
+    if (r.stoppedConsole) { await restartAfterSwap(L, port, deps); bl.push('restarted the console on v' + readMarker(L.home).version); }
+    emit(r, bl);
+    return 1;
+  }
   const lines = ['update: ' + r.status + ' v' + r.from + ' -> v' + r.to];
+  const al = upd.arpLine(r.arp);
+  if (al) lines.push(al);
   if (r.summary) lines.push('files: ' + JSON.stringify(r.summary));
   for (const f of (r.files || []).filter((x) => x.result === 'conflict')) lines.push('conflict: ' + f.rel + ' (see ' + f.side + ')');
   if (r.localMods && r.localMods.length) lines.push('local mods kept: ' + r.localMods.length + ' - contribute? claude-console contribute');
@@ -247,8 +273,12 @@ async function cmdUpdate(a, L, deps, emit, out, port) {
   }
   if (r.reportFile) lines.push('report: ' + r.reportFile);
   // VMFIX: a running console keeps the old version until it restarts. Restart it when
-  // no pane is busy; otherwise say how.
-  if (/^updated/.test(r.status)) {
+  // no pane is busy; otherwise say how. CON-0.1.3: a console the swap stopped is always
+  // started again (on the new version, or on the old one after a failed self-test).
+  if (r.stoppedConsole) {
+    await restartAfterSwap(L, port, deps);
+    lines.push('restarted the console on v' + readMarker(L.home).version);
+  } else if (/^updated/.test(r.status)) {
     const au = require('./autoupdate');
     // Tests (fake npm) never probe or restart a real server unless they inject one.
     const probe = deps.serverInfo || (deps.npmCi ? null : au.defaultServerInfo);
@@ -269,6 +299,19 @@ async function cmdUpdate(a, L, deps, emit, out, port) {
   return r.status === 'rolled-back' ? 1 : 0;
 }
 
+// CON-0.1.3: the stop-before-swap hook for update / rollback. Tests (a fake npmCi) get
+// none unless they inject deps.beforeSwap or deps.listServers, so they never probe or
+// stop a real server.
+function swapHook(L, port, deps, what) {
+  if (deps.beforeSwap !== undefined) return deps.beforeSwap;
+  if (deps.npmCi && !deps.listServers) return null;
+  return require('./swap').realBeforeSwap(L, port, Object.assign(procDeps(deps), { serverInfo: deps.serverInfo, stopTimeoutMs: deps.stopTimeoutMs }), what);
+}
+
+function restartAfterSwap(L, port, deps) {
+  return require('./swap').startAgain(L, port, deps.nodePath, { startServer: deps.startServer });
+}
+
 // Process probes for stop / uninstall (tests inject fakes; none = the real ones).
 function procDeps(deps) {
   return { postShutdown: deps.postShutdown, isAlive: deps.isAlive, kill: deps.kill, sleep: deps.sleep, listServers: deps.listServers };
@@ -285,6 +328,10 @@ const HELP = [
   '             factory also needs --factory-confirm "factory reset")',
   '  uninstall  [--purge]   removes shortcuts, Apps & features entry, PATH entry and code; --purge also user data',
   '  contribute [--send --yes] | release --out DIR | setup [--apply --yes] | autoupdate [--register|--unregister]',
+  '  profile    list | view <id> | diff | apply [--preset P] [--only ids] [--apply --yes --ack id] | enable | disable',
+  '             | edit <item> | revert [--last|--tx T] | uninstall [<module>|--all] | verify | status | adopt <dir>',
+  '             (optional setup profile; dry run unless --apply --yes; --target user|repo:<dir>)',
+  '  crash-report [--action issue|claude|save --yes] | stop-all [--yes] | resume [--yes] | recover-prompt [--yes]',
 ];
 
 module.exports = { run, parseArgs, startServer, postShutdown, PKG_ROOT };

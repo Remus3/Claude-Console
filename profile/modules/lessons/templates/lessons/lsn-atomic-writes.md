@@ -1,0 +1,1 @@
+- Write shared files atomically: write a temp file in the same folder, then replace the target - why: readers that poll a file caught it half written and acted on torn data (prevents: torn read)

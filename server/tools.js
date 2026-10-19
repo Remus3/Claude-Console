@@ -360,7 +360,11 @@ function cleanText(v, max) {
 
 // Default label: the file name without its extension (a folder keeps its name).
 function labelFromPath(p, isDir) {
-  const b = path.win32.basename(String(p || '').replace(/[\\/]+$/, ''));
+  // Trailing separators trimmed in linear time (a /[\\/]+$/ regex is quadratic).
+  const s = String(p || '');
+  let end = s.length;
+  while (end > 0 && (s[end - 1] === '/' || s[end - 1] === '\\')) end--;
+  const b = path.win32.basename(s.slice(0, end));
   if (isDir) return b;
   const e = path.win32.extname(b);
   return (e && b.length > e.length ? b.slice(0, -e.length) : b).trim();

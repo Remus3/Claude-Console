@@ -1,0 +1,1 @@
+- Keep tests hermetic: never read user config, home-folder files or live state - why: tests that read a user config file passed on one machine and failed in CI (prevents: non-hermetic test)

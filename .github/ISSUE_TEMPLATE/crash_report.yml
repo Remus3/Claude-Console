@@ -1,0 +1,96 @@
+name: Crash report
+description: The console crashed, or a setup or verification step failed.
+labels: ["crash"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Easiest path: run `claude-console crash-report` (or Settings > Report a problem)
+        and pick "Open a GitHub issue". It builds a scrubbed report you preview first.
+        Filling it in by hand? Never paste secrets: no tokens, API keys, passwords,
+        user names, private paths, prompts or pane output.
+  - type: input
+    id: version
+    attributes:
+      label: Console version
+      placeholder: "0.1.3"
+    validations:
+      required: true
+  - type: dropdown
+    id: channel
+    attributes:
+      label: Channel
+      options:
+        - stable
+        - beta
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS build
+      placeholder: "Windows 11 10.0.22631"
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      placeholder: "v24.x.y"
+    validations:
+      required: true
+  - type: dropdown
+    id: git
+    attributes:
+      label: Git present
+      options:
+        - "yes"
+        - "no"
+    validations:
+      required: true
+  - type: input
+    id: step
+    attributes:
+      label: Failing step
+      description: The step id from the report.
+    validations:
+      required: true
+  - type: input
+    id: exit
+    attributes:
+      label: Exit code
+  - type: input
+    id: reason
+    attributes:
+      label: Reason
+      description: The one-line reason from the report.
+    validations:
+      required: true
+  - type: textarea
+    id: stack
+    attributes:
+      label: Stack (without paths)
+      render: text
+  - type: input
+    id: profile
+    attributes:
+      label: Profile state
+      description: The profile state line from the report.
+  - type: input
+    id: tx
+    attributes:
+      label: Last transaction
+      description: The last transaction id and its status.
+  - type: textarea
+    id: report
+    attributes:
+      label: Console log (last 200 lines)
+      description: The scrubbed log from the report. Too long? Attach the saved report file instead.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you send
+      options:
+        - label: I read the report and it contains no secrets, tokens, user names or private paths.
+          required: true

@@ -1,0 +1,49 @@
+# Hosted CI (setup profile, item ci-workflow-main). Before enabling, pin every action to
+# its full commit SHA; tags are shown only to keep the template readable. Runs on every
+# push and pull request plus nightly; push runs are never cancelled by a newer push.
+# Set the repository variable TEST_COMMAND to the suite command.
+name: ci
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 3 * * *"
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: ASCII sweep of tracked text files
+        timeout-minutes: 5
+        run: |
+          bad=$(git ls-files -z | xargs -0 grep -IlP '[^\x00-\x7F]' || true)
+          if [ -n "$bad" ]; then echo "non-ASCII bytes in:"; echo "$bad"; exit 1; fi
+      - name: Hooks are armed and firing
+        timeout-minutes: 5
+        if: hashFiles('.githooks/check-armed.sh') != ''
+        run: |
+          git config core.hooksPath .githooks
+          git config profile.python "$(command -v python3)"
+          sh .githooks/check-armed.sh --check
+      - name: No AI or bot attribution trailers
+        timeout-minutes: 5
+        run: |
+          if git log --format=%B | grep -iE '^(co-authored-by|signed-off-by):.*(bot|claude|copilot|assistant)'; then
+            echo "attribution trailer found"; exit 1
+          fi
+      - name: Suite
+        timeout-minutes: 20
+        env:
+          TEST_COMMAND: ${{ vars.TEST_COMMAND }}
+        run: |
+          if [ -z "$TEST_COMMAND" ]; then echo "set the TEST_COMMAND repository variable"; exit 1; fi
+          sh -c "$TEST_COMMAND"

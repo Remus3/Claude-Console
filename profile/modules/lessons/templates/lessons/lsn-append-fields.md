@@ -1,0 +1,1 @@
+- Append a new field at the end of a data class, with a default - why: a field inserted in the middle broke every positional construction of the class (prevents: API break)

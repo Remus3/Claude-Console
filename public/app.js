@@ -4106,8 +4106,17 @@
     $('#dlg-remove').addEventListener('close', () => { if ($('#dlg-remove').open) return; rmTarget = null; $('#rm-phrase').value = ''; });
   }
 
+  // CON-013 L5: Settings > Setup profile state line (profile 1.0.0 - N of M items on -
+  // last applied ...); Browse / Run setup / Report a problem live in profile.js / recovery.js.
+  function refreshProfileLine() {
+    const ln = $('#prof-line');
+    if (!ln) return Promise.resolve(null);
+    return api('GET', '/api/profile').then((s) => { ln.textContent = s.available ? s.status.line : (s.reason || 'No setup profile in this build.'); return s; }).catch(() => { ln.textContent = 'Setup profile unavailable.'; return null; });
+  }
+  window.CCSettingsProfile = refreshProfileLine;
   function showSettings() {
     renderSettingsProjects();
+    refreshProfileLine();
     const f = $('#form-settings');
     fillSelect($('#set-account'), info.accounts, settings.defaultAccount);
     // v19.1 B: unset headless = preselect the proxy account (split as designed); nothing
@@ -4752,6 +4761,50 @@
     });
     $('#btn-status').addEventListener('click', () => saveSettings({ statusPanel: !settings.statusPanel }).then(relayout));
     $('#btn-settings').addEventListener('click', showSettings);
+    // CON-013 L5: header '...' overflow: setup profile and recovery entries.
+    const moreBtn = $('#btn-more');
+    const moreMenu = $('#top-menu');
+    if (moreBtn && moreMenu) {
+      const setMore = (on) => { moreMenu.classList.toggle('open', on); moreBtn.setAttribute('aria-expanded', on ? 'true' : 'false'); if (on) { const f = moreMenu.querySelector('button'); if (f) f.focus(); } };
+      moreBtn.addEventListener('click', () => setMore(!moreMenu.classList.contains('open')));
+      moreMenu.addEventListener('keydown', (e) => {
+        const items = [...moreMenu.querySelectorAll('button')];
+        const i = items.indexOf(document.activeElement);
+        if (e.key === 'Escape') { setMore(false); moreBtn.focus(); e.preventDefault(); }
+        else if (e.key === 'ArrowDown') { items[(i + 1) % items.length].focus(); e.preventDefault(); }
+        else if (e.key === 'ArrowUp') { items[(i - 1 + items.length) % items.length].focus(); e.preventDefault(); }
+      });
+      document.addEventListener('mousedown', (e) => { if (!e.target.closest('.top-more')) setMore(false); });
+      // Tab out of the menu closes it (UX-F10).
+      moreBtn.parentElement.addEventListener('focusout', (e) => { if (!e.relatedTarget || !e.relatedTarget.closest('.top-more')) setMore(false); });
+      const ACT = {
+        profile: () => window.CCProfileUI && window.CCProfileUI.open(),
+        setup: () => window.CCSetupUI && window.CCSetupUI.open({}),
+        adopt: () => window.CCAdoptUI && window.CCAdoptUI.open(),
+        machine: () => window.CCMachineUI && window.CCMachineUI.open(),
+        crash: () => window.CCRecoveryUI && window.CCRecoveryUI.crash(null),
+        help: () => window.CCRecoveryUI && window.CCRecoveryUI.help(),
+        stop: () => window.CCRecoveryUI && window.CCRecoveryUI.stop(),
+      };
+      for (const b of moreMenu.querySelectorAll('button[data-act]')) b.addEventListener('click', () => { setMore(false); returnTo = moreBtn; ACT[b.dataset.act](); });
+    }
+    // The menu item / Settings button that opened a dialog is hidden or closed by then:
+    // when that dialog closes, focus goes back to "..." or Settings, never the document
+    // (UX-F10). The setup wizard page takes the opener itself (__ccTakeReturn).
+    let returnTo = null;
+    window.__ccTakeReturn = () => { const r = returnTo; returnTo = null; return r; };
+    document.addEventListener('close', (e) => {
+      if (!returnTo || !e.target || e.target.tagName !== 'DIALOG') return;
+      if (window.CCSetupUI && window.CCSetupUI.isOpen) return;
+      const r = returnTo;
+      setTimeout(() => { if (document.querySelector('dialog[open]')) return; returnTo = null; const a = document.activeElement; if (!a || a === document.body || !a.offsetParent) r.focus(); }, 0);
+    }, true);
+    if ($('#btn-prof-browse')) {
+      $('#btn-prof-browse').addEventListener('click', () => { $('#dlg-settings').close(); returnTo = $('#btn-settings'); window.CCProfileUI.open(); });
+      $('#btn-prof-setup').addEventListener('click', () => { $('#dlg-settings').close(); returnTo = $('#btn-settings'); window.CCSetupUI.open({}); });
+      $('#btn-crash').addEventListener('click', () => { $('#dlg-settings').close(); returnTo = $('#btn-settings'); window.CCRecoveryUI.crash(null); });
+    }
+    for (const k of ['CCProfileUI', 'CCAdoptUI', 'CCMachineUI', 'CCSetupUI', 'CCRecoveryUI']) if (window[k] && window[k].wire) window[k].wire();
     $('#btn-rescan').addEventListener('click', async () => {
       projects = (await api('POST', '/api/projects/rescan')).projects;
       await loadTools();
@@ -4823,6 +4876,10 @@
     if (darkMq && darkMq.addEventListener) darkMq.addEventListener('change', () => { if (settings.theme !== 'light' && settings.theme !== 'dark') applyTheme(); });
     if (phoneMq && phoneMq.addEventListener) phoneMq.addEventListener('change', relayout);
     document.addEventListener('mousedown', (e) => { if (!e.target.closest('.pmenu, .pbtns .more')) for (const v of views.values()) v.toggleMenu(false); });
+    // CON-013 L5: the setup wizard offers itself once at install and once per staged
+    // profile update, as a full-page view with "Skip for now", never a modal (VERIFY
+    // ruling on UX-F23, operator agreed 2026-10-19); leaving it records the dismissal.
+    refreshProfileLine().then((s) => { if (s && s.available && s.offer && window.CCSetupUI) window.CCSetupUI.open({ update: s.offer === 'update' }); });
     window.__cc = { renderUsage, fitUsage, renderRes, fitRes, get usagePrefs() { return Object.assign({}, usagePrefs); }, views, openPane, closePane, setMinimized, toggleMax, toggleSidebar, setHideCliChrome, effTheme, relayout, get order() { return order.slice(); }, get dormant() { return dormant; } };
   }
 

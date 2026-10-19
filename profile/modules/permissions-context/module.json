@@ -1,0 +1,200 @@
+{
+  "schema": 1,
+  "id": "permissions-context",
+  "order": 19,
+  "title": "Permissions, MCP and context economy",
+  "summary": "Grants stay local, a deny floor protects history, hooks are anchored, MCP stays local, and sessions close with /done instead of compacting.",
+  "why": "Settings decide what Claude may do without asking and what every session pays in context; these defaults remove prompts for safe commands while refusing the few that destroy work, even under bypass.",
+  "default": "on",
+  "locked": false,
+  "items": [
+    {
+      "id": "cfg-settings-split",
+      "order": 1901,
+      "title": "Tracked settings hold hooks/env; permissions stay local",
+      "does": "Adds a rule that the tracked project settings hold hooks, safe env values and deny rules only, and gitignores the local settings file that holds permission mode and allow lists.",
+      "why": "A permission grant in tracked settings travels to every clone and every collaborator; keeping grants local means each person decides their own, while hooks and denies still apply to all.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "rules", "slot": 1901, "template": "templates/rules/settings-split.md"},
+        {"kind": "block", "target": "repo:.gitignore", "block": "settings-local", "slot": 1901, "template": "templates/gitignore/settings-local.txt"}
+      ],
+      "detect": [
+        {"text": "repo:.gitignore", "regex": "settings\\.local\\.json"}
+      ]
+    },
+    {
+      "id": "cfg-allowlist-narrow",
+      "order": 1902,
+      "title": "Narrow allow list instead of bypass",
+      "does": "Adds a local allow list for read-only and verification commands (git status, log and diff, the test runners, CI status); everything else still asks first.",
+      "why": "It removes most permission prompts without granting arbitrary execution, which is the trade a bypass mode does not offer.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["set-bypass-permissions"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "json-merge", "target": "repo:.claude/settings.local.json", "template": "templates/settings/allow-narrow.json", "mode": "add"}
+      ],
+      "detect": [
+        {"json": "repo:.claude/settings.local.json", "key": "permissions.allow"}
+      ],
+      "verify": [
+        {"json-parse": "repo:.claude/settings.local.json"}
+      ],
+      "notes": "Shown as inactive while bypass permissions is on: bypass skips the allow list, not the deny list."
+    },
+    {
+      "id": "cfg-deny-floor",
+      "order": 1903,
+      "title": "Deny list for history-destroying commands",
+      "does": "Adds deny rules to the tracked project settings for commit --amend, push --force and --tags, reset --hard and rm -rf of the repo root or its .git folder; deny rules hold even when bypass permissions is on.",
+      "why": "Every one of these commands has destroyed work at least once, and an empty deny list stops none of them; a deny rule grants nothing, so it is safe to track and share.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["lsn-no-amend-no-tags", "lsn-no-cd-chain-destructive"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "json-merge", "target": "repo:.claude/settings.json", "template": "templates/settings/deny-floor.json", "mode": "add"}
+      ],
+      "detect": [
+        {"json": "repo:.claude/settings.json", "key": "permissions.deny"}
+      ],
+      "verify": [
+        {"json-parse": "repo:.claude/settings.json"}
+      ],
+      "notes": "Prefix rules cannot catch every spelling of a command; the git hooks and lessons back the floor up."
+    },
+    {
+      "id": "cfg-headless-tool-floor",
+      "order": 1904,
+      "title": "Headless permission floor per run kind",
+      "does": "Adds a file that gives each kind of unattended run its own floor: code runs accept edits with a fixed tool list, responders get read-only tools, planners run in plan mode; no kind ever gets a skip-permissions flag.",
+      "why": "A read-only run that can still write a file the test runner later executes is not read-only; when bypass is set for the user, an explicit tool list per run is the only real floor.",
+      "risk": "medium",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["kit-fleet-headless"],
+      "pairs_with": ["lsn-readonly-responder"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{kit_dir}/headless-tools.json", "template": "templates/headless-tools.json", "mode": "create-only"}
+      ],
+      "verify": [
+        {"json-parse": "repo:{kit_dir}/headless-tools.json"}
+      ],
+      "notes": "Enable later: with the headless module, so each kind of unattended run gets only the tools it needs."
+    },
+    {
+      "id": "cfg-mcp-local",
+      "order": 1905,
+      "title": "MCP config local and gitignored; no OAuth server on a critical path",
+      "does": "Gitignores the project MCP config and adds a rule: re-wire steps live in the README, no OAuth-gated server sits on a path unattended runs depend on, and headless runs use a strict MCP config.",
+      "why": "A fresh clone silently lacked an MCP server it needed, and an expired OAuth grant stalled unattended runs; a local config with written re-wire steps and no OAuth dependency avoids both.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "rules", "slot": 1905, "template": "templates/rules/mcp-local.md"},
+        {"kind": "block", "target": "repo:.gitignore", "block": "mcp-local", "slot": 1905, "template": "templates/gitignore/mcp.txt"}
+      ],
+      "detect": [
+        {"text": "repo:.gitignore", "regex": "\\.mcp\\.json"}
+      ]
+    },
+    {
+      "id": "cfg-compaction-by-done",
+      "order": 1906,
+      "title": "Close the session at ~70% context instead of auto-compaction",
+      "does": "Adds a rule: at about 70 percent context, run /done and /clear instead of letting the session compact itself; a transcript over 10 MB is a warning, over 20 MB urgent.",
+      "why": "Compaction summaries dropped carried items without saying so; the hand-off written by /done is the only continuity that keeps every open item.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["cmd-done"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "rules", "slot": 1906, "template": "templates/rules/compaction-by-done.md"}
+      ],
+      "detect": [
+        {"text": "repo:CLAUDE.md", "regex": "CLOSE, DO NOT COMPACT|70 ?%|70 percent"}
+      ]
+    },
+    {
+      "id": "cfg-hook-anchored",
+      "order": 1907,
+      "title": "Hook commands anchored to the project dir",
+      "does": "Adds a rule that every hook command starts from an absolute anchor such as the project-folder variable, never a path relative to the current folder.",
+      "why": "After a cd into a subfolder a relative hook path stopped resolving, and because a failing PreToolUse hook blocks every tool, both shells were locked out.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["lsn-anchored-hooks"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "rules", "slot": 1907, "template": "templates/rules/hook-anchored.md"}
+      ],
+      "detect": [
+        {"text": "repo:CLAUDE.md", "regex": "ANCHORED HOOKS|CLAUDE_PROJECT_DIR"}
+      ],
+      "notes": "Canonical text for the lesson lsn-anchored-hooks."
+    },
+    {
+      "id": "cfg-text-first-guard",
+      "order": 1908,
+      "title": "Text-first guard for screen-scrape tools",
+      "does": "Adds a PreToolUse hook that denies the first screenshot, screen-scrape or clipboard tool call of a session with a reminder to read the same content as text first; a second call goes through.",
+      "why": "A screenshot costs far more context than the text it shows, and most of the time the same content is reachable as a file, an API or page text.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:.claude/hooks/text_first_guard.sh", "template": "templates/claude-hooks/text_first_guard.sh", "mode": "managed"},
+        {"kind": "file", "target": "repo:.claude/hooks/text_first_guard.py", "template": "templates/claude-hooks/text_first_guard.py", "mode": "managed"},
+        {"kind": "git", "key": "profile.python", "value": "{python}", "scope": "local"},
+        {"kind": "git", "key": "profile.hooksOff", "value": "{data_dir}/profile/HOOKS_OFF", "scope": "local"},
+        {"kind": "json-merge", "target": "repo:.claude/settings.json", "template": "templates/settings/text-first-guard.json", "mode": "add"}
+      ],
+      "verify": [
+        {"json-parse": "repo:.claude/settings.json"},
+        {"hook-smoke": "repo:.claude/hooks/text_first_guard.sh"}
+      ],
+      "scope": "template",
+      "notes": "Enable later: if you use desktop-automation or screenshot MCP servers and want text tried first."
+    },
+    {
+      "id": "cfg-chat-token-cap",
+      "order": 1909,
+      "title": "Chat answer token cap",
+      "does": "Adds a rule that a chat answer stays under about 500 tokens, with detail written to a file the answer names.",
+      "why": "Long chat answers buried the results the reader was looking for; a hard cap is a stricter version of quiet chat.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["rule-quiet-chat"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "rules", "slot": 1909, "template": "templates/rules/chat-token-cap.md"}
+      ],
+      "notes": "Enable later: if answers still run long with quiet chat and the compressed output style on."
+    }
+  ]
+}

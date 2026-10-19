@@ -1,0 +1,1 @@
+- Clear a stale index.lock only through the commit lock tool, after checking that no git process runs - why: reboots and hangs left empty lock files that blocked merges, and deleting a live one corrupts the index (prevents: blocked git)

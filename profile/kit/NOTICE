@@ -1,0 +1,26 @@
+Setup profile kit
+Copyright 2026 the operator - the kit's owner and sole copyright holder
+
+Licensed under the Apache License, Version 2.0. See the LICENSE file in this
+directory for the full terms.
+
+SCOPE
+
+The license covers every file named in this kit's MANIFEST.json - kit_board.py,
+kit_checklist.py, kit_claims.py, kit_done.py, kit_gitlock.py, kit_headless.py,
+kit_identity.py, kit_inbox.py, kit_lanes.py, kit_rewrite.py, kit_secrets.py,
+kit_statusline.js, kit_subagent_first.py, kit_subagent_status.js,
+kit_suite_gate.py, kit_test_guard.py, kit_watch.py, tokens.css, tokens.json,
+LICENSE and NOTICE - and MANIFEST.json itself.
+
+ORIGIN
+
+This kit is GENERATED: a neutral-name build of the author's kit version 20,
+produced by a mechanical, table-driven rename. MANIFEST.json records the source
+kit version, the SHA-256 of the source manifest and of the rename table, and
+the SHA-256 of every file here.
+
+CHANGES
+
+The files are installed unmodified and pinned by MANIFEST.json. Do not edit
+them in place: a local change is reported as drift.

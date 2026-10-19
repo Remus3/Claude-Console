@@ -1,0 +1,1 @@
+- Compile or parse a background script before you restart it without a window - why: a syntax error in a windowless process exits silently, so the service just disappears (prevents: silent dead process)

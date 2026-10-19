@@ -1,0 +1,1 @@
+- Make a docs-only push still run every test that reads docs - why: a docs-only push skipped CI and broke a size guard that only a test checked (prevents: unguarded change path)

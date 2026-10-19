@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="/vendor/xterm.css">
 <link rel="stylesheet" href="/tokens.css">
 <link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/profile.css">
 </head>
 <body>
 <header id="topbar">
@@ -28,6 +29,19 @@
     <button id="upd-badge" type="button" class="upd-badge" title="An update is available" hidden>Update available</button>
     <button id="btn-status" title="Show/hide the status panel">Status</button>
     <button id="btn-settings" title="Settings">Settings</button>
+    <!-- CON-013 L5: header overflow: setup profile and recovery -->
+    <span class="top-more">
+      <button id="btn-more" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="top-menu" aria-label="More" title="More: setup profile, report a problem, recovery">...</button>
+      <div id="top-menu" class="pmenu top-menu" role="menu" aria-label="More">
+        <button type="button" role="menuitem" data-act="profile">Setup profile</button>
+        <button type="button" role="menuitem" data-act="setup">Run setup...</button>
+        <button type="button" role="menuitem" data-act="adopt">Adopt a project...</button>
+        <button type="button" role="menuitem" data-act="machine">Machine advisor...</button>
+        <button type="button" role="menuitem" data-act="crash">Report a problem...</button>
+        <button type="button" role="menuitem" data-act="help">Get help in the browser</button>
+        <button type="button" role="menuitem" data-act="stop" class="danger">Stop everything...</button>
+      </div>
+    </span>
     <button id="btn-quit" class="danger" title="Stop the server and every pane">Quit</button>
   </div>
 </header>
@@ -148,6 +162,11 @@
     <label class="check"><input type="checkbox" name="idleBadge"> Badge panes waiting for input</label>
     <label class="check"><input type="checkbox" name="desktopNotify"> Desktop notification when a hidden pane needs you</label>
     <label class="check"><input type="checkbox" name="hideCliChrome"> Composer-only claude panes: hide claude's own input box and status rows (this window)</label>
+    <fieldset class="proj-admin health-admin" id="set-profile">
+      <legend>Setup profile <span class="pf-beta">Beta</span></legend>
+      <div class="ha-row"><span class="muted small" id="prof-line" role="status">Setup profile: loading.</span><span><button type="button" id="btn-prof-browse" class="small">Browse</button> <button type="button" id="btn-prof-setup" class="small">Run setup...</button></span></div>
+      <div class="ha-row"><span class="muted small">Something wrong? Preview an exact, scrubbed report first.</span><button type="button" id="btn-crash" class="small">Report a problem</button></div>
+    </fieldset>
     <fieldset class="proj-admin health-admin">
       <legend>Health &amp; cleanup</legend>
       <div class="ha-row"><span class="muted small" id="health-last">No health check run yet.</span><button type="button" id="btn-health" class="small">Run health check...</button></div>
@@ -193,6 +212,103 @@
     <p class="rm-note small" id="hc-note" role="alert"></p>
     <div class="dlg-actions"><button value="cancel" formnovalidate>Close</button><button type="button" id="hc-go" class="primary">Run</button></div>
   </form>
+</dialog>
+
+<!-- CON-013 L5: setup profile browser (profile.js) -->
+<dialog id="dlg-profile" class="pf-dlg" aria-labelledby="pf-title">
+  <div class="pf-headrow">
+    <h3 id="pf-title">Setup profile <span id="pf-ver" class="num"></span> <span class="pf-beta">Beta</span></h3>
+    <label class="pf-target">Target <select id="pf-target"></select></label>
+    <span class="grow"></span>
+    <button type="button" id="pf-review" class="small" title="Pending changes: open the dry-run plan">Review 0</button>
+    <button type="button" id="pf-tx" class="small" title="Applied changes; revert one">History</button>
+    <button type="button" id="pf-setup" class="small">Run setup...</button>
+    <button type="button" id="pf-close" class="small">Close</button>
+  </div>
+  <p class="small muted" id="pf-line" role="status"></p>
+  <div class="pf-body">
+    <ul id="pf-mods" class="pf-mods" role="listbox" aria-label="Modules"></ul>
+    <section id="pf-items" class="pf-items" aria-label="Items of the selected module"></section>
+  </div>
+  <section id="pf-pane" class="pf-pane" aria-label="View, edit, diff or review" hidden></section>
+</dialog>
+
+<!-- CON-013 L5: setup wizard (setup-paths.js). A full-page view, never a modal
+     (VERIFY ruling on UX-F23): it covers the console, "Skip for now" leaves it. -->
+<section id="wz-page" class="wz-page" aria-labelledby="wz-step" hidden>
+  <div class="wz-frame">
+    <div class="wz-top">
+      <span class="wz-brand">Claude Console setup <span class="pf-beta">Beta</span></span>
+      <span class="grow"></span>
+      <button type="button" id="wz-cancel">Skip for now</button>
+    </div>
+    <div class="wz-head">
+      <h3 id="wz-step" tabindex="-1">Setup</h3>
+      <ol id="wz-rail" class="wz-rail" aria-label="Progress"></ol>
+    </div>
+    <div id="wz-body" class="wz-body"></div>
+    <p class="small wz-note" id="wz-note" role="alert"></p>
+    <div class="dlg-actions wz-actions">
+      <span class="grow"></span>
+      <button type="button" id="wz-switch">Switch to custom setup</button>
+      <button type="button" id="wz-back">Back</button>
+      <button type="button" id="wz-next" class="primary">Next</button>
+    </div>
+  </div>
+</section>
+
+<!-- CON-013 L5: adopt an existing project (profile.js; lights up when the build has adopt) -->
+<dialog id="dlg-adopt" class="pf-dlg" aria-labelledby="ad-title">
+  <h3 id="ad-title">Adopt an existing project</h3>
+  <div id="ad-body"></div>
+  <p class="small pf-note" id="ad-note" role="status"></p>
+  <div class="dlg-actions"><button type="button" id="ad-close">Close</button></div>
+</dialog>
+
+<!-- CON-013 L5: machine-profile advisor (profile.js) -->
+<dialog id="dlg-machine" class="pf-dlg" aria-labelledby="mp-title">
+  <h3 id="mp-title">Machine advisor</h3>
+  <div id="mp-body"></div>
+  <div class="dlg-actions"><button type="button" id="mp-close">Close</button></div>
+</dialog>
+
+<!-- CON-013 L5: crash report (recovery.js) -->
+<dialog id="dlg-crash" class="cr-dlg" aria-labelledby="cr-title">
+  <h3 id="cr-title">Report a problem</h3>
+  <p class="small">This is the exact report. It has no pane output, prompts, transcripts, hand-offs (the note a session leaves for the next one), memory, machine data or values; names and paths are scrubbed.</p>
+  <textarea id="cr-text" class="mono cr-text" readonly aria-label="Report text"></textarea>
+  <p class="small muted" id="cr-size"></p>
+  <div class="dlg-actions cr-acts">
+    <button type="button" id="cr-issue" class="cr-act" title="Opens a pre-filled issue on Remus3/Claude-Console in your browser">Open a GitHub issue</button>
+    <button type="button" id="cr-claude" class="cr-act" title="A new local Claude pane with the report in its composer">Ask my Claude to fix it</button>
+    <button type="button" id="cr-save" class="cr-act" title="Documents/claude-console-report-[stamp].txt">Save to file</button>
+    <button type="button" id="cr-close">Close</button>
+  </div>
+  <p class="small pf-note" id="cr-note" role="status"></p>
+</dialog>
+
+<!-- CON-013 L5: Stop everything, two steps (recovery.js) -->
+<dialog id="dlg-stop" aria-labelledby="st-title">
+  <h3 id="st-title">Stop everything</h3>
+  <p class="small">Stops only what this console started: its panes and headless runs (Claude sessions the console starts in the background, with no window), found by recorded process id; the scheduled tasks the setup profile added (disabled, not deleted); and the profile hooks (small scripts Claude runs before or after its actions).</p>
+  <p class="small pf-note" id="st-line" role="status"></p>
+  <p class="small pf-note" id="st-confirm" role="alert"></p>
+  <div class="dlg-actions">
+    <button type="button" id="st-close">Close</button>
+    <button type="button" id="st-resume" disabled title="Available after Stop everything">Resume</button>
+    <button type="button" id="st-go" class="danger" data-step="1">Stop everything</button>
+  </div>
+</dialog>
+
+<!-- CON-013 L5: Get help in the browser (recovery.js). gh-* ids: hp-* belongs to the
+     panel further down (UX-B2). -->
+<dialog id="dlg-help" class="cr-dlg" aria-labelledby="gh-title">
+  <h3 id="gh-title">Get help in the browser</h3>
+  <p class="small">For when Claude itself is broken: this text explains the problem, your setup (names only) and the exact undo steps. The button copies it and opens claude.ai; paste it into the new chat.</p>
+  <textarea id="gh-text" class="mono cr-text" readonly aria-label="Recovery prompt"></textarea>
+  <p class="small muted" id="gh-size"></p>
+  <div class="dlg-actions"><button type="button" id="gh-close">Close</button><button type="button" id="gh-go" class="primary">Copy and open claude.ai</button></div>
+  <p class="small pf-note" id="gh-note" role="status"></p>
 </dialog>
 
 <dialog id="dlg-sched" aria-labelledby="sc-title">
@@ -285,5 +401,8 @@
 <script src="/vendor/addon-search.js"></script>
 <script src="/vendor/addon-web-links.js"></script>
 <script src="/app.js"></script>
+<script src="/profile.js"></script>
+<script src="/setup-paths.js"></script>
+<script src="/recovery.js"></script>
 </body>
 </html>

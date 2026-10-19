@@ -1,0 +1,1 @@
+- Cite headings and ids, never line numbers or unpublished commit hashes - why: line pointers drifted with every edit, and a squash removed commits that docs cited (prevents: doc drift)

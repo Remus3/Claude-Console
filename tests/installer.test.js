@@ -566,6 +566,7 @@ test('package: bin entry, exact dependency pins, still private (no publishing ye
   for (const [k, v] of Object.entries(pkg.dependencies)) assert.match(v, /^\d+\.\d+\.\d+$/, k + ' pinned exact');
   assert.ok(fs.readFileSync(path.join(__dirname, '..', 'bin', 'claude-console.js'), 'utf8').startsWith('#!/usr/bin/env node\n'));
   for (const f of fs.readdirSync(path.join(__dirname, '..', 'installer'))) {
+    if (!fs.statSync(path.join(__dirname, '..', 'installer', f)).isFile()) continue; // installer/ps/: profile-adapters.test.js
     const t = fs.readFileSync(path.join(__dirname, '..', 'installer', f), 'utf8');
     assert.ok(/^[\x09\x0a\x20-\x7e]*$/.test(t), f + ' ASCII + LF');
   }

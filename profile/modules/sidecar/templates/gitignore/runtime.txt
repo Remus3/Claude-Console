@@ -1,0 +1,3 @@
+# Runtime output: regenerable, reaped by tools/reap_runtime.py.
+/.runtime/
+*.log

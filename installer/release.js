@@ -12,6 +12,7 @@ const { buildManifest, writeManifest, readManifest, verifyTree, skipRelease } = 
 const { zipDir, unzipTo } = require('./backup');
 const semver = require('./semver');
 const { REPO_RE } = require('./settings');
+const egress = require('./egress');
 
 const assetName = (v) => 'claude-console-' + v + '.zip';
 
@@ -99,6 +100,7 @@ async function checkReleases(o) {
   const doFetch = o.fetch || globalThis.fetch;
   const cache = readJson(o.cacheFile, {}) || {};
   const url = 'https://api.github.com/repos/' + repo + '/releases?per_page=30';
+  egress.check(url, 'update'); // CON-013 e.1: the one allowed update host, logged
   const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'claude-console-updater' };
   if (cache.url === url && cache.etag) headers['If-None-Match'] = cache.etag;
   let body;
@@ -118,6 +120,7 @@ async function checkReleases(o) {
 
 async function getBuffer(doFetch, url) {
   if (!GH_HOST.test(url)) throw new Error('refused download host');
+  egress.check(url, 'update');
   const res = await doFetch(url, { headers: { 'User-Agent': 'claude-console-updater', Accept: 'application/octet-stream' } });
   if (res.status !== 200) throw new Error('download http ' + res.status);
   return Buffer.from(await res.arrayBuffer());

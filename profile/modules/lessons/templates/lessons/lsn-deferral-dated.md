@@ -1,0 +1,1 @@
+- Give every deferral a date or a trigger, or record it as dropped - why: undated deferrals were never picked up again (prevents: lost work)

@@ -1,0 +1,4 @@
+# Expected toolchain for tools/verify_env.py: '<name> <version prefix>' per line.
+# Names: python, node, git, pytest, npm. Fill in the versions this repo is tested with.
+python 3
+git 2

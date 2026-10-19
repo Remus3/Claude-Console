@@ -1,0 +1,491 @@
+{
+  "schema": 1,
+  "id": "output",
+  "order": 4,
+  "title": "Quiet output",
+  "summary": "Compressed chat, a calm terminal and a fixed-slot status line: nothing moves unless something needs your attention.",
+  "why": "Verbose chat costs tokens twice, once to write and once to read, and buries the result. A display without motion makes any change stand out.",
+  "default": "on",
+  "items": [
+    {
+      "id": "out-caveman-ultra",
+      "order": 401,
+      "title": "/caveman chat dialect",
+      "does": "Installs the /caveman command: replies without preamble or narration, only numbers, paths, verdicts and errors; written files keep full prose.",
+      "why": "Long replies cost tokens on both ends and hid the one line that mattered. The author made this the default dialect after measuring the difference.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "rule-quiet-chat",
+        "hook-sessionstart-caveman"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/commands/caveman.md",
+          "template": "templates/commands/caveman.md",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/commands/caveman.md"
+        }
+      ],
+      "verify": [
+        {
+          "file-ascii-lf": "repo:.claude/commands/caveman.md"
+        }
+      ]
+    },
+    {
+      "id": "hook-sessionstart-caveman",
+      "order": 402,
+      "title": "Caveman declared at start-up",
+      "does": "Adds a SessionStart hook that declares the caveman dialect, so no one has to type /caveman.",
+      "why": "Remembering a command every session failed often enough that the dialect drifted between sessions; one shared banner keeps it identical everywhere.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "out-caveman-ultra"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [
+        "out-verbose-mode"
+      ],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/hooks/caveman_banner.py",
+          "template": "templates/hooks/caveman_banner.py",
+          "mode": "managed"
+        },
+        {
+          "kind": "json-merge",
+          "target": "repo:.claude/settings.json",
+          "value": {
+            "hooks": {
+              "SessionStart": [
+                {
+                  "hooks": [
+                    {
+                      "type": "command",
+                      "command": "\"{python}\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/caveman_banner.py\"",
+                      "timeout": 5
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "mode": "add"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:.claude/settings.json",
+          "regex": "caveman"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "repo:.claude/settings.json"
+        },
+        {
+          "hook-smoke": "repo:.claude/settings.json"
+        }
+      ]
+    },
+    {
+      "id": "out-verbose-mode",
+      "order": 403,
+      "title": "Normal explanatory chat",
+      "does": "Leaves Claude's default chat style in place: explanations and reasoning in the reply.",
+      "why": "Some people want the reasoning in chat. Choosing this replaces the caveman start-up banner.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [
+        "hook-sessionstart-caveman"
+      ],
+      "contributes": []
+    },
+    {
+      "id": "set-output-style-concise",
+      "order": 404,
+      "title": "Concise output style",
+      "does": "Sets the account output style to Concise.",
+      "why": "A terse default matches the quiet chat rule without relying on every prompt to say so.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "set-calm-display"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "outputStyle": "Concise"
+          },
+          "mode": "replace-ask"
+        }
+      ],
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "outputStyle"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
+        }
+      ]
+    },
+    {
+      "id": "set-calm-display",
+      "order": 405,
+      "title": "Calm terminal display",
+      "does": "Sets the display keys: a fixed spinner word, no tips, reduced motion, automatic theme, no turn duration, no away summary, no prompt suggestions, focus view.",
+      "why": "Rotating verbs, tips and suggestions are motion in your peripheral vision. Without them, any change on screen means something.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "set-statusline"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "spinnerVerbs": {
+              "mode": "replace",
+              "verbs": [
+                "Working"
+              ]
+            },
+            "spinnerTipsEnabled": false,
+            "prefersReducedMotion": true,
+            "theme": "auto",
+            "showTurnDuration": false,
+            "awaySummaryEnabled": false,
+            "promptSuggestionEnabled": false,
+            "viewMode": "focus"
+          },
+          "mode": "replace-ask"
+        }
+      ],
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "prefersReducedMotion"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
+        }
+      ]
+    },
+    {
+      "id": "set-env-display",
+      "order": 406,
+      "title": "No flicker, no survey",
+      "does": "Sets CLAUDE_CODE_NO_FLICKER=1 and CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY=1 in your Claude settings.",
+      "why": "Redraw flicker and survey prompts interrupt long runs for no benefit to the work.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "env": {
+              "CLAUDE_CODE_NO_FLICKER": "1",
+              "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1"
+            }
+          },
+          "mode": "add"
+        }
+      ],
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "env.CLAUDE_CODE_NO_FLICKER"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
+        }
+      ]
+    },
+    {
+      "id": "set-statusline",
+      "order": 407,
+      "title": "Fixed-slot status line",
+      "does": "Copies kit_statusline.js and points the repository's local settings at it: state, branch, context and quota in fixed positions, plus one row per running workflow; colour only on problems.",
+      "why": "Fixed slots mean nothing shifts as numbers change, and a monochrome healthy line means any colour is worth a look.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "set-subagent-statusline",
+        "conv-progress-files"
+      ],
+      "conflicts_with": [
+        "console-statusline-basic"
+      ],
+      "contributes": [
+        {
+          "kind": "kit",
+          "files": [
+            "kit_statusline.js",
+            "tokens.json"
+          ],
+          "target": "repo:{kit_dir}"
+        },
+        {
+          "kind": "json-merge",
+          "target": "repo:.claude/settings.local.json",
+          "value": {
+            "statusLine": {
+              "type": "command",
+              "command": "\"{node}\" \"{repo_root}/{kit_dir}/kit_statusline.js\"",
+              "padding": 0,
+              "refreshInterval": 5
+            }
+          },
+          "mode": "replace-ask"
+        }
+      ],
+      "detect": [
+        {
+          "json": "repo:.claude/settings.local.json",
+          "key": "statusLine"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "repo:.claude/settings.local.json"
+        }
+      ]
+    },
+    {
+      "id": "set-subagent-statusline",
+      "order": 408,
+      "title": "Agent rows in the same grammar",
+      "does": "Copies kit_subagent_status.js and sets it as the agent panel's status line, so each agent row reads like the main status line when it has a progress file.",
+      "why": "One row grammar everywhere means you learn it once.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "set-statusline",
+        "conv-progress-files"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "kit",
+          "files": [
+            "kit_subagent_status.js"
+          ],
+          "target": "repo:{kit_dir}"
+        },
+        {
+          "kind": "json-merge",
+          "target": "repo:.claude/settings.local.json",
+          "value": {
+            "subagentStatusLine": {
+              "type": "command",
+              "command": "\"{node}\" \"{repo_root}/{kit_dir}/kit_subagent_status.js\""
+            }
+          },
+          "mode": "replace-ask"
+        }
+      ],
+      "detect": [
+        {
+          "json": "repo:.claude/settings.local.json",
+          "key": "subagentStatusLine"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "repo:.claude/settings.local.json"
+        }
+      ]
+    },
+    {
+      "id": "console-statusline-basic",
+      "order": 409,
+      "title": "The console's simple status line",
+      "does": "Keeps the simpler line the console ships: account, model, repository, context and quota.",
+      "why": "For people who do not want workflow rows, this is the lighter choice; it replaces the fixed-slot line.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [
+        "set-statusline"
+      ],
+      "contributes": [],
+      "notes": "Installed by the console's own setup; choosing it here only records the choice."
+    },
+    {
+      "id": "kit-tokens",
+      "order": 410,
+      "title": "Shared state vocabulary and colours",
+      "does": "Copies tokens.json and tokens.css: the light and dark colours and the state words, glyphs and rows every surface uses.",
+      "why": "Every status surface shows a state as shape, word and colour together, never colour alone, so it stays readable for colour-blind users and in monochrome.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "kit",
+          "files": [
+            "tokens.json",
+            "tokens.css"
+          ],
+          "target": "repo:{kit_dir}"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:{kit_dir}/tokens.json"
+        }
+      ]
+    },
+    {
+      "id": "kit-cli-display",
+      "order": 411,
+      "title": "Display keys at account level",
+      "does": "Keeps every display key in your account settings and none in a repository, so a project cannot override the calm display by accident.",
+      "why": "Project-level display keys once overrode the account theme in two repositories at once.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "set-calm-display",
+        "set-statusline",
+        "set-attribution-empty"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/kit-cli-display.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[dD][iI][sS][pP][lL][aA][yY] [kK][eE][yY][sS]"
+        }
+      ]
+    },
+    {
+      "id": "rule-hook-output",
+      "order": 412,
+      "title": "Silent hooks",
+      "does": "Adds the hook output rules: exit 0 and stay silent by default; when there is something to say, one short line, no colour codes, never blocking Stop.",
+      "why": "Every visible hook row is either noise or an alarm. Keeping hooks silent makes the alarms count.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/rule-hook-output.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[sS][iI][lL][eE][nN][tT] [bB][yY] [dD][eE][fF][aA][uU][lL][tT]"
+        }
+      ]
+    }
+  ]
+}

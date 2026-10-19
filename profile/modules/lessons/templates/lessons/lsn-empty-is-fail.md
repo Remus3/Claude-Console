@@ -1,0 +1,1 @@
+- Treat an empty enumeration as a failure, never as a pass - why: an emptied parameter list and a gate that ran nothing both reported success and hid the gap (prevents: vacuous gate)

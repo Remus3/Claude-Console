@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(npm test:*)",
+      "Bash(node --test:*)",
+      "Bash(pytest:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh pr checks:*)"
+    ]
+  }
+}

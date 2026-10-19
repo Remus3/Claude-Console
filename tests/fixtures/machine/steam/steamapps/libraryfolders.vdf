@@ -1,0 +1,21 @@
+"libraryfolders"
+{
+	"0"
+	{
+		"path"		"STEAMROOT"
+		"label"		""
+		"apps"
+		{
+			"289070"		"17000000000"
+		}
+	}
+	"1"
+	{
+		"path"		"LIB2"
+		"label"		""
+		"apps"
+		{
+			"3321460"		"90000000000"
+		}
+	}
+}

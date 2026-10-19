@@ -1,0 +1,1 @@
+- Remember that a worktree lacks ignored files and commits not on its base; copy them or use a full copy - why: a worktree was missing an ignored data folder, and one built from the remote branch missed local commits (prevents: missing state)

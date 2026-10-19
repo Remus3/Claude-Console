@@ -1,0 +1,10 @@
+# Size budgets for tracked text files, checked on STAGED bytes by the pre-commit gate.
+# One line per file: <path or glob> <fail size in KB>. At warn_pct percent of a budget the
+# gate prints a warning; above 100 percent it refuses the commit. Over budget means: move
+# detail to an archive file and leave a one-line pointer, never delete it.
+# State each number here only; other files point at this one.
+warn_pct 90
+{handoff_name} 30
+{docs_dir}/lessons.md 30
+CLAUDE.md 40
+ROADMAP.md 60

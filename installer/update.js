@@ -17,6 +17,35 @@ const { zipDir } = require('./backup');
 const { readMarker } = require('./detect');
 const { writeLaunchers } = require('./launcher');
 const semver = require('./semver');
+const swap = require('./swap');
+
+// CON-0.1.3: the Apps & features version follows every switch. o.writeArp(home, v) ->
+// {present, version, ok}; the default is the real registry write, except where the
+// caller is a test (a fake npmCi and no writeArp), which never touches the registry.
+function arpWriter(o) {
+  if (o.writeArp !== undefined) return o.writeArp;
+  return o.npmCi ? null : require('./launcher').writeArpWindows;
+}
+
+async function refreshArp(o, home, version) {
+  const w = arpWriter(o);
+  if (typeof w !== 'function') return null;
+  try {
+    const r = await w(home, version);
+    return Object.assign({ wanted: version }, r);
+  } catch (e) {
+    return { wanted: version, ok: false, error: e.message };
+  }
+}
+
+// One line for the CLI: what Apps & features shows now (read back).
+function arpLine(arp) {
+  if (!arp) return null;
+  if (arp.error) return 'note: Apps & features version not updated: ' + arp.error;
+  if (arp.present === false || arp.skipped) return null;
+  if (!arp.ok) return 'note: Apps & features still shows v' + (arp.version || '?') + ', not v' + arp.wanted;
+  return 'Apps & features: v' + arp.version;
+}
 
 function runNode(args, cwd, timeoutMs) {
   return new Promise((resolve) => {
@@ -180,7 +209,22 @@ async function applyUpdate(o) {
   if (path.resolve(target) === path.resolve(localDir)) throw new Error('target is the installed dir; use reinstall');
   report.backup = zipDir(localDir, L.backups, 'app-' + oldV, { exclude: ['node_modules', 'drops', 'run'] , now: o.now });
   step('backup');
-  if (exists(target)) moveAside(target, L.backups, 'stale-' + newV);
+  // CON-0.1.3: app/<new> may be the folder a running console uses (an update right
+  // after a rollback): stop that console first (o.beforeSwap), retry the move with a
+  // bounded backoff, and refuse with one line when it still cannot move.
+  if (exists(target)) {
+    if (typeof o.beforeSwap === 'function') {
+      const s = await o.beforeSwap([target]);
+      report.stoppedConsole = !!(s && s.stopped);
+      if (s && !s.ok) return blocked(L, report, 'update blocked: ' + s.line, o.now);
+    }
+    try {
+      await swap.retrySwap(() => moveAside(target, L.backups, 'stale-' + newV), o.retry);
+    } catch (e) {
+      if (!e.swapFailed) throw e;
+      return blocked(L, report, swap.blockedLine('update', target, e), o.now);
+    }
+  }
   copyRelease(o.releaseDir, target);
   const plan = planMerge(localDir, baseDir, o.releaseDir);
   report.files = applyMerge(plan, localDir, baseDir, o.releaseDir, target, o);
@@ -218,10 +262,18 @@ async function applyUpdate(o) {
       version: newV, path: target, channel: o.channel || (marker && marker.channel) || man.channel || 'stable',
       installedAt: report.at, previous: { version: oldV, path: localDir },
     });
-    writeLaunchers(L.home, newV, o.nodePath || process.execPath);
+    await swap.retrySwap(() => writeLaunchers(L.home, newV, o.nodePath || process.execPath), o.retry);
     report.status = unresolved ? 'updated-with-conflicts' : 'updated';
+    report.arp = await refreshArp(o, L.home, newV);
   }
   report.reportFile = writeReport(L, 'update', report, o.now);
+  return report;
+}
+
+function blocked(L, report, line, now) {
+  report.status = 'blocked';
+  report.line = line;
+  report.reportFile = writeReport(L, 'update', report, now);
   return report;
 }
 
@@ -242,4 +294,33 @@ function rollback(home, nodePath) {
   return { from: m.version, to: m.previous.version };
 }
 
-module.exports = { applyUpdate, rollback, prepareRelease, requireRelease, copyRelease, ensureBase, defaultNpmCi, defaultSelftest, moveAside, writeReport, runNode, SELFTEST_SUBSET, selftestPlan, summarizeTestFailure, writeSelftestLog, selftestDetail };
+// CON-0.1.3: rollback as the CLI runs it. The console running from this home is
+// stopped first (o.beforeSwap, which waits for its process to exit), the switch is
+// retried with a bounded backoff, Apps & features is set to the version rolled back to
+// and read back, and the console is started again on that version when it was running.
+// o: home, nodePath, beforeSwap(dirs), restart(), writeArp, retry, npmCi (test marker).
+async function rollbackSwap(o) {
+  const L = layout(o.home);
+  const m = readMarker(L.home);
+  if (!m || !m.previous || !isDir(m.previous.path)) throw new Error('no previous version to roll back to');
+  let stop = null;
+  if (typeof o.beforeSwap === 'function') {
+    stop = await o.beforeSwap([]);
+    if (stop && !stop.ok) return { status: 'blocked', from: m.version, to: m.previous.version, line: 'rollback blocked: ' + stop.line };
+  }
+  let r;
+  try {
+    r = await swap.retrySwap(() => rollback(L.home, o.nodePath), o.retry);
+  } catch (e) {
+    if (!e.swapFailed) throw e;
+    const res = { status: 'blocked', from: m.version, to: m.previous.version, line: swap.blockedLine('rollback', L.marker, e) };
+    if (stop && stop.stopped && typeof o.restart === 'function') { await o.restart(); res.restarted = m.version; }
+    return res;
+  }
+  const out = { status: 'rolled-back', from: r.from, to: r.to, stoppedConsole: !!(stop && stop.stopped) };
+  out.arp = await refreshArp(o, L.home, r.to);
+  if (out.stoppedConsole && typeof o.restart === 'function') { await o.restart(); out.restarted = r.to; }
+  return out;
+}
+
+module.exports = { applyUpdate, rollback, rollbackSwap, arpLine, refreshArp, prepareRelease, requireRelease, copyRelease, ensureBase, defaultNpmCi, defaultSelftest, moveAside, writeReport, runNode, SELFTEST_SUBSET, selftestPlan, summarizeTestFailure, writeSelftestLog, selftestDetail };

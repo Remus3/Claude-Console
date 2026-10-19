@@ -1,0 +1,1 @@
+- Suspect stale bytecode when a change has no effect, and keep the cache under a separate prefix - why: an edit that kept the file size and timestamp close reused an old compiled file (prevents: stale artefact)

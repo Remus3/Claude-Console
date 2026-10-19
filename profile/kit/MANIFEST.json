@@ -1,0 +1,30 @@
+{
+ "files": {
+  "LICENSE": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+  "NOTICE": "3e5059c2384ba35b97be51259c76b450cad79729489b963e10b6e924d4f67f34",
+  "kit_board.py": "a5007c4a07ba665f88f4e3bbca33d667758517ee76d6170c640cf4729f2fdf1d",
+  "kit_checklist.py": "6d0a392f74577c6e4824e76d59822ad7df3a04b78625af39c2f46cdbfb72ef48",
+  "kit_claims.py": "57f60d7cdb4c38a9c58a226c47e2daf1ff4f291a73d8a28baf2d395b2342a021",
+  "kit_done.py": "b4a62a24a0363f401299a46fdf1f96cde3e0e2618622fc48cc374ef638c98869",
+  "kit_gitlock.py": "32f3698503a64924b77b5346937562646c710c32a04139fb7b343d1e82ffdb35",
+  "kit_headless.py": "cc9f40094e32cabb8ee56a7611969dbe9b25ec7a1e9b28cc942f828eaa09cdc4",
+  "kit_identity.py": "f2c90042e72e753fc8ab061cf7551018877acdaccc7a76aef04759395e13c6f1",
+  "kit_inbox.py": "3f25977db243c8122266e6d98c18d6e674d08822c4da446deec2be8f50eacd98",
+  "kit_lanes.py": "a321bd55c08c8e29e741ce9e85453a0d388d40aa8c7446fe436f8267d23be482",
+  "kit_rewrite.py": "9c9eaf6681c016bd0e35cf6d38451381fa83066292ce08486572601df77a7e96",
+  "kit_secrets.py": "05c24629b7c5c2674d1a5aae210ec137430c50c300dbe95570a7254d7b5eda16",
+  "kit_statusline.js": "fe22eb060b4096bc86ac0cc49621f9683ab5434dd2cc312160503a4052dde4ec",
+  "kit_subagent_first.py": "720349b2791d215578499dbdefd99176f0494c00bd6c7270978d5918bb008d30",
+  "kit_subagent_status.js": "47f8bb9d028298c6b5d96f512a3b2ec410b3e924149bd839d32640eb2996cb2c",
+  "kit_suite_gate.py": "5592a09b02a2677a33e3e4e60ed25f2123fcbd769c6d33a9d48dddd11d3eab30",
+  "kit_test_guard.py": "8ad4829695dc2c980c2fe988eaf7a4fc3e83cb8f5e1a0240e9bf5fc2b09b103e",
+  "kit_watch.py": "45129d7eb9437019eb3cf5438fea4b88a49926caca240e0549e9b1cff95eaa88",
+  "tokens.css": "ba419c6e6f06bf1f09510d5c8065b627599954ddd06a265e2c5608cadf789b45",
+  "tokens.json": "ab5f077e7c9b6e649ac35af4ca4021c80726f0f8b5f658d150096a78e63900e5"
+ },
+ "generator": "profile_kit_export",
+ "kit_source_version": 20,
+ "rename_table_sha256": "52b28f00e90ea8542aa327f6b68ff0587794536fc06c471869a391161727c93c",
+ "source_manifest_sha256": "8017eae27ba218ea51ab77885ab0a46cc3eceb39b9e9d5f4ee277f88e77d4602",
+ "version": 20
+}

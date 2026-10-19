@@ -1,0 +1,1 @@
+- Trust a hook only after you have seen it refuse a planted bad input - why: invalid settings, an untrusted workspace, a missing flag or a drifted hooks path each left a hook installed but silent for weeks (prevents: gate-not-firing)

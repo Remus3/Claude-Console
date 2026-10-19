@@ -1,0 +1,1 @@
+- Track the share of commits that change the product, and keep it above a floor you set - why: process work crowded out product work until only a few percent of commits touched the product (prevents: process bloat)

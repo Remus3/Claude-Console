@@ -1,0 +1,4 @@
+# Private needles for the pre-push leak scan: one per line, at least 3 characters,
+# matched case-insensitively against every pushed added line and commit message.
+# Put here what must never reach a remote: your user name, host name, private project
+# or client names. This file lives in .git/info, so it is never tracked or pushed.

@@ -1,0 +1,1 @@
+- State each threshold in one place and reference it everywhere else - why: the same limit written in two files drifted to two different values (prevents: doc drift)

@@ -1,0 +1,256 @@
+{
+  "schema": 1,
+  "id": "subagent-first",
+  "order": 5,
+  "title": "Sub-agent first",
+  "summary": "The main session only dispatches and reports; the work runs in background agents that write progress files.",
+  "why": "A main thread full of tool rows hides the one decision you need to make. Moving the work into sub-agents keeps the session readable and lets several jobs run at once.",
+  "default": "off",
+  "items": [
+    {
+      "id": "rule-subagent-first",
+      "order": 501,
+      "title": "Main session only dispatches",
+      "does": "Adds the banner rule that every file and shell tool runs inside a sub-agent, and the /done step that dispatches the ritual to one agent.",
+      "why": "The author once allowed a single quick read in the main thread; the exception spread and the console filled with tool rows again. Only a mechanical rule held.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "hook-pretooluse-subagent-first"
+      ],
+      "pairs_with": [
+        "conv-progress-files",
+        "rule-background-status"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "banner",
+          "template": "templates/rules/rule-subagent-first.md"
+        },
+        {
+          "kind": "block",
+          "target": "repo:.claude/commands/done.md",
+          "block": "done-dispatch",
+          "template": "templates/done/dispatch.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[sS][uU][bB]-[aA][gG][eE][nN][tT] [fF][iI][rR][sS][tT]"
+        }
+      ],
+      "notes": "Off by default: it changes how you work with Claude more than anything else here."
+    },
+    {
+      "id": "hook-pretooluse-subagent-first",
+      "order": 502,
+      "title": "Main-thread tool guard",
+      "does": "Copies kit_subagent_first.py and adds a PreToolUse hook that denies file and shell tools in the main thread with a one-line reason.",
+      "why": "A rule that depends on remembering it fails on a busy day; a hook makes it hold every time.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "rule-subagent-first"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "kit",
+          "files": [
+            "kit_subagent_first.py"
+          ],
+          "target": "repo:{kit_dir}"
+        },
+        {
+          "kind": "json-merge",
+          "target": "repo:.claude/settings.json",
+          "value": {
+            "hooks": {
+              "PreToolUse": [
+                {
+                  "matcher": "Bash|PowerShell|Read|Edit|Write|Grep|Glob|NotebookEdit|MultiEdit",
+                  "hooks": [
+                    {
+                      "type": "command",
+                      "command": "\"{python}\" \"$CLAUDE_PROJECT_DIR/{kit_dir}/kit_subagent_first.py\"",
+                      "timeout": 10
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "mode": "add"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:.claude/settings.json",
+          "regex": "subagent_first"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "repo:.claude/settings.json"
+        },
+        {
+          "hook-smoke": "repo:.claude/settings.json"
+        }
+      ]
+    },
+    {
+      "id": "rule-background-status",
+      "order": 503,
+      "title": "Status from background counters",
+      "does": "Adds the rule that work runs as background agents and commands, so the session shows compact running counts instead of a long foreground turn.",
+      "why": "An expanding foreground activity row has to be opened and scrolled before you can see whether anything is wrong.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/rule-background-status.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[bB][aA][cC][kK][gG][rR][oO][uU][nN][dD]"
+        }
+      ]
+    },
+    {
+      "id": "conv-progress-files",
+      "order": 504,
+      "title": "Progress file per long task",
+      "does": "Adds the rule that work over five minutes writes a small JSON progress file after each step: percent, step, estimate, status and time.",
+      "why": "You see how far a job is and when it will end while it runs, and a job that stops writing is caught as a failure early instead of at the end.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "set-statusline"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/conv-progress-files.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[pP][rR][oO][gG][rR][eE][sS][sS]/"
+        }
+      ]
+    },
+    {
+      "id": "conv-progress-prune",
+      "order": 505,
+      "title": "Old progress files to the Recycle Bin",
+      "does": "Installs a small tool that lists finished progress files older than seven days and, with --apply, sends them to the Recycle Bin.",
+      "why": "Stale rows pushed live ones off the status line; pruning them by status and age keeps only what still matters, and the Recycle Bin keeps the prune undoable.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "conv-progress-files",
+        "floor-recycle-bin"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/tools/progress_prune.py",
+          "template": "templates/tools/progress_prune.py",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/tools/progress_prune.py"
+        }
+      ]
+    },
+    {
+      "id": "set-max-subagents",
+      "order": 506,
+      "title": "Higher concurrent sub-agent cap",
+      "does": "Sets CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS in your Claude settings to the number you choose (10 unless you change it).",
+      "why": "Sub-agent-first work fans out wide; the author runs a much higher cap than the default.",
+      "risk": "medium",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "rule-subagent-first"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "env": {
+              "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS": "{max_subagents}"
+            }
+          },
+          "mode": "replace-ask"
+        }
+      ],
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "env.CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,662 @@
+{
+  "schema": 1,
+  "id": "core-rules",
+  "order": 2,
+  "title": "Core rules",
+  "summary": "The CLAUDE.md skeleton and the working rules every session follows: act on recommendations, keep chat quiet, commit coherently, ASCII and LF.",
+  "why": "Claude reads CLAUDE.md at the start of every session, so its rules shape every turn. A fixed, short layout keeps that start-up cost low and lets a test pin the shared part.",
+  "default": "on",
+  "items": [
+    {
+      "id": "rule-act-dont-ask",
+      "order": 201,
+      "title": "Act on the recommendation; adjudicate a real block",
+      "does": "Adds the rule that Claude takes its recommended option, and sends a genuinely blocked decision to a separate adjudicator agent whose call is recorded.",
+      "why": "The author accepts nearly every recommendation, so each question cost a round trip and bought nothing. Recording the adjudicated call keeps it auditable and reversible.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "agent-adjudicator",
+        "conv-rulings-dir"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/rule-act-dont-ask.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[aA][cC][tT], [dD][oO][nN].[tT] [aA][sS][kK]"
+        }
+      ],
+      "notes": "This is rule text only: your permission mode is not changed."
+    },
+    {
+      "id": "rule-quiet-chat",
+      "order": 202,
+      "title": "Results-only chat",
+      "does": "Adds the rule that chat carries numbers, paths, verdicts and your to-dos, while findings go into files.",
+      "why": "The chat window is where you type to steer the work. When it fills with reasoning, the one line you needed scrolls away.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "out-caveman-ultra",
+        "set-output-style-concise"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/rule-quiet-chat.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[rR][eE][sS][uU][lL][tT][sS] [oO][nN][lL][yY]|[kK][eE][eE][pP] [iI][tT] [qQ][uU][iI][eE][tT]"
+        }
+      ]
+    },
+    {
+      "id": "rule-commit-batched",
+      "order": 203,
+      "title": "Commit every unit of work",
+      "does": "Adds the rule that each finished unit is committed coherently, never in another repository, and that side findings are fixed or filed.",
+      "why": "Uncommitted work did not survive a cleared session, and suggestions parked for later were never picked up.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "conv-roadmap-open-only"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/rule-commit-batched.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[cC][oO][mM][mM][iI][tT] [eE][vV][eE][rR][yY][tT][hH][iI][nN][gG]"
+        }
+      ]
+    },
+    {
+      "id": "rule-push-policy",
+      "order": 204,
+      "title": "Local-only repository",
+      "does": "Adds the rule that this repository never pushes, and a pre-push check that refuses every push.",
+      "why": "A repository that tracks machine-specific files has nowhere safe to push them; refusing every push turns that policy into a mechanism.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "hook-git-pre-push-identity"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/rule-push-policy.md"
+        },
+        {
+          "kind": "file",
+          "target": "repo:.githooks/pre-push.d/0204-local-only",
+          "template": "templates/hooks/pre-push.d/0204-local-only.sh",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.githooks/pre-push.d/0204-local-only"
+        }
+      ]
+    },
+    {
+      "id": "rule-encoding-ascii-lf",
+      "order": 205,
+      "title": "ASCII and LF in every authored file",
+      "does": "Adds the rule that authored files are 7-bit ASCII with LF endings and that PowerShell is parse-checked with version 5.1.",
+      "why": "Windows PowerShell 5.1 decodes a script without a byte-order mark as ANSI, so one typographic dash becomes a stray quote and the script stops parsing. LF was measured to be safe for 5.1.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "conv-gitattributes-lf"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/rule-encoding-ascii-lf.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[aA][sS][cC][iI][iI]"
+        }
+      ]
+    },
+    {
+      "id": "rule-measure-before-threshold",
+      "order": 206,
+      "title": "Thresholds come from measurements",
+      "does": "Adds the rule that limits and cutoffs are chosen from a measured distribution and that report findings come from rule code.",
+      "why": "A first guess of 90 days for transcript retention would have deleted nothing at all, because nothing was that old, and it would still have looked like it worked.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/rule-measure-before-threshold.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[mM][eE][aA][sS][uU][rR][eE] [bB][eE][fF][oO][rR][eE]"
+        }
+      ]
+    },
+    {
+      "id": "rule-eta-timers",
+      "order": 207,
+      "title": "Estimated times on every action",
+      "does": "Adds the rule that each tool call states an estimate, overruns are reported at 1.5x and stopped at 3x.",
+      "why": "Without an estimate, a hung command looks exactly like a slow one until someone notices hours later.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "conv-progress-files"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/rule-eta-timers.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "\\[~N?[0-9]*[smh]\\]"
+        }
+      ]
+    },
+    {
+      "id": "rule-claude-md-layout",
+      "order": 208,
+      "title": "Fixed CLAUDE.md layout",
+      "does": "Writes the top of CLAUDE.md: a one-line purpose, the pointer to the rules archive and the heading of the shared rules block; your own sections follow untouched.",
+      "why": "A fixed shape keeps the file small and predictable, and lets a test confirm that the shared block has not been edited by hand.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "conv-claude-md-history",
+        "conv-doc-size-budget"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "header",
+          "template": "templates/rules/header.md"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:CLAUDE.md"
+        }
+      ],
+      "verify": [
+        {
+          "file-ascii-lf": "repo:CLAUDE.md"
+        },
+        {
+          "budget": "claude_md_kb"
+        }
+      ]
+    },
+    {
+      "id": "conv-claude-md-history",
+      "order": 209,
+      "title": "Rules archive with the reasons",
+      "does": "Creates the rules archive, where the full text of each condensed rule and the incident behind it are kept verbatim.",
+      "why": "Short rules keep every session's start-up cheap, but the reasoning still has to exist for the day a rule is questioned.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:{docs_dir}/claude-md-history.md",
+          "template": "templates/rules/conv-claude-md-history.md",
+          "mode": "create-only"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:{docs_dir}/claude-md-history.md"
+        }
+      ]
+    },
+    {
+      "id": "conv-machine-facts",
+      "order": 210,
+      "title": "Machine facts section",
+      "does": "Adds a short CLAUDE.md section for measured facts about your machine, each with its date and how to re-measure it.",
+      "why": "Sessions kept re-measuring the same facts. Writing a fact down once is cheaper than any probe.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "facts",
+          "template": "templates/rules/conv-machine-facts.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[mM][aA][cC][hH][iI][nN][eE] [fF][aA][cC][tT][sS]"
+        }
+      ],
+      "scope": "template"
+    },
+    {
+      "id": "set-env-utf8",
+      "order": 211,
+      "title": "UTF-8 for Python child processes",
+      "does": "Sets PYTHONUTF8=1 and PYTHONIOENCODING=utf-8 in your Claude settings so every Python tool reads and writes UTF-8.",
+      "why": "On Windows the console code page made tool output crash on the first character outside it.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "env": {
+              "PYTHONUTF8": "1",
+              "PYTHONIOENCODING": "utf-8"
+            }
+          },
+          "mode": "add"
+        }
+      ],
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "env.PYTHONUTF8"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
+        }
+      ]
+    },
+    {
+      "id": "set-powershell-tool",
+      "order": 212,
+      "title": "PowerShell tool on Windows",
+      "does": "Sets CLAUDE_CODE_USE_POWERSHELL_TOOL=1 so Claude can run native PowerShell beside the Bash tool.",
+      "why": "Scheduler, registry and 5.1 parse checks are native PowerShell work; routing them through Bash adds a layer of quoting that fails in new ways.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "env": {
+              "CLAUDE_CODE_USE_POWERSHELL_TOOL": "1"
+            }
+          },
+          "mode": "add"
+        }
+      ],
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "env.CLAUDE_CODE_USE_POWERSHELL_TOOL"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
+        }
+      ]
+    },
+    {
+      "id": "set-tool-search",
+      "order": 213,
+      "title": "Deferred tool loading",
+      "does": "Sets ENABLE_TOOL_SEARCH=true so tool definitions load when needed instead of all at start-up.",
+      "why": "Every tool schema loaded up front is context spent before the first prompt.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "env": {
+              "ENABLE_TOOL_SEARCH": "true"
+            }
+          },
+          "mode": "add"
+        }
+      ],
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "env.ENABLE_TOOL_SEARCH"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
+        }
+      ]
+    },
+    {
+      "id": "set-effort-level",
+      "order": 214,
+      "title": "Default reasoning effort",
+      "does": "Sets effortLevel in your Claude settings to the value you choose in the wizard.",
+      "why": "The author runs interactive sessions at a high effort for quality and background runs lower for cost; the right level is a personal choice.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "effortLevel": "{effort_level}"
+          },
+          "mode": "replace-ask"
+        }
+      ],
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "effortLevel"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
+        }
+      ]
+    },
+    {
+      "id": "set-bypass-permissions",
+      "order": 215,
+      "title": "Run tools without permission prompts",
+      "does": "Sets permissions.defaultMode to bypassPermissions so tools run without asking first.",
+      "why": "The author grants the agent full machine access and relies on the safety floors instead of prompts. Most people should not, which is why this needs the typed acknowledgement apply set-bypass-permissions.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "permissions": {
+              "defaultMode": "bypassPermissions"
+            }
+          },
+          "mode": "replace-ask"
+        }
+      ],
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "permissions.defaultMode"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
+        }
+      ]
+    },
+    {
+      "id": "set-workflows",
+      "order": 216,
+      "title": "Workflow tool",
+      "does": "Sets enableWorkflows to true so multi-step workflow scripts can run.",
+      "why": "Long multi-agent jobs are easier to resume when they are written down as a workflow.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "enableWorkflows": true
+          },
+          "mode": "add"
+        }
+      ],
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "enableWorkflows"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
+        }
+      ],
+      "notes": "Background (headless) runs never use workflows; the headless prompts forbid it."
+    },
+    {
+      "id": "set-agent-push",
+      "order": 217,
+      "title": "Phone notification when agents finish",
+      "does": "Sets agentPushNotifEnabled to true so a finished agent sends a push notification.",
+      "why": "The author follows long runs from a phone and wants to know when one ends without watching the screen.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "agentPushNotifEnabled": true
+          },
+          "mode": "add"
+        }
+      ],
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "agentPushNotifEnabled"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
+        }
+      ]
+    },
+    {
+      "id": "conv-gitattributes-lf",
+      "order": 218,
+      "title": "Line endings pinned in .gitattributes",
+      "does": "Creates a .gitattributes that stores text with LF endings and marks images and archives as binary.",
+      "why": "Without it, git can rewrite a live script's line endings on checkout, and the scheduled task that runs it starts failing for no visible reason.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "rule-encoding-ascii-lf"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.gitattributes",
+          "template": "templates/gitattributes",
+          "mode": "create-only"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.gitattributes"
+        }
+      ],
+      "verify": [
+        {
+          "file-ascii-lf": "repo:.gitattributes"
+        }
+      ]
+    }
+  ]
+}

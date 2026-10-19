@@ -1,0 +1,4 @@
+{
+  "_comment": "Size budgets in KB, read by .claude/tools/doc_budget.py. Hard limits fail; the rest warn.",
+  "budgets": {budgets}
+}

@@ -1,0 +1,1 @@
+- Stop a task's whole process tree, not just its wrapper - why: ending a scheduled task killed the wrapper and left its test run going for most of an hour (prevents: zombie process)

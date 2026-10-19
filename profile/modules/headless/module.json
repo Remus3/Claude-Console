@@ -1,0 +1,403 @@
+{
+  "schema": 1,
+  "id": "headless",
+  "order": 11,
+  "title": "Background runs on a second account",
+  "summary": "A separate account for background work, a fail-closed route to it, the spawn helper, lanes, a driver lane and an inbox responder.",
+  "why": "Background runs can spend a whole subscription overnight. Routing them through one guarded helper on their own account keeps that spend visible, bounded and away from the account you type into.",
+  "default": "off",
+  "items": [
+    {
+      "id": "hl-second-account",
+      "order": 1101,
+      "title": "Second account for background runs",
+      "does": "Adds the rule that background runs use their own Claude config dir and subscription; the wizard creates the dir and opens a pane where you log in yourself.",
+      "why": "Background spend must not bill the account you work in interactively, or a long night run can leave you without quota in the morning.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/hl-second-account.md"
+        }
+      ],
+      "scope": "template"
+    },
+    {
+      "id": "hl-proxy",
+      "order": 1102,
+      "title": "Loopback route contract",
+      "does": "Adds the split-mode contract: background runs reach the second account through a proxy you run on a loopback address, checked before every run.",
+      "why": "Split routing keeps your interactive login untouched. The profile names no proxy and ships none; it only checks the one you run.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/hl-proxy.md"
+        }
+      ],
+      "detect": [
+        {
+          "env": "CLAUDE_HEADLESS_BASE_URL"
+        }
+      ],
+      "scope": "template"
+    },
+    {
+      "id": "hl-env-base-url",
+      "order": 1103,
+      "title": "Kill-switch user variable",
+      "does": "Sets the user environment variable CLAUDE_HEADLESS_BASE_URL to your pinned proxy address; deleting it stops every next background run on the machine.",
+      "why": "One act, deleting a variable, stops all background spend at once, even for processes already running.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32"
+      ],
+      "depends_on": [
+        "hl-proxy"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "env",
+          "name": "CLAUDE_HEADLESS_BASE_URL",
+          "value": "{headless_base_url}",
+          "scope": "user"
+        }
+      ],
+      "detect": [
+        {
+          "env": "CLAUDE_HEADLESS_BASE_URL"
+        }
+      ],
+      "verify": [
+        {
+          "env-readback": "CLAUDE_HEADLESS_BASE_URL"
+        }
+      ]
+    },
+    {
+      "id": "hl-route-file",
+      "order": 1104,
+      "title": "Route file: split or single",
+      "does": "Adds the rule that a route file chooses split or single mode and is read fresh before every run; the wizard's headless step writes it.",
+      "why": "People with one account still need background runs that fail closed; single mode gives them that without a proxy.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "floor-no-fallback"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/hl-route-file.md"
+        }
+      ]
+    },
+    {
+      "id": "kit-fleet-headless",
+      "order": 1105,
+      "title": "The only background spawn path",
+      "does": "Copies kit_headless.py and the rule that nothing else starts a background claude: route check, a daily run cap, lean flags, model choice, usage line and status file.",
+      "why": "Every other path that started claude in the background ran unguarded, billed the wrong account or started far too many runs.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "floor-no-fallback",
+        "hl-route-file",
+        "hl-env-base-url"
+      ],
+      "pairs_with": [
+        "conv-usage-log"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "kit",
+          "files": [
+            "kit_headless.py"
+          ],
+          "target": "repo:{kit_dir}"
+        },
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/kit-fleet-headless.md"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:{kit_dir}/kit_headless.py"
+        }
+      ]
+    },
+    {
+      "id": "conv-usage-log",
+      "order": 1106,
+      "title": "Usage line per background run",
+      "does": "Adds the rule that each background run appends one usage line with its kind, label and route.",
+      "why": "A weekly split of build work against note chatter needs data from every run; without it the cost question cannot be answered.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "kit-fleet-headless"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/conv-usage-log.md"
+        }
+      ]
+    },
+    {
+      "id": "kit-fleet-lanes",
+      "order": 1107,
+      "title": "Lanes with their own worktrees",
+      "does": "Copies kit_lanes.py: per-repository lane locks, one git worktree per lane and a machine-wide governor that shares three lanes fairly.",
+      "why": "Several background runs over one working tree starved and overwrote each other.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "kit-fleet-headless"
+      ],
+      "pairs_with": [
+        "sc-sidecar-root"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "kit",
+          "files": [
+            "kit_lanes.py"
+          ],
+          "target": "repo:{kit_dir}"
+        },
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/kit-fleet-lanes.md"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:{kit_dir}/kit_lanes.py"
+        }
+      ]
+    },
+    {
+      "id": "hl-driver-lane",
+      "order": 1108,
+      "title": "Driver lane template",
+      "does": "Installs driver_lane.py, which re-fires one unit of work per cycle through the spawn helper with a progress file, a halt file and a cycle cap.",
+      "why": "Long work must be resumable, bounded and receipted, not one enormous run that either finishes or vanishes.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "kit-fleet-lanes"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/tools/driver_lane.py",
+          "template": "templates/tools/driver_lane.py",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/tools/driver_lane.py"
+        }
+      ]
+    },
+    {
+      "id": "hl-inbox-responder",
+      "order": 1109,
+      "title": "Inbox responder every 15 minutes",
+      "does": "Installs inbox_responder.py and a task that runs it every 15 minutes: free classification, ledger lines for acknowledgements, one run for ORDER, FIX and RULING notes.",
+      "why": "The inbox gets acted on automatically and unattended, at the lowest cost that still does the work.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32"
+      ],
+      "depends_on": [
+        "kit-fleet-inbox",
+        "kit-fleet-headless"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/tools/inbox_responder.py",
+          "template": "templates/tools/inbox_responder.py",
+          "mode": "managed"
+        },
+        {
+          "kind": "task",
+          "name": "ClaudeProfile-InboxResponder",
+          "template": "templates/tasks/inbox-responder.xml"
+        }
+      ],
+      "verify": [
+        {
+          "task-readback": "ClaudeProfile-InboxResponder"
+        }
+      ]
+    },
+    {
+      "id": "hl-halt-files",
+      "order": 1110,
+      "title": "Halt files pause loops",
+      "does": "Adds the halt-file rule and the /done step that pauses the responder for the whole ritual.",
+      "why": "A responder committing halfway through /done once left the hand-off and the commit out of step.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "hl-inbox-responder"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/hl-halt-files.md"
+        },
+        {
+          "kind": "block",
+          "target": "repo:.claude/commands/done.md",
+          "block": "done-halt",
+          "template": "templates/done/halt.md"
+        }
+      ]
+    },
+    {
+      "id": "cmd-headless-family",
+      "order": 1111,
+      "title": "Background run contract",
+      "does": "Installs /headless-run: the fixed prompt contract for one long background unit, with a merger, worktree agents, a verifier and its own /done fold.",
+      "why": "Long autonomous runs need a fixed contract, or each one invents its own idea of finished.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "kit-fleet-headless"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/commands/headless-run.md",
+          "template": "templates/commands/headless-run.md",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/commands/headless-run.md"
+        }
+      ],
+      "scope": "template"
+    },
+    {
+      "id": "hl-fallback-armed",
+      "order": 1112,
+      "title": "Armed fallback after a weekly limit",
+      "does": "Adds the armed-fallback rule: only when you arm it, a confirmed 7-day limit on one account moves the next runs to the other, one hop, logged.",
+      "why": "Stalling a whole week because one account is spent is worse than one logged hop you chose in advance.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "hl-route-file"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/hl-fallback-armed.md"
+        }
+      ],
+      "notes": "The wizard writes the armed flag only after the typed acknowledgement apply hl-fallback-armed."
+    }
+  ]
+}

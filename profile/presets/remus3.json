@@ -1,0 +1,1317 @@
+{
+ "schema": 1,
+ "preset": "remus3",
+ "title": "Remus3's exact current settings",
+ "profile_version": "1.0.0",
+ "kit_source_version": 20,
+ "generated_from": "12fae65326c4d1911d7e595f26e8c89c606d3e48",
+ "source_sha": "3a0908462f8d85fad72d6d465a1d2e0bd27878caefb184378e6d7240ebc11655",
+ "counts": {
+  "modules": 22,
+  "modules_on": 22,
+  "items": 292,
+  "on": 181,
+  "off": 111
+ },
+ "modules": {
+  "floors": "on",
+  "core-rules": "on",
+  "session": "on",
+  "output": "on",
+  "subagent-first": "on",
+  "race-guards": "on",
+  "attribution": "on",
+  "tdd-agents": "on",
+  "docs-memory": "on",
+  "fleet": "on",
+  "headless": "on",
+  "maintenance": "on",
+  "insights": "on",
+  "board": "on",
+  "console": "on",
+  "ci-gates": "on",
+  "recall": "on",
+  "lessons": "on",
+  "permissions-context": "on",
+  "sidecar": "on",
+  "runtime-agents": "on",
+  "machine-profile": "on"
+ },
+ "overrides": {
+  "runtime-agents": {
+   "state": "on",
+   "why": "the operator named agents 0-7 as part of how they work"
+  }
+ },
+ "items": {
+  "floor-no-ai-attribution": {
+   "state": "on",
+   "rule": "locked"
+  },
+  "floor-no-fallback": {
+   "state": "on",
+   "rule": "locked"
+  },
+  "floor-subagent-first-main-session": {
+   "state": "on",
+   "rule": "locked"
+  },
+  "floor-recycle-bin": {
+   "state": "on",
+   "rule": "locked"
+  },
+  "floor-no-untested-reconfig": {
+   "state": "on",
+   "rule": "locked"
+  },
+  "floor-secrets-never-echoed": {
+   "state": "on",
+   "rule": "locked"
+  },
+  "floor-os-settings-backup": {
+   "state": "on",
+   "rule": "locked"
+  },
+  "kit-fleet-secrets": {
+   "state": "on",
+   "rule": "locked"
+  },
+  "floor-no-telemetry": {
+   "state": "on",
+   "rule": "locked"
+  },
+  "rule-act-dont-ask": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "rule-quiet-chat": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "rule-commit-batched": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "rule-push-policy": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "rule-encoding-ascii-lf": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "rule-measure-before-threshold": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "rule-eta-timers": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "rule-claude-md-layout": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "conv-claude-md-history": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "conv-machine-facts": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "set-env-utf8": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "set-powershell-tool": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "set-tool-search": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "set-effort-level": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "set-bypass-permissions": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "set-workflows": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "set-agent-push": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "conv-gitattributes-lf": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "conv-handoff-file": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "conv-dnr-reversal": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "conv-session-counter": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "conv-session-checklist": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "kit-fleet-checklist": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "cmd-done": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "kit-fleet-done": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "hook-stop-done-title": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "hook-sessionstart-checklist": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "conv-session-start": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "conv-session-end": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "out-caveman-ultra": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "hook-sessionstart-caveman": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "out-verbose-mode": {
+   "state": "off",
+   "rule": "author-off"
+  },
+  "set-output-style-concise": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "set-calm-display": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "set-env-display": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "set-statusline": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "set-subagent-statusline": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "console-statusline-basic": {
+   "state": "off",
+   "rule": "author-off"
+  },
+  "kit-tokens": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "kit-cli-display": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "rule-hook-output": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "rule-subagent-first": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "hook-pretooluse-subagent-first": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "rule-background-status": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "conv-progress-files": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "conv-progress-prune": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "set-max-subagents": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "kit-fleet-claims": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "kit-fleet-gitlock": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "kit-fleet-suite-gate": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "kit-fleet-test-guard": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "hook-git-commit-msg": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "hook-git-pre-push-identity": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "set-attribution-empty": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "kit-fleet-rewrite": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "conv-tdd-first": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "conv-session-shape": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "agent-planner": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "agent-builder": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "agent-verifier": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "agent-adversary": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "agent-adjudicator": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "agent-researcher": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "agent-ui-auditor": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "agent-doc-sync": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "cmd-orchestrated-run": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "cmd-root-cause-fix": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "cmd-diagnose": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "plugin-superpowers": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "plugin-playwright": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "plugin-chrome-devtools": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "conv-worktree-branches": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "ag-session-default-file": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "ag-agent-file-cap": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "ag-phase0-recall": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "ag-risk-scaled-lenses": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "ag-recusal": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "ag-truth-gate": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "ag-model-routing": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "ag-lane-path-ownership": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "ag-loop-roles": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "conv-doc-size-budget": {
+   "state": "on",
+   "rule": "dependency"
+  },
+  "tool-doc-budget": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "conv-memory-layout": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "conv-roadmap-open-only": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "conv-docs-briefs": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "conv-rulings-dir": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "conv-handoff-archive": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "cmd-sync-docs": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "cmd-weekly-hygiene": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "hook-facts-inject": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "hook-edit-guards": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "hook-precommit-gate": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "hook-claimed-green-gate": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "md-handoff-cap": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "md-handoff-lint": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "md-handoff-prefix-grammar": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "md-budget-enforcement-points": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "md-doc-topology": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "md-ledger": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "md-wakeup-notes": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "md-plans-dir": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "md-claude-md-rules-only": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "fleet-roster": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "fleet-channel": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "fleet-stand-in": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "kit-fleet-inbox": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "kit-vendoring": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "kit-common-block": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "tool-kit": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "kit-train": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "kit-fleet-watch": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "os-self-apply-grant": {
+   "state": "off",
+   "rule": "author-off"
+  },
+  "sched-kit-rollout": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "hl-second-account": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "hl-proxy": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "hl-env-base-url": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "hl-route-file": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "kit-fleet-headless": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "conv-usage-log": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "kit-fleet-lanes": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "hl-driver-lane": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "hl-inbox-responder": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "hl-halt-files": {
+   "state": "off",
+   "rule": "author-off"
+  },
+  "cmd-headless-family": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "hl-fallback-armed": {
+   "state": "off",
+   "rule": "author-off"
+  },
+  "sched-temp-hygiene": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "sched-claude-retention": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "sched-boot-record": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "sched-offsite-backup": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "tool-wol": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "tool-health-check": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "sched-health-check": {
+   "state": "off",
+   "rule": "author-off"
+  },
+  "tool-temp-census": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "rt-run-hidden": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "conv-task-codes": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "conv-runtime-live": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "cmd-machine-insights": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "tool-machine-insights": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "cmd-fleet-insights": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "sched-fleet-insights": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "tool-atlas": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "sched-atlas-refresh": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "tool-pubrepo-census": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "conv-operator-acts": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "kit-fleet-board": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "conv-board-push-points": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "console-pane-hooks": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "console-done-chip": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "console-done-band": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "console-scheduler": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "ci-verification-tiers": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "ci-pytest-strict": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "ci-test-selection": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "ci-hook-pre-commit-content": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "ci-hook-commit-msg-format": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "ci-hook-pre-push-suite": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "ci-hook-pre-push-leak": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "ci-hook-pre-merge-commit": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "ci-hooks-install-check": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "ci-posttooluse-edit-guard": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "ci-workflow-main": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "ci-workflow-docs-complement": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "ci-workflow-no-paths-ignore": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "ci-workflow-codeql": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "ci-local-ci-script": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "ci-verdict-cache": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "ci-verify-env": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "rec-recall-before-build": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "rec-domain-indexes": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "rec-memory-validate": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "rec-vault-mcp": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "rec-recall-compact": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "rec-vault-sync-coverage": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "rec-project-slug": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "lsn-ascii-only": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "lsn-write-bytes": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-commit-msg-file": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "lsn-hook-proven": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "lsn-git-hook-authoritative": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-prepush-range": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "lsn-mutation-prove": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "lsn-empty-is-fail": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "lsn-skip-not-pass": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "lsn-full-history-ci": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-docs-push-guarded": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-step-timeout": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-verify-fresh": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "lsn-claimed-green-gate": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-atomic-writes": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-compile-before-restart": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-kill-by-pid": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "lsn-no-window-flag": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "lsn-tmp-retention": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "lsn-private-scratch": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "lsn-scratch-not-durable": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-explicit-interpreter": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "lsn-cmd-shims": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-no-machine-paths": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "lsn-secret-fixtures": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-scan-beyond-repo": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-no-amend-no-tags": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-index-lock": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-no-cd-chain-destructive": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-worktree-gaps": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-no-prune-on-mtime": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-prove-recycle-bin": {
+   "state": "off",
+   "rule": "author-off"
+  },
+  "lsn-no-walk-links": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-cap-fixture-size": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-memory-aware-suites": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "lsn-exit-code-from-file": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-keep-summary-line": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-append-fields": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-backfill": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-fix-the-class": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-refute-cap": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-responder-marks-read": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-task-liveness": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-hermetic-tests": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-testpaths-isolation": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-readonly-responder": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-strip-auth-env": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-everything-rotates": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "lsn-stale-bytecode": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-anchored-hooks": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-one-source-per-number": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-cite-headings": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-tos-floor": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-idle-control": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-kill-tree": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-generated-output-gated": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-repoint-after-move": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "lsn-short-paths": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-no-saturation": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-product-floor": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-deferral-dated": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "lsn-reversal-clause": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "cfg-settings-split": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "cfg-allowlist-narrow": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "cfg-deny-floor": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "cfg-headless-tool-floor": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "cfg-mcp-local": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "cfg-compaction-by-done": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "cfg-hook-anchored": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "cfg-text-first-guard": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "cfg-chat-token-cap": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "sc-sidecar-root": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "sc-worktree-area": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "sc-scratch-area": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "sc-temp-area": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "sc-walk-area": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "sc-archive-area": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "sc-move-protocol": {
+   "state": "off",
+   "rule": "author-off"
+  },
+  "sc-cleanup-policy": {
+   "state": "off",
+   "rule": "author-off"
+  },
+  "sc-outside-repo-register": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "sc-runtime-ignored-reaped": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  },
+  "rta-supervisor": {
+   "state": "on",
+   "rule": "override"
+  },
+  "rta-agent0-gatekeeper": {
+   "state": "on",
+   "rule": "override"
+  },
+  "rta-agent1-lead": {
+   "state": "on",
+   "rule": "override"
+  },
+  "rta-agent2-backend": {
+   "state": "on",
+   "rule": "override"
+  },
+  "rta-agent3-testing": {
+   "state": "on",
+   "rule": "override"
+  },
+  "rta-agent4-analyst": {
+   "state": "on",
+   "rule": "override"
+  },
+  "rta-agent5-ui": {
+   "state": "on",
+   "rule": "override"
+  },
+  "rta-agent6-auditor": {
+   "state": "on",
+   "rule": "override"
+  },
+  "rta-agent7-context": {
+   "state": "on",
+   "rule": "override"
+  },
+  "rta-ephemeral-spawn": {
+   "state": "on",
+   "rule": "override"
+  },
+  "rta-task-queue": {
+   "state": "on",
+   "rule": "override"
+  },
+  "rta-propose-only": {
+   "state": "on",
+   "rule": "override"
+  },
+  "mach-spec-ingest": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "mach-installed-inventory": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "mach-app-config-edit": {
+   "state": "off",
+   "rule": "author-off"
+  },
+  "mach-tos-floor": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "mach-adv-machine": {
+   "state": "off",
+   "rule": "author-off"
+  },
+  "mach-adv-games": {
+   "state": "off",
+   "rule": "author-off"
+  },
+  "mach-adv-apps": {
+   "state": "off",
+   "rule": "author-off"
+  },
+  "mach-adv-repo-rules": {
+   "state": "off",
+   "rule": "author-off"
+  },
+  "mach-adv-tasks": {
+   "state": "off",
+   "rule": "author-off"
+  },
+  "mach-adv-commands": {
+   "state": "off",
+   "rule": "author-off"
+  },
+  "mach-adv-cleanliness": {
+   "state": "off",
+   "rule": "author-off"
+  },
+  "mach-adv-design": {
+   "state": "off",
+   "rule": "author-off"
+  },
+  "mach-findings-rules": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "mach-quiet-bench": {
+   "state": "off",
+   "rule": "fleet-below-4"
+  },
+  "mach-gpu-lock": {
+   "state": "on",
+   "rule": "fleet-4-of-6"
+  }
+ },
+ "variables": {
+  "repo_code": {
+   "ask": "wizard.step.repo"
+  },
+  "repo_root": {
+   "ask": "wizard"
+  },
+  "kit_dir": {
+   "value": "ops/kit"
+  },
+  "docs_dir": {
+   "value": "docs"
+  },
+  "runtime_dir": {
+   "value": "ops/runtime"
+  },
+  "control_dir": {
+   "value": "ops/loop/control"
+  },
+  "python": {
+   "ask": "detect"
+  },
+  "node": {
+   "ask": "detect"
+  },
+  "config_dir": {
+   "ask": "detect"
+  },
+  "project_slug": {
+   "ask": "detect"
+  },
+  "headless_config_dir": {
+   "ask": "wizard.step.accounts"
+  },
+  "headless_base_url": {
+   "ask": "wizard.step.headless"
+  },
+  "operator_ident": {
+   "ask": "wizard.step.identity"
+  },
+  "inbox_dir": {
+   "value": "inbox"
+  },
+  "outbox_dir": {
+   "value": "outbox"
+  },
+  "reports_dir": {
+   "ask": "wizard"
+  },
+  "suite_slots": {
+   "value": 2
+  },
+  "budgets": {
+   "value": {
+    "claude_md_kb": 40,
+    "auto_loaded_kb": 40,
+    "memory_index_kb": 20,
+    "memory_leaf_kb": 6,
+    "roadmap_kb": 60,
+    "handoff_kb": 30,
+    "handoff_warn_pct": 90,
+    "agent_file_kb": 3
+   }
+  },
+  "retention_days": {
+   "value": 30
+  },
+  "retention_nested_days": {
+   "value": 14
+  },
+  "max_subagents": {
+   "value": 40
+  },
+  "effort_level": {
+   "value": "xhigh"
+  },
+  "refute_rounds": {
+   "value": 2
+  },
+  "headless_runs_per_day": {
+   "value": 120
+  },
+  "backup_target": {
+   "ask": "wizard.step.tasks"
+  },
+  "wol_mac": {
+   "ask": "wizard.step.tasks"
+  },
+  "board_url": {
+   "ask": "wizard.step.accounts"
+  },
+  "sidecar_root": {
+   "ask": "wizard.step.sidecar"
+  },
+  "sidecar_retention_days": {
+   "ask": "wizard"
+  },
+  "runtime_retention_days": {
+   "ask": "wizard"
+  }
+ }
+}

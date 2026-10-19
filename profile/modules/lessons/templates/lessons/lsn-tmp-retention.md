@@ -1,0 +1,1 @@
+- Keep test temp folders only for failed runs, one run deep, and never point the test temp root into the session scratchpad - why: tens of thousands of leftover temp files made every logon stall for minutes (prevents: temp bloat)

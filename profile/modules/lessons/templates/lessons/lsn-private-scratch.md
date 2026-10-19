@@ -1,0 +1,1 @@
+- Give each agent its own scratch subfolder and unique helper file names - why: agents sharing helper names overwrote each other's files, and one wrote another repo's progress file (prevents: scratch collision)

@@ -1,0 +1,1 @@
+- LESSONS. Read {docs_dir}/lessons.md before changing gates, hooks, tests, scripts or anything that deletes; each line names the incident class it prevents.

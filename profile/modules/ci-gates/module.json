@@ -1,0 +1,380 @@
+{
+  "schema": 1,
+  "id": "ci-gates",
+  "order": 16,
+  "title": "Test tiers and git/CI gates",
+  "summary": "Verification tiers, strict test config, one dispatcher per git hook with content, message and leak checks, and optional hosted CI templates.",
+  "why": "Gates that read the staged bytes and the pushed range catch what would otherwise reach history; one dispatcher per hook keeps modules from fighting over hook files, and the armed check proves the hooks really fire.",
+  "default": "on",
+  "locked": false,
+  "items": [
+    {
+      "id": "ci-verification-tiers",
+      "order": 1601,
+      "title": "Verification tiers by change size",
+      "does": "Adds a rule that sets how much to verify by the size of a change: compile only for cosmetic edits, the module's tests for one module, and the whole suite once, by the merger, for shared code.",
+      "why": "When every agent runs the whole suite for every edit, the machine and the suite queue starve; most edits need far less, and shared changes still get the full run once.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["kit-fleet-suite-gate", "conv-tdd-first"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "rules", "slot": 1601, "template": "templates/rule-verification-tiers.md"}
+      ],
+      "detect": [
+        {"text": "repo:CLAUDE.md", "regex": "VERIFICATION TIERS|Tier 0"}
+      ]
+    },
+    {
+      "id": "ci-pytest-strict",
+      "order": 1602,
+      "title": "Strict test runner config",
+      "does": "Creates a pytest.ini that makes unknown markers and config keys errors, lists every skip, makes expected failures strict, keeps discovery in tests/ and keeps temp dirs only for failed runs.",
+      "why": "A typo in a marker silently deselects tests and unnamed skips hide coverage gaps; strict settings turn both into visible errors. Python projects only; other runners keep their own config.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:pytest.ini", "template": "templates/pytest.ini", "mode": "create-only"}
+      ],
+      "detect": [
+        {"file": "repo:pytest.ini"},
+        {"text": "repo:pyproject.toml", "regex": "\\[tool\\.pytest"}
+      ],
+      "verify": [
+        {"file-ascii-lf": "repo:pytest.ini"}
+      ]
+    },
+    {
+      "id": "ci-test-selection",
+      "order": 1603,
+      "title": "Impact-based test selection for push and CI",
+      "does": "Adds a selector that prints FULL, NONE or a list of tests from the files changed since a base ref, using rules in a small text file, and escalates to the full suite on config changes or unmatched paths.",
+      "why": "Running the full suite on every push makes the gate the bottleneck once the suite takes minutes; a selection that escalates whenever in doubt saves time without skipping affected tests.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:tools/select_tests.py", "template": "templates/tools/select_tests.py", "mode": "managed"},
+        {"kind": "file", "target": "repo:tools/test-select.txt", "template": "templates/tools/test-select.txt", "mode": "create-only"}
+      ],
+      "detect": [
+        {"file": "repo:tools/select_tests.py"}
+      ],
+      "scope": "template",
+      "notes": "Enable later: when the whole suite takes several minutes and most pushes touch one area."
+    },
+    {
+      "id": "ci-hook-pre-commit-content",
+      "order": 1604,
+      "title": "git pre-commit content gate",
+      "does": "Adds a pre-commit check that reads the staged bytes and refuses non-ASCII or CR bytes in added lines, secret-shaped strings, Python that does not compile, JSON that does not parse, and files over their size budget (warning at 90 percent).",
+      "why": "A stray typographic dash broke a PowerShell 5.1 script, and gates that read the working tree passed what was actually staged; checking the index judges exactly what gets committed.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["ci-hooks-install-check"],
+      "pairs_with": ["rule-encoding-ascii-lf", "tool-doc-budget"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:.githooks/pre-commit.d/1604-content", "template": "templates/hooks/pre-commit.d/1604-content.sh", "mode": "managed"},
+        {"kind": "file", "target": "repo:.githooks/checks/content_gate.py", "template": "templates/checks/content_gate.py", "mode": "managed"},
+        {"kind": "file", "target": "repo:.githooks/md-budgets.txt", "template": "templates/md-budgets.txt", "mode": "create-only"},
+        {"kind": "git", "key": "profile.python", "value": "{python}", "scope": "local"}
+      ],
+      "detect": [
+        {"file": "repo:.githooks/pre-commit"},
+        {"file": "repo:.githooks/pre-commit.d/*"}
+      ],
+      "verify": [
+        {"file-ascii-lf": "repo:.githooks/checks/content_gate.py"},
+        {"git-hooks": "repo:.githooks"}
+      ]
+    },
+    {
+      "id": "ci-hook-commit-msg-format",
+      "order": 1605,
+      "title": "commit-msg format checks",
+      "does": "Adds a commit-msg check: a non-empty subject of at most 72 characters, ASCII only, no control bytes, and no placeholder subject such as wip or update.",
+      "why": "A glyph in a commit subject went through because the glyph check ran only in pre-commit; the message needs its own check, and a placeholder subject tells the next reader nothing.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["hook-git-commit-msg", "ci-hooks-install-check"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:.githooks/commit-msg.d/1605-format", "template": "templates/hooks/commit-msg.d/1605-format.sh", "mode": "managed"}
+      ],
+      "detect": [
+        {"file": "repo:.githooks/commit-msg"}
+      ],
+      "verify": [
+        {"git-hooks": "repo:.githooks"}
+      ],
+      "notes": "Runs after the attribution strip: the commit-msg dispatcher runs its checks in name order."
+    },
+    {
+      "id": "ci-hook-pre-push-suite",
+      "order": 1606,
+      "title": "pre-push test gate over the pushed range",
+      "does": "Adds a pre-push check that runs the configured suite command (through the suite gate when set), refuses a run with zero tests, and refuses when HEAD moved while the suite ran.",
+      "why": "A pre-push check once graded one commit while a later one reached the remote, and a run with zero tests read as a pass; the gate must test exactly what is pushed and must have tested something.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["hook-git-pre-push-identity", "ci-hooks-install-check"],
+      "pairs_with": ["kit-fleet-suite-gate"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:.githooks/pre-push.d/1606-suite", "template": "templates/hooks/pre-push.d/1606-suite.sh", "mode": "managed"}
+      ],
+      "detect": [
+        {"file": "repo:.githooks/pre-push"}
+      ],
+      "notes": "Enable later: when the remote is shared and a red push would block other people."
+    },
+    {
+      "id": "ci-hook-pre-push-leak",
+      "order": 1607,
+      "title": "pre-push leak scan (credentials, names, paths)",
+      "does": "Adds a pre-push check that scans every commit in the pushed range for secret-shaped strings, home-folder paths and your own private needles, kept in a local file under .git/info that is never tracked.",
+      "why": "Real tokens, account paths and private names have reached public history before, and removing them meant rewriting history; a scan of the whole pushed range stops them before they leave the machine.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["ci-hooks-install-check"],
+      "pairs_with": ["floor-secrets-never-echoed"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:.githooks/pre-push.d/1607-leak", "template": "templates/hooks/pre-push.d/1607-leak.sh", "mode": "managed"},
+        {"kind": "file", "target": "repo:.githooks/checks/leak_scan.py", "template": "templates/checks/leak_scan.py", "mode": "managed"},
+        {"kind": "file", "target": "repo:.git/info/leak-needles.txt", "template": "templates/leak-needles.txt", "mode": "create-only"},
+        {"kind": "git", "key": "profile.python", "value": "{python}", "scope": "local"}
+      ],
+      "detect": [
+        {"file": "repo:.githooks/pre-push"}
+      ],
+      "verify": [
+        {"file-ascii-lf": "repo:.githooks/checks/leak_scan.py"}
+      ]
+    },
+    {
+      "id": "ci-hook-pre-merge-commit",
+      "order": 1608,
+      "title": "pre-merge-commit runs the pre-commit gate",
+      "does": "Adds a pre-merge-commit check that runs the same pre-commit checks for merge commits.",
+      "why": "Git skips pre-commit when it creates a merge commit, so a merge once landed a non-ASCII byte on the main branch with every gate installed.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["ci-hook-pre-commit-content", "ci-hooks-install-check"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:.githooks/pre-merge-commit.d/1608-content", "template": "templates/hooks/pre-merge-commit.d/1608-content.sh", "mode": "managed"}
+      ],
+      "detect": [
+        {"file": "repo:.githooks/pre-merge-commit"}
+      ]
+    },
+    {
+      "id": "ci-hooks-install-check",
+      "order": 1609,
+      "title": "Hook installer + SessionStart armed check",
+      "does": "Installs one dispatcher per git hook in the tracked .githooks folder, points core.hooksPath at it, and adds a check that warns once at session start when hooks are not armed; with --check it proves the pre-commit gate refuses a planted byte.",
+      "why": "A fresh clone runs no hooks at all, and a hooks path that drifted to an absolute or moved path silently turned every gate off; one dispatcher per hook also stops modules from writing competing hook files.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "git", "key": "core.hooksPath", "value": ".githooks", "scope": "local"},
+        {"kind": "git", "key": "profile.python", "value": "{python}", "scope": "local"},
+        {"kind": "git", "key": "profile.hooksOff", "value": "{data_dir}/profile/HOOKS_OFF", "scope": "local"},
+        {"kind": "file", "target": "repo:.githooks/pre-commit", "template": "templates/hooks/pre-commit.sh", "mode": "create-only"},
+        {"kind": "file", "target": "repo:.githooks/commit-msg", "template": "templates/hooks/commit-msg.sh", "mode": "create-only"},
+        {"kind": "file", "target": "repo:.githooks/pre-push", "template": "templates/hooks/pre-push.sh", "mode": "create-only"},
+        {"kind": "file", "target": "repo:.githooks/pre-merge-commit", "template": "templates/hooks/pre-merge-commit.sh", "mode": "create-only"},
+        {"kind": "file", "target": "repo:.githooks/check-armed.sh", "template": "templates/hooks/check-armed.sh", "mode": "managed"},
+        {"kind": "json-merge", "target": "repo:.claude/settings.json", "template": "templates/settings/session-start-armed.json", "mode": "add"}
+      ],
+      "detect": [
+        {"git": "core.hooksPath"},
+        {"file": "repo:.githooks/*"}
+      ],
+      "verify": [
+        {"git-hooks": "repo:.githooks"},
+        {"hook-smoke": "repo:.githooks/check-armed.sh"},
+        {"json-parse": "repo:.claude/settings.json"}
+      ],
+      "notes": "Other modules add their git checks as numbered files in .githooks/<hook>.d/ rather than writing the hook file."
+    },
+    {
+      "id": "ci-posttooluse-edit-guard",
+      "order": 1610,
+      "title": "PostToolUse edit guard (compile, ASCII, LF)",
+      "does": "Adds a PostToolUse hook that checks each file Claude edits or writes: ASCII only, LF only, Python compiles, JSON parses; silent when clean, one line back to Claude when not.",
+      "why": "A problem caught right after the edit costs one turn to fix; the same problem caught at commit time costs a re-plan, and caught later it costs a red build.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["rule-hook-output"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:.claude/hooks/edit_guard.sh", "template": "templates/claude-hooks/edit_guard.sh", "mode": "managed"},
+        {"kind": "file", "target": "repo:.claude/hooks/edit_guard.py", "template": "templates/claude-hooks/edit_guard.py", "mode": "managed"},
+        {"kind": "git", "key": "profile.python", "value": "{python}", "scope": "local"},
+        {"kind": "git", "key": "profile.hooksOff", "value": "{data_dir}/profile/HOOKS_OFF", "scope": "local"},
+        {"kind": "json-merge", "target": "repo:.claude/settings.json", "template": "templates/settings/edit-guard.json", "mode": "add"}
+      ],
+      "detect": [
+        {"json": "repo:.claude/settings.json", "key": "hooks.PostToolUse"}
+      ],
+      "verify": [
+        {"json-parse": "repo:.claude/settings.json"},
+        {"hook-smoke": "repo:.claude/hooks/edit_guard.sh"}
+      ]
+    },
+    {
+      "id": "ci-workflow-main",
+      "order": 1611,
+      "title": "Hosted CI workflow template",
+      "does": "Creates a GitHub Actions workflow that runs on every push, pull request and nightly: ASCII sweep, hooks-armed proof, attribution-trailer sweep and the suite, with a read-only token, full history and step timeouts below the job timeout.",
+      "why": "Local gates can be skipped or misconfigured on one machine; CI is the shared reading every collaborator sees, and the timeouts and full history stop it from passing by doing nothing.",
+      "risk": "medium",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:.github/workflows/ci.yml", "template": "templates/workflows/ci.yml", "mode": "create-only"}
+      ],
+      "detect": [
+        {"file": "repo:.github/workflows/*.yml"}
+      ],
+      "notes": "Enable later: when the repo has a hosted GitHub remote; the wizard offers it when it detects one."
+    },
+    {
+      "id": "ci-workflow-docs-complement",
+      "order": 1612,
+      "title": "Docs-only push complement workflow",
+      "does": "Creates a second workflow that runs only the tests that read docs, for repos whose main workflow ignores documentation paths.",
+      "why": "A docs-only push once broke a size guard with no CI run at all, because the main workflow ignored docs; the complement keeps that saving without leaving docs untested.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["ci-workflow-main"],
+      "pairs_with": [],
+      "conflicts_with": ["ci-workflow-no-paths-ignore"],
+      "contributes": [
+        {"kind": "file", "target": "repo:.github/workflows/docs.yml", "template": "templates/workflows/docs.yml", "mode": "create-only"}
+      ],
+      "notes": "Enable later: when the main workflow skips docs-only pushes to save CI minutes and some tests read docs."
+    },
+    {
+      "id": "ci-workflow-no-paths-ignore",
+      "order": 1613,
+      "title": "Main workflow runs on every push (no paths-ignore)",
+      "does": "Adds a rule that the main workflow keeps no paths-ignore, so docs-only pushes run the whole workflow.",
+      "why": "It is the simpler of the two ways to keep docs-only pushes tested: no second workflow to keep in step, at the cost of some CI minutes.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["ci-workflow-main"],
+      "pairs_with": [],
+      "conflicts_with": ["ci-workflow-docs-complement"],
+      "contributes": [
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "rules", "slot": 1613, "template": "templates/rules/ci-every-push.md"}
+      ],
+      "detect": [
+        {"text": "repo:CLAUDE.md", "regex": "CI ON EVERY PUSH"}
+      ],
+      "notes": "Enable later: together with the hosted CI workflow; pick this or the docs complement, not both."
+    },
+    {
+      "id": "ci-workflow-codeql",
+      "order": 1614,
+      "title": "CodeQL weekly scan",
+      "does": "Creates a code-scanning workflow that runs weekly and on pushes to the default branch.",
+      "why": "It gives static security findings without a human reviewer, on a schedule, so new classes of bug show up even in weeks with no review.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["ci-workflow-main"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:.github/workflows/codeql.yml", "template": "templates/workflows/codeql.yml", "mode": "create-only"}
+      ],
+      "notes": "Enable later: for a public repo, or a private one with code scanning, once hosted CI is on."
+    },
+    {
+      "id": "ci-local-ci-script",
+      "order": 1615,
+      "title": "Local CI script defines green",
+      "does": "Creates ci/local-ci.sh, which runs a fixed roster of gates (ASCII sweep, compile sweep, hooks armed, the suite) and prints how many are green; a gate that checked nothing fails.",
+      "why": "Without hosted CI, one script is the shared definition of green, and a gate that ran nothing once inherited the previous pass; a fixed roster and a fail-on-empty rule prevent both.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:ci/local-ci.sh", "template": "templates/tools/local-ci.sh", "mode": "managed"}
+      ],
+      "detect": [
+        {"file": "repo:ci/local-ci.sh"}
+      ],
+      "notes": "Enable later: for a repo without hosted CI that still wants one written definition of green."
+    },
+    {
+      "id": "ci-verdict-cache",
+      "order": 1616,
+      "title": "Gate verdict cache keyed by inputs",
+      "does": "Adds a small cache that records a gate PASS under a hash of the commit range and the gate files, so the same range pushed to several remotes runs the gates once.",
+      "why": "Pushing one range to four remotes once ran two dozen gate processes for the same answer; keying the cache on every input means a changed gate or range always runs again.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:.githooks/checks/verdict_cache.py", "template": "templates/checks/verdict_cache.py", "mode": "managed"}
+      ],
+      "notes": "Enable later: when you push the same commits to several remotes and the gates run once per remote."
+    },
+    {
+      "id": "ci-verify-env",
+      "order": 1617,
+      "title": "Toolchain pin check",
+      "does": "Adds tools/verify_env.py and a toolchain.txt that lists the expected interpreter, test runner and tool versions; the check runs before a suite and fails on a mismatch.",
+      "why": "Test counts measured under a different interpreter or virtual environment were reported as if they were the real ones; checking versions first makes such counts impossible to mistake.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:tools/verify_env.py", "template": "templates/tools/verify_env.py", "mode": "managed"},
+        {"kind": "file", "target": "repo:toolchain.txt", "template": "templates/toolchain.txt", "mode": "create-only"}
+      ],
+      "notes": "Enable later: when test counts differ between machines or virtual environments."
+    }
+  ]
+}

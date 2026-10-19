@@ -1,0 +1,1 @@
+- Stop processes by their recorded PID tree, never by image name - why: killing by image name took down unrelated programs, and one shell rewrote the /F flag into a drive path (prevents: collateral kill)

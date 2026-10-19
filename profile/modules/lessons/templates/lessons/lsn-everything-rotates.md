@@ -1,0 +1,1 @@
+- Give every log and every file that only grows a retention or a size cap - why: spawn logs, run journals and a runtime folder grew without limit into gigabytes (prevents: sprawl)

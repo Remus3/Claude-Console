@@ -102,6 +102,46 @@ function userPathPs(dir, add) {
   ];
 }
 
+// CON-0.1.3: the Apps & features version values. Install writes them with the key;
+// update and rollback rewrite them (the entry showed the first installed version
+// forever). VersionMajor / VersionMinor are the DWORDs Windows also reads.
+function arpVersionLines(version) {
+  const m = /^(\d+)\.(\d+)/.exec(String(version));
+  return [
+    'Set-ItemProperty -Path $k -Name DisplayVersion -Value ' + psQ(version),
+    'Set-ItemProperty -Path $k -Name VersionMajor -Value ' + (m ? +m[1] : 0) + ' -Type DWord',
+    'Set-ItemProperty -Path $k -Name VersionMinor -Value ' + (m ? +m[2] : 0) + ' -Type DWord',
+  ];
+}
+
+// Refresh only: an install made with --no-shortcuts has no entry, and an update never
+// creates one. The last line is the read-back: ARP=absent or ARP=<DisplayVersion>.
+function arpVersionScript(version) {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    '$k = ' + psQ(ARP_KEY),
+    "if (-not (Test-Path $k)) { Write-Output 'ARP=absent'; exit 0 }",
+    ...arpVersionLines(version),
+    "Write-Output ('ARP=' + (Get-ItemProperty -Path $k -Name DisplayVersion).DisplayVersion)",
+    '',
+  ].join('\n');
+}
+
+// lines: the script's output. -> {present, version}
+function parseArpReadBack(lines) {
+  const l = (lines || []).map(String).reverse().find((x) => x.startsWith('ARP='));
+  if (!l) return { present: null, version: null };
+  const v = l.slice(4).trim();
+  return v === 'absent' ? { present: false, version: null } : { present: true, version: v };
+}
+
+// -> {present, version, ok}; ok = absent, or the read-back equals the version.
+async function writeArpWindows(home, version) {
+  if (process.platform !== 'win32') return { present: null, version: null, ok: true, skipped: 'not Windows' };
+  const rb = parseArpReadBack(await runPs(home, 'arp', arpVersionScript(version)));
+  return Object.assign(rb, { ok: rb.present === false || rb.version === version });
+}
+
 // Shell integration (VMFIX): Desktop + Start-menu shortcuts, the Apps & features entry
 // (HKCU Uninstall key) and claude-console on the user PATH. info: {home, version, repo}.
 function shortcutScript(vbsPath, iconPath, info) {
@@ -128,7 +168,7 @@ function shortcutScript(vbsPath, iconPath, info) {
       '$k = ' + psQ(ARP_KEY),
       'New-Item -Path $k -Force | Out-Null',
       "Set-ItemProperty -Path $k -Name DisplayName -Value 'Claude Console'",
-      'Set-ItemProperty -Path $k -Name DisplayVersion -Value ' + psQ(info.version),
+      ...arpVersionLines(info.version),
       'Set-ItemProperty -Path $k -Name Publisher -Value ' + psQ(info.repo ? info.repo.split('/')[0] : 'Claude Console'),
       'Set-ItemProperty -Path $k -Name InstallLocation -Value ' + psQ(home),
       'Set-ItemProperty -Path $k -Name UninstallString -Value ' + psQ('"' + cmdPath + '" uninstall'),
@@ -177,4 +217,20 @@ function removeShellWindows(home) {
   return runPs(home, 'unshell', unshellScript(layout(home).home));
 }
 
-module.exports = { launcherFiles, writeLaunchers, shortcutScript, unshellScript, makeShortcutsWindows, removeShellWindows, pathWith, pathWithout, ARP_KEY };
+// CON-0.1.3 (sandbox phase B): an update run by an OLDER CLI (0.1.2 had no Apps &
+// features refresh) leaves the entry on the old version. The installed server calls this
+// once at start: only when it runs from <home>/app/<v> and <home>/install.json names this
+// version does it rewrite the version values (refresh only; an absent entry stays absent).
+// write is injectable for tests.
+async function refreshArpForInstall(appRoot, version, write) {
+  const app = path.resolve(appRoot);
+  if (path.basename(path.dirname(app)).toLowerCase() !== 'app') return { skipped: 'not an install' };
+  const home = path.dirname(path.dirname(app));
+  let m = null;
+  try { m = JSON.parse(fs.readFileSync(path.join(home, 'install.json'), 'utf8')); } catch (e) { return { skipped: 'no install marker' }; }
+  if (!m || m.version !== version) return { skipped: 'the marker names another version' };
+  if (m.path && path.resolve(m.path).toLowerCase() !== app.toLowerCase()) return { skipped: 'the marker names another app folder' };
+  return (write || writeArpWindows)(home, version);
+}
+
+module.exports = { launcherFiles, writeLaunchers, shortcutScript, unshellScript, makeShortcutsWindows, removeShellWindows, pathWith, pathWithout, ARP_KEY, arpVersionLines, arpVersionScript, parseArpReadBack, writeArpWindows, refreshArpForInstall };

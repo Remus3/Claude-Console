@@ -1,0 +1,1 @@
+- Check that a scheduled task really fires, and note when its trigger window expires - why: a task showed Ready while failing every run, and trigger windows expire without a warning (prevents: silent scheduled failure)

@@ -397,6 +397,7 @@ function readDoneMarker(project, opts) {
   };
 }
 
+
 // ---------- git ----------
 function readGit(dir, timeoutMs) {
   return new Promise((resolve) => {
@@ -524,7 +525,8 @@ class StatusService {
       const done = marker ? { verdict: marker.verdict, session: marker.session, reason: marker.reason, at: marker.at } : null;
       let board = null;
       try { board = resolveBoard(p, this.cfg, { mapping: boardMap }); } catch (e) { board = null; }
-      return { id: p.id, name: p.name, code: p.code, retired: p.retired, self: this.isSelf(p.dir), handoff, progress, inbox, headless, done, board, git: this.git[p.id] || null };
+      const row = { id: p.id, name: p.name, code: p.code, retired: p.retired, self: this.isSelf(p.dir), handoff, progress, inbox, headless, done, board, git: this.git[p.id] || null };
+      return row;
     });
     this.markers = markers;
     let quota = null;

@@ -277,7 +277,8 @@ test('server: /api/health core-only without the plugin, run + report under data/
     const g = await req(srv, 'GET', '/api/health');
     assert.strictEqual(g.status, 200);
     assert.deepStrictEqual(g.body.plugins, []);
-    assert.deepStrictEqual(g.body.steps.map((s) => s.id), H.CORE_STEPS.map((s) => s.id));
+    // CON-013 L5: the machine steps (report-only, off by default) mount after the core ones
+    assert.deepStrictEqual(g.body.steps.map((s) => s.id), H.CORE_STEPS.concat(H.MACHINE_STEPS).map((s) => s.id));
     assert.ok(g.body.steps.every((s) => s.cost.usd === 0 && s.cost.tokens === 0));
     assert.strictEqual((await req(srv, 'POST', '/api/health/run', { steps: ['repo.drift'] })).status, 400);
     const r = await req(srv, 'POST', '/api/health/run', { steps: ['console.memory', 'console.scrollback', 'console.panes'] });

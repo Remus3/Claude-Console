@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {"type": "command", "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/text_first_guard.sh\""}
+        ]
+      }
+    ]
+  }
+}

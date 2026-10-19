@@ -1,0 +1,1614 @@
+{
+  "schema": 1,
+  "id": "lessons",
+  "order": 18,
+  "title": "Repeat-failure lessons library",
+  "summary": "Sixty-two short never-again rules, each with its reason and the incident class it prevents, kept in one lessons file with a single pointer line in CLAUDE.md.",
+  "why": "Each rule was paid for by a real failure that happened more than once; one line of reading is cheaper than another round of the same incident. CLAUDE.md gets one pointer, so its size budget is untouched.",
+  "default": "on",
+  "locked": false,
+  "items": [
+    {
+      "id": "lsn-ascii-only",
+      "order": 1801,
+      "title": "ASCII only in scripts, configs and docs",
+      "does": "Keep scripts, configs and docs ASCII only.",
+      "why": "A typographic dash in a script without a byte-order mark was decoded in the legacy code page and ended a string early.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["rule-encoding-ascii-lf"],
+      "conflicts_with": [],
+      "contributes": [],
+      "detect": [
+        {"text": "repo:CLAUDE.md", "regex": "Keep scripts, configs and docs ASCII only"}
+      ],
+      "notes": "Canonical: rule-encoding-ascii-lf; this lesson records the incident class and adds no second contribution."
+    },
+    {
+      "id": "lsn-write-bytes",
+      "order": 1802,
+      "title": "Write bytes explicitly when bytes matter",
+      "does": "Write files as bytes, or with an explicit newline setting, whenever sizes or hashes matter.",
+      "why": "Text-mode writes on Windows turn LF into CRLF, so byte counts and hashes stop matching what was meant.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-files", "slot": 100, "template": "templates/groups/files.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-write-bytes", "slot": 102, "template": "templates/lessons/lsn-write-bytes.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Write files as bytes, or with an explicit newline setting, whenever sizes or hashes matter"},
+        {"text": "repo:CLAUDE.md", "regex": "Write files as bytes, or with an explicit newline setting, whenever sizes or hashes matter"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Write files as bytes, or with an explicit newline setting, whenever sizes or hashes matter"}
+      ]
+    },
+    {
+      "id": "lsn-commit-msg-file",
+      "order": 1803,
+      "title": "Commit messages from a file in a private scratch folder",
+      "does": "Write a commit message to a file in your own scratch folder and commit with -F.",
+      "why": "Shell quoting mangled message text, and a shared temp file once delivered another session's message.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-git", "slot": 500, "template": "templates/groups/git.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-commit-msg-file", "slot": 501, "template": "templates/lessons/lsn-commit-msg-file.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Write a commit message to a file in your own scratch folder and commit with \\-F"},
+        {"text": "repo:CLAUDE.md", "regex": "Write a commit message to a file in your own scratch folder and commit with \\-F"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Write a commit message to a file in your own scratch folder and commit with \\-F"}
+      ]
+    },
+    {
+      "id": "lsn-hook-proven",
+      "order": 1804,
+      "title": "A hook is trusted only after it is seen to refuse",
+      "does": "Trust a hook only after you have seen it refuse a planted bad input.",
+      "why": "Invalid settings, an untrusted workspace, a missing flag or a drifted hooks path each left a hook installed but silent for weeks.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["ci-hooks-install-check"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-gates", "slot": 200, "template": "templates/groups/gates.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-hook-proven", "slot": 201, "template": "templates/lessons/lsn-hook-proven.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Trust a hook only after you have seen it refuse a planted bad input"},
+        {"text": "repo:CLAUDE.md", "regex": "Trust a hook only after you have seen it refuse a planted bad input"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Trust a hook only after you have seen it refuse a planted bad input"}
+      ]
+    },
+    {
+      "id": "lsn-git-hook-authoritative",
+      "order": 1805,
+      "title": "The git hook is the authoritative gate; the Claude hook is defence in depth",
+      "does": "Make the git hook the authoritative gate and treat the Claude tool hook as defence in depth.",
+      "why": "Automated runs and other tools commit without the Claude hook ever firing.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-gates", "slot": 200, "template": "templates/groups/gates.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-git-hook-authoritative", "slot": 202, "template": "templates/lessons/lsn-git-hook-authoritative.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Make the git hook the authoritative gate and treat the Claude tool hook as defence in depth"},
+        {"text": "repo:CLAUDE.md", "regex": "Make the git hook the authoritative gate and treat the Claude tool hook as defence in depth"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Make the git hook the authoritative gate and treat the Claude tool hook as defence in depth"}
+      ]
+    },
+    {
+      "id": "lsn-prepush-range",
+      "order": 1806,
+      "title": "pre-push grades the pushed range, read once from stdin",
+      "does": "In pre-push, grade every commit in the pushed range and read standard input exactly once.",
+      "why": "A check of HEAD alone misses earlier pushed commits, another hook can drain the input first, and an add-then-delete pair escapes a tree scan.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-gates", "slot": 200, "template": "templates/groups/gates.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-prepush-range", "slot": 203, "template": "templates/lessons/lsn-prepush-range.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "In pre\\-push, grade every commit in the pushed range and read standard input exactly once"},
+        {"text": "repo:CLAUDE.md", "regex": "In pre\\-push, grade every commit in the pushed range and read standard input exactly once"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "In pre\\-push, grade every commit in the pushed range and read standard input exactly once"}
+      ]
+    },
+    {
+      "id": "lsn-mutation-prove",
+      "order": 1807,
+      "title": "Prove each gate arm reds on a planted defect",
+      "does": "Prove every arm of a gate turns red on a planted defect before relying on it.",
+      "why": "Arms that nobody had seen fail turned out to check nothing.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-gates", "slot": 200, "template": "templates/groups/gates.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-mutation-prove", "slot": 204, "template": "templates/lessons/lsn-mutation-prove.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Prove every arm of a gate turns red on a planted defect before relying on it"},
+        {"text": "repo:CLAUDE.md", "regex": "Prove every arm of a gate turns red on a planted defect before relying on it"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Prove every arm of a gate turns red on a planted defect before relying on it"}
+      ]
+    },
+    {
+      "id": "lsn-empty-is-fail",
+      "order": 1808,
+      "title": "An empty enumeration must fail, not pass",
+      "does": "Treat an empty enumeration as a failure, never as a pass.",
+      "why": "An emptied parameter list and a gate that ran nothing both reported success and hid the gap.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-gates", "slot": 200, "template": "templates/groups/gates.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-empty-is-fail", "slot": 205, "template": "templates/lessons/lsn-empty-is-fail.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Treat an empty enumeration as a failure, never as a pass"},
+        {"text": "repo:CLAUDE.md", "regex": "Treat an empty enumeration as a failure, never as a pass"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Treat an empty enumeration as a failure, never as a pass"}
+      ]
+    },
+    {
+      "id": "lsn-skip-not-pass",
+      "order": 1809,
+      "title": "A skipped suite is not a passing suite",
+      "does": "Count a skipped suite or module as not run, and show skips in every report.",
+      "why": "An import-or-skip guard and a missing dependency each turned whole test groups into silent skips.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-gates", "slot": 200, "template": "templates/groups/gates.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-skip-not-pass", "slot": 206, "template": "templates/lessons/lsn-skip-not-pass.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Count a skipped suite or module as not run, and show skips in every report"},
+        {"text": "repo:CLAUDE.md", "regex": "Count a skipped suite or module as not run, and show skips in every report"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Count a skipped suite or module as not run, and show skips in every report"}
+      ]
+    },
+    {
+      "id": "lsn-full-history-ci",
+      "order": 1810,
+      "title": "CI checks out full history",
+      "does": "Check out the full git history in every CI job.",
+      "why": "A shallow clone made the history-reading tests skip and assert nothing.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-ci", "slot": 300, "template": "templates/groups/ci.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-full-history-ci", "slot": 301, "template": "templates/lessons/lsn-full-history-ci.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Check out the full git history in every CI job"},
+        {"text": "repo:CLAUDE.md", "regex": "Check out the full git history in every CI job"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Check out the full git history in every CI job"}
+      ],
+      "notes": "Enable later: when you add hosted CI and any test reads git history."
+    },
+    {
+      "id": "lsn-docs-push-guarded",
+      "order": 1811,
+      "title": "Docs-only pushes still run doc-reading tests",
+      "does": "Make a docs-only push still run every test that reads docs.",
+      "why": "A docs-only push skipped CI and broke a size guard that only a test checked.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["ci-workflow-docs-complement", "ci-workflow-no-paths-ignore"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-ci", "slot": 300, "template": "templates/groups/ci.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-docs-push-guarded", "slot": 302, "template": "templates/lessons/lsn-docs-push-guarded.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Make a docs\\-only push still run every test that reads docs"},
+        {"text": "repo:CLAUDE.md", "regex": "Make a docs\\-only push still run every test that reads docs"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Make a docs\\-only push still run every test that reads docs"}
+      ],
+      "notes": "Enable later: with hosted CI that skips docs-only pushes."
+    },
+    {
+      "id": "lsn-step-timeout",
+      "order": 1812,
+      "title": "CI step timeout below job timeout",
+      "does": "Set every CI step timeout below the job timeout.",
+      "why": "A job killed at its own limit reports cancelled instead of failed, so the failure is easy to miss.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-ci", "slot": 300, "template": "templates/groups/ci.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-step-timeout", "slot": 303, "template": "templates/lessons/lsn-step-timeout.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Set every CI step timeout below the job timeout"},
+        {"text": "repo:CLAUDE.md", "regex": "Set every CI step timeout below the job timeout"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Set every CI step timeout below the job timeout"}
+      ],
+      "notes": "Enable later: with hosted CI, before the first long-running job."
+    },
+    {
+      "id": "lsn-verify-fresh",
+      "order": 1813,
+      "title": "Re-run claims fresh; never carry a sub-agent's count forward",
+      "does": "Re-run a claimed result yourself before repeating it, and never carry a sub-agent's counts forward.",
+      "why": "A stale tool output replayed old results with invented counts and cited files that did not exist.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-gates", "slot": 200, "template": "templates/groups/gates.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-verify-fresh", "slot": 207, "template": "templates/lessons/lsn-verify-fresh.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Re\\-run a claimed result yourself before repeating it, and never carry a sub\\-agent's counts forward"},
+        {"text": "repo:CLAUDE.md", "regex": "Re\\-run a claimed result yourself before repeating it, and never carry a sub\\-agent's counts forward"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Re\\-run a claimed result yourself before repeating it, and never carry a sub\\-agent's counts forward"}
+      ]
+    },
+    {
+      "id": "lsn-claimed-green-gate",
+      "order": 1814,
+      "title": "Stop gate refuses 'tests pass' with no run behind it",
+      "does": "Refuse a 'tests pass' claim at the end of a session when no test run backs it.",
+      "why": "Green claimed without a run was the most often recorded failure of all.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-gates", "slot": 200, "template": "templates/groups/gates.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-claimed-green-gate", "slot": 208, "template": "templates/lessons/lsn-claimed-green-gate.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Refuse a 'tests pass' claim at the end of a session when no test run backs it"},
+        {"text": "repo:CLAUDE.md", "regex": "Refuse a 'tests pass' claim at the end of a session when no test run backs it"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Refuse a 'tests pass' claim at the end of a session when no test run backs it"}
+      ],
+      "notes": "Enable later: after the first time a session reports green without having run the tests."
+    },
+    {
+      "id": "lsn-atomic-writes",
+      "order": 1815,
+      "title": "Atomic writes: temp file then replace",
+      "does": "Write shared files atomically: write a temp file in the same folder, then replace the target.",
+      "why": "Readers that poll a file caught it half written and acted on torn data.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-files", "slot": 100, "template": "templates/groups/files.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-atomic-writes", "slot": 103, "template": "templates/lessons/lsn-atomic-writes.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Write shared files atomically: write a temp file in the same folder, then replace the target"},
+        {"text": "repo:CLAUDE.md", "regex": "Write shared files atomically: write a temp file in the same folder, then replace the target"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Write shared files atomically: write a temp file in the same folder, then replace the target"}
+      ]
+    },
+    {
+      "id": "lsn-compile-before-restart",
+      "order": 1816,
+      "title": "Compile before restarting a windowless daemon",
+      "does": "Compile or parse a background script before you restart it without a window.",
+      "why": "A syntax error in a windowless process exits silently, so the service just disappears.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-procs", "slot": 600, "template": "templates/groups/procs.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-compile-before-restart", "slot": 601, "template": "templates/lessons/lsn-compile-before-restart.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Compile or parse a background script before you restart it without a window"},
+        {"text": "repo:CLAUDE.md", "regex": "Compile or parse a background script before you restart it without a window"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Compile or parse a background script before you restart it without a window"}
+      ]
+    },
+    {
+      "id": "lsn-kill-by-pid",
+      "order": 1817,
+      "title": "Kill by PID tree, never by image name",
+      "does": "Stop processes by their recorded PID tree, never by image name.",
+      "why": "Killing by image name took down unrelated programs, and one shell rewrote the /F flag into a drive path.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-procs", "slot": 600, "template": "templates/groups/procs.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-kill-by-pid", "slot": 602, "template": "templates/lessons/lsn-kill-by-pid.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Stop processes by their recorded PID tree, never by image name"},
+        {"text": "repo:CLAUDE.md", "regex": "Stop processes by their recorded PID tree, never by image name"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Stop processes by their recorded PID tree, never by image name"}
+      ]
+    },
+    {
+      "id": "lsn-no-window-flag",
+      "order": 1818,
+      "title": "No-window flag on every console child",
+      "does": "Start every console child process with the no-window creation flag.",
+      "why": "The flag, not a windowless interpreter, stops console windows flashing up, and a detached flag silently disables it.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-procs", "slot": 600, "template": "templates/groups/procs.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-no-window-flag", "slot": 603, "template": "templates/lessons/lsn-no-window-flag.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Start every console child process with the no\\-window creation flag"},
+        {"text": "repo:CLAUDE.md", "regex": "Start every console child process with the no\\-window creation flag"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Start every console child process with the no\\-window creation flag"}
+      ]
+    },
+    {
+      "id": "lsn-tmp-retention",
+      "order": 1819,
+      "title": "Test temp retention 'failed', count 1; never a basetemp in the scratchpad",
+      "does": "Keep test temp folders only for failed runs, one run deep, and never point the test temp root into the session scratchpad.",
+      "why": "Tens of thousands of leftover temp files made every logon stall for minutes.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["sched-temp-hygiene"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-scratch", "slot": 700, "template": "templates/groups/scratch.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-tmp-retention", "slot": 701, "template": "templates/lessons/lsn-tmp-retention.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Keep test temp folders only for failed runs, one run deep, and never point the test temp root into the session scratchpad"},
+        {"text": "repo:CLAUDE.md", "regex": "Keep test temp folders only for failed runs, one run deep, and never point the test temp root into the session scratchpad"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Keep test temp folders only for failed runs, one run deep, and never point the test temp root into the session scratchpad"}
+      ]
+    },
+    {
+      "id": "lsn-private-scratch",
+      "order": 1820,
+      "title": "Private scratch subfolder and unique helper names per agent",
+      "does": "Give each agent its own scratch subfolder and unique helper file names.",
+      "why": "Agents sharing helper names overwrote each other's files, and one wrote another repo's progress file.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-scratch", "slot": 700, "template": "templates/groups/scratch.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-private-scratch", "slot": 702, "template": "templates/lessons/lsn-private-scratch.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Give each agent its own scratch subfolder and unique helper file names"},
+        {"text": "repo:CLAUDE.md", "regex": "Give each agent its own scratch subfolder and unique helper file names"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Give each agent its own scratch subfolder and unique helper file names"}
+      ]
+    },
+    {
+      "id": "lsn-scratch-not-durable",
+      "order": 1821,
+      "title": "The scratchpad does not survive /clear",
+      "does": "Keep evidence you need later in the repo or a sidecar area, never only in the session scratchpad.",
+      "why": "The scratchpad does not survive /clear, and evidence kept only there was lost.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-scratch", "slot": 700, "template": "templates/groups/scratch.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-scratch-not-durable", "slot": 703, "template": "templates/lessons/lsn-scratch-not-durable.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Keep evidence you need later in the repo or a sidecar area, never only in the session scratchpad"},
+        {"text": "repo:CLAUDE.md", "regex": "Keep evidence you need later in the repo or a sidecar area, never only in the session scratchpad"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Keep evidence you need later in the repo or a sidecar area, never only in the session scratchpad"}
+      ]
+    },
+    {
+      "id": "lsn-explicit-interpreter",
+      "order": 1822,
+      "title": "Launch by an explicit interpreter, never bare python3/py",
+      "does": "Launch scripts with an explicit interpreter path, never a bare python3 or py.",
+      "why": "On Windows python3 can be a store stub that hangs, and the launcher can pick an interpreter without your tools.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-procs", "slot": 600, "template": "templates/groups/procs.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-explicit-interpreter", "slot": 604, "template": "templates/lessons/lsn-explicit-interpreter.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Launch scripts with an explicit interpreter path, never a bare python3 or py"},
+        {"text": "repo:CLAUDE.md", "regex": "Launch scripts with an explicit interpreter path, never a bare python3 or py"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Launch scripts with an explicit interpreter path, never a bare python3 or py"}
+      ]
+    },
+    {
+      "id": "lsn-cmd-shims",
+      "order": 1823,
+      "title": "Spawn .cmd shims by full name from CreateProcess",
+      "does": "From CreateProcess, start command shims by their full name, such as npm.cmd.",
+      "why": "A bare npm or claude name fails with file-not-found from CreateProcess, so the automation never starts.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-procs", "slot": 600, "template": "templates/groups/procs.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-cmd-shims", "slot": 605, "template": "templates/lessons/lsn-cmd-shims.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "From CreateProcess, start command shims by their full name, such as npm\\.cmd"},
+        {"text": "repo:CLAUDE.md", "regex": "From CreateProcess, start command shims by their full name, such as npm\\.cmd"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "From CreateProcess, start command shims by their full name, such as npm\\.cmd"}
+      ]
+    },
+    {
+      "id": "lsn-no-machine-paths",
+      "order": 1824,
+      "title": "No home paths, host names, private names or account ids in tracked files",
+      "does": "Keep home paths, host names, private names and account ids out of every tracked file.",
+      "why": "Paths and names reached public history and the history had to be rewritten more than once.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["ci-hook-pre-push-leak"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-secrets", "slot": 900, "template": "templates/groups/secrets.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-no-machine-paths", "slot": 901, "template": "templates/lessons/lsn-no-machine-paths.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Keep home paths, host names, private names and account ids out of every tracked file"},
+        {"text": "repo:CLAUDE.md", "regex": "Keep home paths, host names, private names and account ids out of every tracked file"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Keep home paths, host names, private names and account ids out of every tracked file"}
+      ]
+    },
+    {
+      "id": "lsn-secret-fixtures",
+      "order": 1825,
+      "title": "Pin secrets by hash and plant fake fixtures; never echo env values",
+      "does": "Pin secrets by hash, test with planted fake values, and never echo an environment value.",
+      "why": "A real token was committed, and later pasted back in as a fix.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["floor-secrets-never-echoed"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-secrets", "slot": 900, "template": "templates/groups/secrets.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-secret-fixtures", "slot": 902, "template": "templates/lessons/lsn-secret-fixtures.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Pin secrets by hash, test with planted fake values, and never echo an environment value"},
+        {"text": "repo:CLAUDE.md", "regex": "Pin secrets by hash, test with planted fake values, and never echo an environment value"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Pin secrets by hash, test with planted fake values, and never echo an environment value"}
+      ]
+    },
+    {
+      "id": "lsn-scan-beyond-repo",
+      "order": 1826,
+      "title": "Secret scans cover scratch and shared areas too",
+      "does": "Run secret scans over scratch and shared areas too, not only over the repo.",
+      "why": "A plaintext admin key sat in a shared scratch folder that no scan covered.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-secrets", "slot": 900, "template": "templates/groups/secrets.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-scan-beyond-repo", "slot": 903, "template": "templates/lessons/lsn-scan-beyond-repo.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Run secret scans over scratch and shared areas too, not only over the repo"},
+        {"text": "repo:CLAUDE.md", "regex": "Run secret scans over scratch and shared areas too, not only over the repo"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Run secret scans over scratch and shared areas too, not only over the repo"}
+      ],
+      "notes": "Enable later: when agents or tools write outside the repo into shared scratch folders."
+    },
+    {
+      "id": "lsn-no-amend-no-tags",
+      "order": 1827,
+      "title": "Never amend, never push --tags; rewrites are gated",
+      "does": "Never amend a commit or push --tags; a history rewrite goes through a gated tool.",
+      "why": "An amend overwrote history, and a tag push re-created tags that had been deleted on purpose.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["cfg-deny-floor"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-git", "slot": 500, "template": "templates/groups/git.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-no-amend-no-tags", "slot": 502, "template": "templates/lessons/lsn-no-amend-no-tags.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Never amend a commit or push \\-\\-tags; a history rewrite goes through a gated tool"},
+        {"text": "repo:CLAUDE.md", "regex": "Never amend a commit or push \\-\\-tags; a history rewrite goes through a gated tool"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Never amend a commit or push \\-\\-tags; a history rewrite goes through a gated tool"}
+      ]
+    },
+    {
+      "id": "lsn-index-lock",
+      "order": 1828,
+      "title": "Clear a stale index.lock only through the lock tool",
+      "does": "Clear a stale index.lock only through the commit lock tool, after checking that no git process runs.",
+      "why": "Reboots and hangs left empty lock files that blocked merges, and deleting a live one corrupts the index.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["kit-fleet-gitlock"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-git", "slot": 500, "template": "templates/groups/git.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-index-lock", "slot": 503, "template": "templates/lessons/lsn-index-lock.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Clear a stale index\\.lock only through the commit lock tool, after checking that no git process runs"},
+        {"text": "repo:CLAUDE.md", "regex": "Clear a stale index\\.lock only through the commit lock tool, after checking that no git process runs"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Clear a stale index\\.lock only through the commit lock tool, after checking that no git process runs"}
+      ]
+    },
+    {
+      "id": "lsn-no-cd-chain-destructive",
+      "order": 1829,
+      "title": "Never chain cd with a destructive git command",
+      "does": "Never chain cd with a destructive git command; name the repo with git -C instead.",
+      "why": "A failed cd left the shell in the main checkout and the hard reset ran there.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["cfg-deny-floor"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-git", "slot": 500, "template": "templates/groups/git.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-no-cd-chain-destructive", "slot": 504, "template": "templates/lessons/lsn-no-cd-chain-destructive.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Never chain cd with a destructive git command; name the repo with git \\-C instead"},
+        {"text": "repo:CLAUDE.md", "regex": "Never chain cd with a destructive git command; name the repo with git \\-C instead"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Never chain cd with a destructive git command; name the repo with git \\-C instead"}
+      ]
+    },
+    {
+      "id": "lsn-worktree-gaps",
+      "order": 1830,
+      "title": "Worktrees lack ignored files and unpushed commits",
+      "does": "Remember that a worktree lacks ignored files and commits not on its base; copy them or use a full copy.",
+      "why": "A worktree was missing an ignored data folder, and one built from the remote branch missed local commits.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-git", "slot": 500, "template": "templates/groups/git.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-worktree-gaps", "slot": 505, "template": "templates/lessons/lsn-worktree-gaps.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Remember that a worktree lacks ignored files and commits not on its base; copy them or use a full copy"},
+        {"text": "repo:CLAUDE.md", "regex": "Remember that a worktree lacks ignored files and commits not on its base; copy them or use a full copy"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Remember that a worktree lacks ignored files and commits not on its base; copy them or use a full copy"}
+      ]
+    },
+    {
+      "id": "lsn-no-prune-on-mtime",
+      "order": 1831,
+      "title": "Never prune on age alone; check for a consumer",
+      "does": "Never delete on age alone; check for a consumer first.",
+      "why": "Data that is referenced but rarely touched looks abandoned.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["floor-recycle-bin"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-deletes", "slot": 800, "template": "templates/groups/deletes.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-no-prune-on-mtime", "slot": 801, "template": "templates/lessons/lsn-no-prune-on-mtime.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Never delete on age alone; check for a consumer first"},
+        {"text": "repo:CLAUDE.md", "regex": "Never delete on age alone; check for a consumer first"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Never delete on age alone; check for a consumer first"}
+      ]
+    },
+    {
+      "id": "lsn-prove-recycle-bin",
+      "order": 1832,
+      "title": "Prove the Recycle Bin will take it before a large delete",
+      "does": "Before a large delete, prove that the Recycle Bin will take it.",
+      "why": "A cached size cap plus a no-confirmation flag deleted a very large copy permanently.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["floor-recycle-bin"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-deletes", "slot": 800, "template": "templates/groups/deletes.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-prove-recycle-bin", "slot": 802, "template": "templates/lessons/lsn-prove-recycle-bin.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Before a large delete, prove that the Recycle Bin will take it"},
+        {"text": "repo:CLAUDE.md", "regex": "Before a large delete, prove that the Recycle Bin will take it"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Before a large delete, prove that the Recycle Bin will take it"}
+      ]
+    },
+    {
+      "id": "lsn-no-walk-links",
+      "order": 1833,
+      "title": "Never walk or delete through junctions or mount points",
+      "does": "Stop at junctions, symlinks and mount points when you walk or delete a tree.",
+      "why": "Tree walks followed planted links out of the folder they were meant to clean.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-deletes", "slot": 800, "template": "templates/groups/deletes.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-no-walk-links", "slot": 803, "template": "templates/lessons/lsn-no-walk-links.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Stop at junctions, symlinks and mount points when you walk or delete a tree"},
+        {"text": "repo:CLAUDE.md", "regex": "Stop at junctions, symlinks and mount points when you walk or delete a tree"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Stop at junctions, symlinks and mount points when you walk or delete a tree"}
+      ]
+    },
+    {
+      "id": "lsn-cap-fixture-size",
+      "order": 1834,
+      "title": "Cap fixture and harness sizes; watch free disk",
+      "does": "Cap fixture and harness sizes, and check free disk before large writes.",
+      "why": "A sparse test file was zero-filled to tens of gigabytes, and a full temp drive truncated files to zero bytes.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-tests", "slot": 400, "template": "templates/groups/tests.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-cap-fixture-size", "slot": 401, "template": "templates/lessons/lsn-cap-fixture-size.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Cap fixture and harness sizes, and check free disk before large writes"},
+        {"text": "repo:CLAUDE.md", "regex": "Cap fixture and harness sizes, and check free disk before large writes"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Cap fixture and harness sizes, and check free disk before large writes"}
+      ]
+    },
+    {
+      "id": "lsn-memory-aware-suites",
+      "order": 1835,
+      "title": "Run concurrent suites by measured memory; OOM output is void",
+      "does": "Run concurrent suites only as far as measured free memory allows, and treat output from a run killed for memory as void.",
+      "why": "Low memory killed background suites, and their partial output looked like results.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["kit-fleet-suite-gate"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-tests", "slot": 400, "template": "templates/groups/tests.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-memory-aware-suites", "slot": 402, "template": "templates/lessons/lsn-memory-aware-suites.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Run concurrent suites only as far as measured free memory allows, and treat output from a run killed for memory as void"},
+        {"text": "repo:CLAUDE.md", "regex": "Run concurrent suites only as far as measured free memory allows, and treat output from a run killed for memory as void"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Run concurrent suites only as far as measured free memory allows, and treat output from a run killed for memory as void"}
+      ]
+    },
+    {
+      "id": "lsn-exit-code-from-file",
+      "order": 1836,
+      "title": "Read exit codes from a file or with pipefail",
+      "does": "Read a command's exit status from a file or with pipefail, never through a pipe into tail or head.",
+      "why": "Piping output through tail returned the pipe's status and hid the failing command.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-gates", "slot": 200, "template": "templates/groups/gates.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-exit-code-from-file", "slot": 209, "template": "templates/lessons/lsn-exit-code-from-file.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Read a command's exit status from a file or with pipefail, never through a pipe into tail or head"},
+        {"text": "repo:CLAUDE.md", "regex": "Read a command's exit status from a file or with pipefail, never through a pipe into tail or head"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Read a command's exit status from a file or with pipefail, never through a pipe into tail or head"}
+      ]
+    },
+    {
+      "id": "lsn-keep-summary-line",
+      "order": 1837,
+      "title": "Never silence the runner's summary line",
+      "does": "Never silence the test runner's summary line.",
+      "why": "An extra-quiet flag dropped the counts line, so nobody could read the result.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-gates", "slot": 200, "template": "templates/groups/gates.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-keep-summary-line", "slot": 210, "template": "templates/lessons/lsn-keep-summary-line.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Never silence the test runner's summary line"},
+        {"text": "repo:CLAUDE.md", "regex": "Never silence the test runner's summary line"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Never silence the test runner's summary line"}
+      ]
+    },
+    {
+      "id": "lsn-append-fields",
+      "order": 1838,
+      "title": "Append new dataclass fields at the end with a default",
+      "does": "Append a new field at the end of a data class, with a default.",
+      "why": "A field inserted in the middle broke every positional construction of the class.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-decide", "slot": 1100, "template": "templates/groups/decide.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-append-fields", "slot": 1101, "template": "templates/lessons/lsn-append-fields.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Append a new field at the end of a data class, with a default"},
+        {"text": "repo:CLAUDE.md", "regex": "Append a new field at the end of a data class, with a default"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Append a new field at the end of a data class, with a default"}
+      ],
+      "notes": "Enable later: for Python code that builds data classes positionally."
+    },
+    {
+      "id": "lsn-backfill",
+      "order": 1839,
+      "title": "A data fix includes the backfill of rows already corrupted",
+      "does": "Ship a data fix together with the backfill of the rows it already corrupted.",
+      "why": "Fixes that only stopped new damage needed two more recovery rounds.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["cmd-root-cause-fix"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-deletes", "slot": 800, "template": "templates/groups/deletes.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-backfill", "slot": 804, "template": "templates/lessons/lsn-backfill.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Ship a data fix together with the backfill of the rows it already corrupted"},
+        {"text": "repo:CLAUDE.md", "regex": "Ship a data fix together with the backfill of the rows it already corrupted"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Ship a data fix together with the backfill of the rows it already corrupted"}
+      ]
+    },
+    {
+      "id": "lsn-fix-the-class",
+      "order": 1840,
+      "title": "Grep for the fix's shape; fix the class, not the instance",
+      "does": "After a fix, search for the same shape elsewhere and fix the class, not the instance.",
+      "why": "Sibling cases of a fixed bug kept failing one at a time.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["cmd-root-cause-fix"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-decide", "slot": 1100, "template": "templates/groups/decide.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-fix-the-class", "slot": 1102, "template": "templates/lessons/lsn-fix-the-class.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "After a fix, search for the same shape elsewhere and fix the class, not the instance"},
+        {"text": "repo:CLAUDE.md", "regex": "After a fix, search for the same shape elsewhere and fix the class, not the instance"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "After a fix, search for the same shape elsewhere and fix the class, not the instance"}
+      ]
+    },
+    {
+      "id": "lsn-refute-cap",
+      "order": 1841,
+      "title": "Cap refute rounds, then adjudicate",
+      "does": "Cap review and refute rounds, then hand the question to an adjudicator.",
+      "why": "An uncapped review loop ran for a dozen rounds without converging.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["agent-adjudicator"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-decide", "slot": 1100, "template": "templates/groups/decide.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-refute-cap", "slot": 1103, "template": "templates/lessons/lsn-refute-cap.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Cap review and refute rounds, then hand the question to an adjudicator"},
+        {"text": "repo:CLAUDE.md", "regex": "Cap review and refute rounds, then hand the question to an adjudicator"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Cap review and refute rounds, then hand the question to an adjudicator"}
+      ]
+    },
+    {
+      "id": "lsn-responder-marks-read",
+      "order": 1842,
+      "title": "A responder marks every note handled; disable a task whose fires all halt",
+      "does": "Make an automated responder mark every note handled, and disable a task whose runs all halt.",
+      "why": "An unread note re-fired the responder on every tick and spent budget for days.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["hl-inbox-responder"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-auto", "slot": 1000, "template": "templates/groups/auto.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-responder-marks-read", "slot": 1001, "template": "templates/lessons/lsn-responder-marks-read.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Make an automated responder mark every note handled, and disable a task whose runs all halt"},
+        {"text": "repo:CLAUDE.md", "regex": "Make an automated responder mark every note handled, and disable a task whose runs all halt"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Make an automated responder mark every note handled, and disable a task whose runs all halt"}
+      ],
+      "notes": "Enable later: with the headless module, when a scheduled task answers an inbox."
+    },
+    {
+      "id": "lsn-task-liveness",
+      "order": 1843,
+      "title": "Check a scheduled task really fires; trigger windows expire",
+      "does": "Check that a scheduled task really fires, and note when its trigger window expires.",
+      "why": "A task showed Ready while failing every run, and trigger windows expire without a warning.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-auto", "slot": 1000, "template": "templates/groups/auto.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-task-liveness", "slot": 1002, "template": "templates/lessons/lsn-task-liveness.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Check that a scheduled task really fires, and note when its trigger window expires"},
+        {"text": "repo:CLAUDE.md", "regex": "Check that a scheduled task really fires, and note when its trigger window expires"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Check that a scheduled task really fires, and note when its trigger window expires"}
+      ]
+    },
+    {
+      "id": "lsn-hermetic-tests",
+      "order": 1844,
+      "title": "Tests never read user config or live state",
+      "does": "Keep tests hermetic: never read user config, home-folder files or live state.",
+      "why": "Tests that read a user config file passed on one machine and failed in CI.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["kit-fleet-test-guard"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-tests", "slot": 400, "template": "templates/groups/tests.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-hermetic-tests", "slot": 403, "template": "templates/lessons/lsn-hermetic-tests.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Keep tests hermetic: never read user config, home\\-folder files or live state"},
+        {"text": "repo:CLAUDE.md", "regex": "Keep tests hermetic: never read user config, home\\-folder files or live state"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Keep tests hermetic: never read user config, home\\-folder files or live state"}
+      ]
+    },
+    {
+      "id": "lsn-testpaths-isolation",
+      "order": 1845,
+      "title": "Restrict test discovery to the repo's own test dirs",
+      "does": "Restrict test discovery to the repo's own test folders.",
+      "why": "A bare test run imported test code from a folder that other tools write into, which ran code nobody reviewed.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-tests", "slot": 400, "template": "templates/groups/tests.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-testpaths-isolation", "slot": 404, "template": "templates/lessons/lsn-testpaths-isolation.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Restrict test discovery to the repo's own test folders"},
+        {"text": "repo:CLAUDE.md", "regex": "Restrict test discovery to the repo's own test folders"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Restrict test discovery to the repo's own test folders"}
+      ]
+    },
+    {
+      "id": "lsn-readonly-responder",
+      "order": 1846,
+      "title": "Read-only automated runs get no shell at all",
+      "does": "Give a read-only automated run no shell tool at all.",
+      "why": "A supposedly read-only command list still allowed writing a file that the test runner then executed.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["cfg-headless-tool-floor"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-auto", "slot": 1000, "template": "templates/groups/auto.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-readonly-responder", "slot": 1003, "template": "templates/lessons/lsn-readonly-responder.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Give a read\\-only automated run no shell tool at all"},
+        {"text": "repo:CLAUDE.md", "regex": "Give a read\\-only automated run no shell tool at all"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Give a read\\-only automated run no shell tool at all"}
+      ],
+      "notes": "Enable later: with headless runs that should only read."
+    },
+    {
+      "id": "lsn-strip-auth-env",
+      "order": 1847,
+      "title": "Strip provider auth variables from spawned children",
+      "does": "Strip provider auth variables from the environment of every spawned child.",
+      "why": "An unrelated key in the environment redirected every spawned run and broke it.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["kit-fleet-headless"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-auto", "slot": 1000, "template": "templates/groups/auto.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-strip-auth-env", "slot": 1004, "template": "templates/lessons/lsn-strip-auth-env.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Strip provider auth variables from the environment of every spawned child"},
+        {"text": "repo:CLAUDE.md", "regex": "Strip provider auth variables from the environment of every spawned child"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Strip provider auth variables from the environment of every spawned child"}
+      ],
+      "notes": "Enable later: with headless runs or any tool that spawns Claude itself."
+    },
+    {
+      "id": "lsn-everything-rotates",
+      "order": 1848,
+      "title": "Every log and accreting file has a retention",
+      "does": "Give every log and every file that only grows a retention or a size cap.",
+      "why": "Spawn logs, run journals and a runtime folder grew without limit into gigabytes.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["sc-runtime-ignored-reaped"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-scratch", "slot": 700, "template": "templates/groups/scratch.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-everything-rotates", "slot": 704, "template": "templates/lessons/lsn-everything-rotates.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Give every log and every file that only grows a retention or a size cap"},
+        {"text": "repo:CLAUDE.md", "regex": "Give every log and every file that only grows a retention or a size cap"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Give every log and every file that only grows a retention or a size cap"}
+      ]
+    },
+    {
+      "id": "lsn-stale-bytecode",
+      "order": 1849,
+      "title": "Suspect stale bytecode; use a separate pycache prefix",
+      "does": "Suspect stale bytecode when a change has no effect, and keep the cache under a separate prefix.",
+      "why": "An edit that kept the file size and timestamp close reused an old compiled file.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-tests", "slot": 400, "template": "templates/groups/tests.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-stale-bytecode", "slot": 405, "template": "templates/lessons/lsn-stale-bytecode.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Suspect stale bytecode when a change has no effect, and keep the cache under a separate prefix"},
+        {"text": "repo:CLAUDE.md", "regex": "Suspect stale bytecode when a change has no effect, and keep the cache under a separate prefix"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Suspect stale bytecode when a change has no effect, and keep the cache under a separate prefix"}
+      ],
+      "notes": "Enable later: for Python repos where an edit sometimes seems to have no effect."
+    },
+    {
+      "id": "lsn-anchored-hooks",
+      "order": 1850,
+      "title": "Anchor hook commands to the project dir",
+      "does": "Anchor every hook command to the project folder.",
+      "why": "A cd made a relative hook path unresolvable and locked the tools out of both shells.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["cfg-hook-anchored"],
+      "conflicts_with": [],
+      "contributes": [],
+      "detect": [
+        {"text": "repo:CLAUDE.md", "regex": "Anchor every hook command to the project folder"}
+      ],
+      "notes": "Canonical: cfg-hook-anchored; this lesson records the incident class and adds no second contribution."
+    },
+    {
+      "id": "lsn-one-source-per-number",
+      "order": 1851,
+      "title": "State each threshold once; reference it elsewhere",
+      "does": "State each threshold in one place and reference it everywhere else.",
+      "why": "The same limit written in two files drifted to two different values.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["md-doc-topology"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-decide", "slot": 1100, "template": "templates/groups/decide.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-one-source-per-number", "slot": 1105, "template": "templates/lessons/lsn-one-source-per-number.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "State each threshold in one place and reference it everywhere else"},
+        {"text": "repo:CLAUDE.md", "regex": "State each threshold in one place and reference it everywhere else"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "State each threshold in one place and reference it everywhere else"}
+      ]
+    },
+    {
+      "id": "lsn-cite-headings",
+      "order": 1852,
+      "title": "Cite headings and ids, not line numbers or unpublished commits",
+      "does": "Cite headings and ids, never line numbers or unpublished commit hashes.",
+      "why": "Line pointers drifted with every edit, and a squash removed commits that docs cited.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-decide", "slot": 1100, "template": "templates/groups/decide.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-cite-headings", "slot": 1106, "template": "templates/lessons/lsn-cite-headings.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Cite headings and ids, never line numbers or unpublished commit hashes"},
+        {"text": "repo:CLAUDE.md", "regex": "Cite headings and ids, never line numbers or unpublished commit hashes"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Cite headings and ids, never line numbers or unpublished commit hashes"}
+      ]
+    },
+    {
+      "id": "lsn-tos-floor",
+      "order": 1853,
+      "title": "Never touch a running game or app process",
+      "does": "Never touch a running game or app process, its memory or its input; edit only its offline config files.",
+      "why": "Anti-cheat systems treat process access as cheating, and account bans cannot be undone.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["mach-tos-floor"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-auto", "slot": 1000, "template": "templates/groups/auto.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-tos-floor", "slot": 1005, "template": "templates/lessons/lsn-tos-floor.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Never touch a running game or app process, its memory or its input; edit only its offline config files"},
+        {"text": "repo:CLAUDE.md", "regex": "Never touch a running game or app process, its memory or its input; edit only its offline config files"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Never touch a running game or app process, its memory or its input; edit only its offline config files"}
+      ],
+      "notes": "Enable later: if this repo's tools read or tune games or other apps on this machine."
+    },
+    {
+      "id": "lsn-idle-control",
+      "order": 1854,
+      "title": "Run an idle control before attributing a timing change",
+      "does": "Run an idle control before you attribute a timing change to your edit.",
+      "why": "Background processes changed timings between runs and were mistaken for the effect of a change.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-tests", "slot": 400, "template": "templates/groups/tests.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-idle-control", "slot": 406, "template": "templates/lessons/lsn-idle-control.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Run an idle control before you attribute a timing change to your edit"},
+        {"text": "repo:CLAUDE.md", "regex": "Run an idle control before you attribute a timing change to your edit"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Run an idle control before you attribute a timing change to your edit"}
+      ],
+      "notes": "Enable later: for projects that measure performance, boot time or latency."
+    },
+    {
+      "id": "lsn-kill-tree",
+      "order": 1855,
+      "title": "Stopping a task kills the wrapper, not its child; stop the tree",
+      "does": "Stop a task's whole process tree, not just its wrapper.",
+      "why": "Ending a scheduled task killed the wrapper and left its test run going for most of an hour.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-procs", "slot": 600, "template": "templates/groups/procs.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-kill-tree", "slot": 606, "template": "templates/lessons/lsn-kill-tree.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Stop a task's whole process tree, not just its wrapper"},
+        {"text": "repo:CLAUDE.md", "regex": "Stop a task's whole process tree, not just its wrapper"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Stop a task's whole process tree, not just its wrapper"}
+      ]
+    },
+    {
+      "id": "lsn-generated-output-gated",
+      "order": 1856,
+      "title": "Generated reports pass the same content gates",
+      "does": "Run generated reports and files through the same content gates as hand-written ones.",
+      "why": "Glyphs written into a generated report turned CI red.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-gates", "slot": 200, "template": "templates/groups/gates.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-generated-output-gated", "slot": 211, "template": "templates/lessons/lsn-generated-output-gated.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Run generated reports and files through the same content gates as hand\\-written ones"},
+        {"text": "repo:CLAUDE.md", "regex": "Run generated reports and files through the same content gates as hand\\-written ones"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Run generated reports and files through the same content gates as hand\\-written ones"}
+      ]
+    },
+    {
+      "id": "lsn-repoint-after-move",
+      "order": 1857,
+      "title": "After moving a repo, re-point hooksPath, shortcuts, memory slug and tasks",
+      "does": "After moving a repo, re-point the hooks path, shortcuts, the memory project folder and scheduled tasks.",
+      "why": "After a move, hooks pointed at the recycled copy, a shortcut launched the old folder and readers used a dead memory folder.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["rec-project-slug"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-git", "slot": 500, "template": "templates/groups/git.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-repoint-after-move", "slot": 506, "template": "templates/lessons/lsn-repoint-after-move.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "After moving a repo, re\\-point the hooks path, shortcuts, the memory project folder and scheduled tasks"},
+        {"text": "repo:CLAUDE.md", "regex": "After moving a repo, re\\-point the hooks path, shortcuts, the memory project folder and scheduled tasks"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "After moving a repo, re\\-point the hooks path, shortcuts, the memory project folder and scheduled tasks"}
+      ]
+    },
+    {
+      "id": "lsn-short-paths",
+      "order": 1858,
+      "title": "Keep generated paths short",
+      "does": "Keep generated file and folder names short and shallow.",
+      "why": "Windows path limits made deep generated paths fail with 'filename too long' in git and test runners.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-files", "slot": 100, "template": "templates/groups/files.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-short-paths", "slot": 104, "template": "templates/lessons/lsn-short-paths.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Keep generated file and folder names short and shallow"},
+        {"text": "repo:CLAUDE.md", "regex": "Keep generated file and folder names short and shallow"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Keep generated file and folder names short and shallow"}
+      ],
+      "notes": "Enable later: when the repo generates deep folder trees or long file names on Windows."
+    },
+    {
+      "id": "lsn-no-saturation",
+      "order": 1859,
+      "title": "Never saturate the machine: harness <= cores, at most two suite builders",
+      "does": "Never saturate the machine: keep load harnesses at or below the core count and run at most two whole suites at once.",
+      "why": "A load harness at twice the core count made the whole machine unresponsive.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["lsn-memory-aware-suites"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-tests", "slot": 400, "template": "templates/groups/tests.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-no-saturation", "slot": 407, "template": "templates/lessons/lsn-no-saturation.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Never saturate the machine: keep load harnesses at or below the core count and run at most two whole suites at once"},
+        {"text": "repo:CLAUDE.md", "regex": "Never saturate the machine: keep load harnesses at or below the core count and run at most two whole suites at once"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Never saturate the machine: keep load harnesses at or below the core count and run at most two whole suites at once"}
+      ]
+    },
+    {
+      "id": "lsn-product-floor",
+      "order": 1860,
+      "title": "Product before process: track the share of product commits",
+      "does": "Track the share of commits that change the product, and keep it above a floor you set.",
+      "why": "Process work crowded out product work until only a few percent of commits touched the product.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-decide", "slot": 1100, "template": "templates/groups/decide.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-product-floor", "slot": 1107, "template": "templates/lessons/lsn-product-floor.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Track the share of commits that change the product, and keep it above a floor you set"},
+        {"text": "repo:CLAUDE.md", "regex": "Track the share of commits that change the product, and keep it above a floor you set"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Track the share of commits that change the product, and keep it above a floor you set"}
+      ],
+      "notes": "Enable later: when sessions spend more time on tooling than on the product."
+    },
+    {
+      "id": "lsn-deferral-dated",
+      "order": 1861,
+      "title": "A deferral without a date is not a deferral",
+      "does": "Give every deferral a date or a trigger, or record it as dropped.",
+      "why": "Undated deferrals were never picked up again.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/lessons.md", "template": "templates/lessons-head.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "group-decide", "slot": 1100, "template": "templates/groups/decide.md"},
+        {"kind": "block", "target": "repo:{docs_dir}/lessons.md", "block": "lsn-deferral-dated", "slot": 1108, "template": "templates/lessons/lsn-deferral-dated.md"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "lessons-pointer", "slot": 1800, "template": "templates/claude-md-pointer.md"}
+      ],
+      "detect": [
+        {"text": "repo:{docs_dir}/lessons.md", "regex": "Give every deferral a date or a trigger, or record it as dropped"},
+        {"text": "repo:CLAUDE.md", "regex": "Give every deferral a date or a trigger, or record it as dropped"}
+      ],
+      "verify": [
+        {"regex": "repo:{docs_dir}/lessons.md", "match": "Give every deferral a date or a trigger, or record it as dropped"}
+      ]
+    },
+    {
+      "id": "lsn-reversal-clause",
+      "order": 1862,
+      "title": "Every settled or do-not-redo entry names what reverses it",
+      "does": "Give every settled or do-not-redo entry a clause naming what would reverse it.",
+      "why": "Entries without a reversal clause were argued again, or became permanent by accident.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["conv-dnr-reversal"],
+      "conflicts_with": [],
+      "contributes": [],
+      "detect": [
+        {"text": "repo:CLAUDE.md", "regex": "Give every settled or do\\-not\\-redo entry a clause naming what would reverse it"}
+      ],
+      "notes": "Canonical: conv-dnr-reversal; this lesson records the incident class and adds no second contribution."
+    }
+  ]
+}

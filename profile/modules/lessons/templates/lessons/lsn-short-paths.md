@@ -1,0 +1,1 @@
+- Keep generated file and folder names short and shallow - why: Windows path limits made deep generated paths fail with 'filename too long' in git and test runners (prevents: path limit)

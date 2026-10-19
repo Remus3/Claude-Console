@@ -1,0 +1,4 @@
+{
+  "video": {"fps": 60, "vsync": true, "mode": "windowed"},
+  "audio": {"volume": 0.5}
+}

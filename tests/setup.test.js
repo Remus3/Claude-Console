@@ -115,7 +115,7 @@ test('CLI setup: plan by default, --apply needs --yes; install --setup shows the
   const root = tmpdir('cc-setup-');
   const cd = path.join(root, '.claude');
   const lines = [];
-  const deps = { out: (s) => lines.push(s), nodePath: NODE, consoleRoot: ROOT };
+  const deps = { out: (s) => lines.push(s), nodePath: NODE, consoleRoot: ROOT, legacySetup: true };
   assert.strictEqual(await cli.run(['setup', '--home', path.join(root, 'h'), '--config-dir', cd], deps), 0);
   assert.ok(lines.some((l) => /^new +cmd-done/.test(l)), lines.join('\n'));
   assert.ok(lines.some((l) => /claude-console setup --apply --yes/.test(l)));
@@ -126,4 +126,44 @@ test('CLI setup: plan by default, --apply needs --yes; install --setup shows the
   const j = JSON.parse(lines[lines.length - 1]);
   assert.deepStrictEqual(j.written.map((x) => x.id), ['cmd-done']);
   assert.ok(fs.existsSync(path.join(cd, 'commands', 'done.md')));
+});
+
+// CON-013 L3: with a shipped profile that has the `console` module, setup is the profile
+// apply of that module (dry run by default, --apply --yes, journaled + revertable).
+test('CLI setup routes to profile apply --only console once the profile ships it', async () => {
+  const root = tmpdir('cc-setup-');
+  const prof = path.join(root, 'profile');
+  fs.cpSync(path.join(__dirname, 'fixtures', 'profile-min'), prof, { recursive: true });
+  const pj = JSON.parse(r(path.join(prof, 'profile.json')));
+  pj.modules.push('console');
+  w(path.join(prof, 'profile.json'), JSON.stringify(pj, null, 2));
+  w(path.join(prof, 'modules', 'console', 'module.json'), JSON.stringify({ schema: 1, id: 'console', order: 3, title: 'Console', summary: 'What the console ships.', why: 'The chip runs it.', default: 'on', items: [
+    { id: 'console-done-chip', order: 301, title: 'The /done command', does: 'Adds the /done command.', why: 'The composer chip runs it.', risk: 'low', default: 'on', platform: ['win32', 'darwin', 'linux'],
+      depends_on: [], pairs_with: [], conflicts_with: [], contributes: [{ kind: 'file', target: 'user:commands/done.md', template: 'templates/done.md', mode: 'managed' }] }] }, null, 2));
+  w(path.join(prof, 'modules', 'console', 'templates', 'done.md'), 'Run the end of session ritual.\n');
+  assert.ok(setup.profileRoute(ROOT, { profileDir: prof }));
+  const cd = path.join(root, '.claude');
+  const lines = [];
+  const deps = { out: (s) => lines.push(s), consoleRoot: ROOT, profileDir: prof, dataDir: path.join(root, 'data'), noDefaultAdapters: true };
+  assert.strictEqual(await cli.run(['setup', '--home', path.join(root, 'h'), '--config-dir', cd], deps), 0, lines.join('\n'));
+  assert.ok(lines.some((l) => /^new +console-done-chip +file user:commands\/done\.md/.test(l)), lines.join('\n'));
+  assert.ok(!fs.existsSync(cd), 'dry run');
+  assert.strictEqual(await cli.run(['setup', '--home', path.join(root, 'h'), '--config-dir', cd, '--apply'], deps), 1);
+  lines.length = 0;
+  assert.strictEqual(await cli.run(['setup', '--home', path.join(root, 'h'), '--config-dir', cd, '--only', 'cmd-done', '--apply', '--yes'], deps), 0, lines.join('\n'));
+  assert.strictEqual(r(path.join(cd, 'commands', 'done.md')), 'Run the end of session ritual.\n');
+  assert.ok(lines.some((l) => /^applied tx /.test(l)));
+});
+
+// Sandbox phase A (013-VERIFY): with the shipped profile, a user-target `setup` dry run
+// exits 0 and writes nothing, although the console module's dependencies carry repo files
+// whose paths need {repo_code}: a contribution with no target root asks no variable.
+test('CLI setup on the shipped profile: user-target dry run exits 0, no {repo_code} refusal', async () => {
+  const root = tmpdir('cc-setup-');
+  const cd = path.join(root, '.claude');
+  const lines = [];
+  const deps = { out: (s) => lines.push(s), consoleRoot: ROOT, dataDir: path.join(root, 'data'), noDefaultAdapters: true };
+  assert.strictEqual(await cli.run(['setup', '--home', path.join(root, 'h'), '--config-dir', cd], deps), 0, lines.join('\n'));
+  assert.ok(!lines.some((l) => /refused/.test(l)), lines.join('\n'));
+  assert.ok(!fs.existsSync(cd), 'dry run writes nothing');
 });

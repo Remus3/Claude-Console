@@ -1,0 +1,1 @@
+- Give a read-only automated run no shell tool at all - why: a supposedly read-only command list still allowed writing a file that the test runner then executed (prevents: privilege escalation)

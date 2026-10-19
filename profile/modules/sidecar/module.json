@@ -1,0 +1,195 @@
+{
+  "schema": 1,
+  "id": "sidecar",
+  "order": 20,
+  "title": "Sidecar areas outside the repo and their cleanup",
+  "summary": "One known home outside the repo for worktrees, scratch, test temp, walk-throughs and archives, with checked moves and measured retention.",
+  "why": "Heavy output inside a repo or in system Temp bloats backups, slows logons and hides secrets; most single-repo users never need it, so the areas stay off until they do, while the outside-writes register and the runtime reaper stay on.",
+  "default": "off",
+  "locked": false,
+  "items": [
+    {
+      "id": "sc-sidecar-root",
+      "order": 2001,
+      "title": "Sidecar root with fixed areas per repo",
+      "does": "Sets one sidecar root for this repo outside the repo folder, with five fixed areas (Worktree, Scratch, Temp, Walk, Archive), records it in local git config and adds a rule and a small tool that prints the paths.",
+      "why": "Repos stay small and backups stay lean when heavy output has one known home outside the repo; every worktree of the repo resolves to the same root.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "git", "key": "profile.sidecarRoot", "value": "{sidecar_root}/{repo_code}", "scope": "local"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "rules", "slot": 2001, "template": "templates/rules/sidecar-root.md"},
+        {"kind": "file", "target": "repo:tools/sidecar.py", "template": "templates/tools/sidecar.py", "mode": "managed"}
+      ],
+      "detect": [
+        {"git": "profile.sidecarRoot"}
+      ],
+      "scope": "machine-specific",
+      "notes": "Enable later: when worktrees, evidence or bundles start to bloat the repo or Temp (replaces conv-sidecar-root)."
+    },
+    {
+      "id": "sc-worktree-area",
+      "order": 2002,
+      "title": "Worktree area: lanes and adopt copies",
+      "does": "Puts lane and adopt worktrees in the sidecar Worktree area and adds a removal check: merged into its base, clean, not locked, ignored files listed, unmerged commits saved under a ref before removal.",
+      "why": "Worktrees and branches pile up by the dozen when nothing checks them, and some held commits that existed nowhere else; a checked removal clears the pile without losing work.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["sc-sidecar-root"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "rules", "slot": 2002, "template": "templates/rules/worktree-area.md"},
+        {"kind": "file", "target": "repo:tools/worktree_check.py", "template": "templates/tools/worktree_check.py", "mode": "managed"}
+      ],
+      "notes": "Enable later: when you run parallel lanes or adopt copies in worktrees."
+    },
+    {
+      "id": "sc-scratch-area",
+      "order": 2003,
+      "title": "Scratch area for heavy evidence and copies",
+      "does": "Adds a rule that measurement output, adversary copies, bundles and harness output go to the sidecar Scratch area, one folder per run.",
+      "why": "In-repo work folders grew to hundreds of megabytes with no cleanup, and a private key was once found in shared scratch; a known per-run folder is easy to scan and to clean.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["sc-sidecar-root"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "rules", "slot": 2003, "template": "templates/rules/scratch-area.md"}
+      ],
+      "notes": "Enable later: when measurement output or bundles start landing in the repo or in Temp."
+    },
+    {
+      "id": "sc-temp-area",
+      "order": 2004,
+      "title": "Per-repo temp root for test runs",
+      "does": "Adds a rule that test temp goes to a per-checkout folder in the sidecar Temp area, never the session scratchpad and never a temp root shared by two runs.",
+      "why": "Two concurrent runs sharing one temp root broke each other, and tens of thousands of leftover temp files slowed every logon by minutes.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["sc-sidecar-root"],
+      "pairs_with": ["lsn-tmp-retention"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "rules", "slot": 2004, "template": "templates/rules/temp-area.md"}
+      ],
+      "notes": "Enable later: when several test runs share the machine or system Temp keeps growing."
+    },
+    {
+      "id": "sc-walk-area",
+      "order": 2005,
+      "title": "Walk area for sandbox and walk-through harnesses",
+      "does": "Adds a rule that sandbox configs, mapped folders and walk-through results live in the sidecar Walk area, one folder per run.",
+      "why": "Sandbox harnesses kept in Temp were swept by a cleanup while they were still running.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["sc-sidecar-root"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "rules", "slot": 2005, "template": "templates/rules/walk-area.md"}
+      ],
+      "notes": "Enable later: when you run Windows Sandbox or other walk-through harnesses."
+    },
+    {
+      "id": "sc-archive-area",
+      "order": 2006,
+      "title": "Archive area: verified bundles and zips",
+      "does": "Adds a rule that pre-rewrite git bundles, retired copies and adopt originals go to the sidecar Archive area with their sha256 recorded and the bundle verified.",
+      "why": "An archive nobody verified is not a backup; recording the hash and verifying the bundle at write time is the only proof it can be restored.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["sc-sidecar-root"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "rules", "slot": 2006, "template": "templates/rules/archive-area.md"}
+      ],
+      "notes": "Enable later: before the first history rewrite or before retiring a copy of the repo."
+    },
+    {
+      "id": "sc-move-protocol",
+      "order": 2007,
+      "title": "Move protocol: copy, compare, recycle, HOLD on consumer",
+      "does": "Adds tools/sidecar_move.py: it holds when a tracked file still names the source, copies without following links, compares count, bytes and sha256, proves the Recycle Bin can take the source, then recycles it.",
+      "why": "A very large copy was once deleted permanently because the bin cap was cached and a no-confirmation flag hid the warning; every step here exists to make a move impossible to lose.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["sc-sidecar-root", "floor-recycle-bin"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:tools/sidecar_move.py", "template": "templates/tools/sidecar_move.py", "mode": "managed"}
+      ],
+      "notes": "Enable later: when you start moving folders out of the repo or Temp into sidecar areas."
+    },
+    {
+      "id": "sc-cleanup-policy",
+      "order": 2008,
+      "title": "Retention per sidecar area",
+      "does": "Adds tools/sidecar_reap.py: a dry run by default, an age histogram per area, and recycling of per-run folders older than a retention measured from that histogram; Archive is never cleaned automatically.",
+      "why": "Without a retention every area grows by gigabytes; a measured retention avoids a guess that deletes too much or nothing, and a folder still named by a tracked file is kept.",
+      "risk": "medium",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["sc-sidecar-root", "sc-move-protocol"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:tools/sidecar_reap.py", "template": "templates/tools/sidecar_reap.py", "mode": "managed"}
+      ],
+      "notes": "Enable later: once the sidecar areas hold enough runs to measure an age histogram."
+    },
+    {
+      "id": "sc-outside-repo-register",
+      "order": 2009,
+      "title": "Register of everything written outside the repo",
+      "does": "Creates a register file that lists every path the repo writes outside its own folder, why and how it is cleaned, and a rule to update it in the same change that adds a path.",
+      "why": "Outside writes were found only by surveys, long after they had grown; a register written at the time of the change keeps every outside path known and cleanable.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/outside-repo.md", "template": "templates/outside-repo.md", "mode": "create-only"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "rules", "slot": 2009, "template": "templates/rules/outside-repo-register.md"}
+      ],
+      "detect": [
+        {"file": "repo:{docs_dir}/outside-repo.md"}
+      ]
+    },
+    {
+      "id": "sc-runtime-ignored-reaped",
+      "order": 2010,
+      "title": "In-repo runtime dir gitignored and reaped",
+      "does": "Gitignores a .runtime folder and log files and adds tools/reap_runtime.py, which removes regenerable runtime files past a measured age and keeps the folder under a 100 MB cap.",
+      "why": "Spawn logs, run journals and runtime folders grew without limit into gigabytes; every file that only grows needs a reaper from the day it is created.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["lsn-everything-rotates"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "block", "target": "repo:.gitignore", "block": "runtime", "slot": 2010, "template": "templates/gitignore/runtime.txt"},
+        {"kind": "file", "target": "repo:tools/reap_runtime.py", "template": "templates/tools/reap_runtime.py", "mode": "managed"}
+      ],
+      "detect": [
+        {"text": "repo:.gitignore", "regex": "\\.runtime"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,234 @@
+{
+  "schema": 1,
+  "id": "insights",
+  "order": 13,
+  "title": "Insights and the atlas",
+  "summary": "A grounded machine report, a weekly report across your repositories, and an offline atlas of their state.",
+  "why": "A report built from commands run today cannot re-pitch work that already shipped; one built from memory or old transcripts can.",
+  "default": "off",
+  "items": [
+    {
+      "id": "cmd-machine-insights",
+      "order": 1301,
+      "title": "/machine-insights",
+      "does": "Installs a command for a grounded machine report: git across every repository, Temp and boot, scheduled tasks, disk and the Claude footprint, from commands run now.",
+      "why": "Ground truth measured in the report itself cannot recommend work that is already done.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/commands/machine-insights.md",
+          "template": "templates/commands/machine-insights.md",
+          "mode": "managed"
+        }
+      ],
+      "scope": "machine-specific"
+    },
+    {
+      "id": "tool-machine-insights",
+      "order": 1302,
+      "title": "Machine report host file",
+      "does": "Creates an example host file listing your repository roots, report folder and backup alias, to be copied and filled in locally.",
+      "why": "The report needs your machine's layout, and that layout must never land in a public repository; an example file ships, the real one stays local.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:ops/machine_insights_host.example.json",
+          "template": "templates/machine_insights_host.example.json",
+          "mode": "create-only"
+        }
+      ],
+      "scope": "template"
+    },
+    {
+      "id": "cmd-fleet-insights",
+      "order": 1303,
+      "title": "/fleet-insights weekly report",
+      "does": "Installs a weekly review command: a dive per repository, a cross-repository dive, an adversary per finding and a diff against last week.",
+      "why": "A weekly look across all repositories finds what no single session can see.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "fleet-roster"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/commands/fleet-insights.md",
+          "template": "templates/commands/fleet-insights.md",
+          "mode": "managed"
+        }
+      ]
+    },
+    {
+      "id": "sched-fleet-insights",
+      "order": 1304,
+      "title": "Weekly report task",
+      "does": "Installs weekly_report.py and a Friday 17:00 task that runs /fleet-insights once in the background, skips weeks that already have a report and fails a run that leaves no page.",
+      "why": "The report has to appear without anyone remembering to start it.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32"
+      ],
+      "depends_on": [
+        "cmd-fleet-insights",
+        "kit-fleet-headless"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/tools/weekly_report.py",
+          "template": "templates/tools/weekly_report.py",
+          "mode": "managed"
+        },
+        {
+          "kind": "task",
+          "name": "ClaudeProfile-WeeklyReport",
+          "template": "templates/tasks/weekly-report.xml"
+        }
+      ],
+      "verify": [
+        {
+          "task-readback": "ClaudeProfile-WeeklyReport"
+        }
+      ]
+    },
+    {
+      "id": "tool-atlas",
+      "order": 1305,
+      "title": "Offline atlas",
+      "does": "Installs atlas.py, which reads every repository in the roster read-only and writes one self-contained HTML page with branch, last commit, dirty count and next action.",
+      "why": "One glance at every repository answers where things stand without opening each one.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "fleet-roster"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/tools/atlas.py",
+          "template": "templates/tools/atlas.py",
+          "mode": "managed"
+        }
+      ]
+    },
+    {
+      "id": "sched-atlas-refresh",
+      "order": 1306,
+      "title": "Atlas refresh when idle",
+      "does": "Registers a task that refreshes the atlas after about 10 minutes of idle and stops when you come back; it skips when nothing changed.",
+      "why": "The map stays current without costing anything while you work.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32"
+      ],
+      "depends_on": [
+        "tool-atlas"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "task",
+          "name": "ClaudeProfile-AtlasRefresh",
+          "template": "templates/tasks/atlas-refresh.xml"
+        }
+      ],
+      "verify": [
+        {
+          "task-readback": "ClaudeProfile-AtlasRefresh"
+        }
+      ]
+    },
+    {
+      "id": "tool-pubrepo-census",
+      "order": 1307,
+      "title": "Public-repository census",
+      "does": "Installs pubrepo_census.py, a read-only scan of tracked files, commit subjects and tags for home paths, email addresses and token shapes.",
+      "why": "What an outsider sees first is the history; a census before publishing finds what a code review misses.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/tools/pubrepo_census.py",
+          "template": "templates/tools/pubrepo_census.py",
+          "mode": "managed"
+        }
+      ]
+    },
+    {
+      "id": "conv-operator-acts",
+      "order": 1308,
+      "title": "Log of acts waiting on you",
+      "does": "Adds the /done step that appends one line per item still waiting on you, so the weekly report can list them.",
+      "why": "Acts only you can do (a login, a cable, a password) were forgotten once they scrolled out of the hand-off.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "cmd-done"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:.claude/commands/done.md",
+          "block": "done-operator-acts",
+          "template": "templates/done/operator-acts.md"
+        }
+      ]
+    }
+  ]
+}

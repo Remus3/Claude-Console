@@ -1,0 +1,1 @@
+- Never delete on age alone; check for a consumer first - why: data that is referenced but rarely touched looks abandoned (prevents: data loss)

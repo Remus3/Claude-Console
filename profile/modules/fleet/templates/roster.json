@@ -1,0 +1,7 @@
+{
+  "_comment": "Your repositories, one entry each. Codes are 2-5 capital letters. Roots are entered in the wizard and kept in this gitignored file.",
+  "repos": [
+    {"code": "SA", "name": "sample-api", "root": "", "colour": "blue", "retired": false},
+    {"code": "SB", "name": "sample-web", "root": "", "colour": "green", "retired": false}
+  ]
+}

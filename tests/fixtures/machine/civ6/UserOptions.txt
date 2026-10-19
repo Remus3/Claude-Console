@@ -1,0 +1,12 @@
+;Altering this number will cause the app to overwrite this file with defaults
+Version 1
+
+[Gameplay]
+;Number of autosaves to keep
+AutoSaveKeepCount 10
+
+;Skips movement animations, 0 = off
+QuickMovement 0
+
+;Skips combat animations, 0 = off
+QuickCombat 0

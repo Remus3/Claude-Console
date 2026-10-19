@@ -1,0 +1,5 @@
+{
+  "_comment": "GitHub repo description and topics, applied by `console_export.py publish` (gh repo edit; stale topics removed).",
+  "description": "A local desktop console for Claude Code on Windows: tiled terminal panes, projects and hand-offs in one window.",
+  "topics": ["claude-code", "claude", "terminal", "xterm", "node-pty", "windows", "developer-tools", "console"]
+}

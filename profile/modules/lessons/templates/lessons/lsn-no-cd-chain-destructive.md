@@ -1,0 +1,1 @@
+- Never chain cd with a destructive git command; name the repo with git -C instead - why: a failed cd left the shell in the main checkout and the hard reset ran there (prevents: destructive git on wrong tree)

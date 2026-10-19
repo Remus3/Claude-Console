@@ -1,0 +1,1 @@
+- Read a command's exit status from a file or with pipefail, never through a pipe into tail or head - why: piping output through tail returned the pipe's status and hid the failing command (prevents: masked exit)

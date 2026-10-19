@@ -1,0 +1,1 @@
+- Re-run a claimed result yourself before repeating it, and never carry a sub-agent's counts forward - why: a stale tool output replayed old results with invented counts and cited files that did not exist (prevents: false green)

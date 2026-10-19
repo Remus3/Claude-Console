@@ -1,0 +1,8 @@
+{
+  "_comment": "Which paths each headless lane may write. A lane edit outside its set is refused. Shared directories are listed explicitly.",
+  "lanes": {
+    "build": ["src/", "tests/"],
+    "docs": ["docs/", "README.md"]
+  },
+  "shared": ["memory/"]
+}

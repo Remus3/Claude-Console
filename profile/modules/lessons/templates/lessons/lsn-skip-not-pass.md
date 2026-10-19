@@ -1,0 +1,1 @@
+- Count a skipped suite or module as not run, and show skips in every report - why: an import-or-skip guard and a missing dependency each turned whole test groups into silent skips (prevents: skip read as pass)

@@ -1,0 +1,1 @@
+- Set every CI step timeout below the job timeout - why: a job killed at its own limit reports cancelled instead of failed, so the failure is easy to miss (prevents: silent timeout)

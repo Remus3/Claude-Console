@@ -1,0 +1,1 @@
+- Make the git hook the authoritative gate and treat the Claude tool hook as defence in depth - why: automated runs and other tools commit without the Claude hook ever firing (prevents: channel-dependent gate)

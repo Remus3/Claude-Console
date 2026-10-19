@@ -14,24 +14,55 @@ const { localMods } = require('./merge');
 const { readMarker } = require('./detect');
 const { exists } = require('./fsutil');
 
+const reEsc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Scrubber shared by the patch, the crash report and the recovery prompt (CON-013 L3
+// extends it, addendum e.2). o: home, localDir, baseDir, username, hostname, token (the
+// console token), machineDir (<dataDir>/machine: anything under it goes), extra (literals).
 function scrub(text, o) {
   o = o || {};
   let s = String(text);
-  const lits = [o.home, o.localDir, os.homedir()].filter(Boolean).sort((a, b) => b.length - a.length);
+  if (o.machineDir) {
+    for (const form of [o.machineDir, o.machineDir.replace(/\\/g, '/'), o.machineDir.replace(/\\/g, '\\\\')]) {
+      s = s.replace(new RegExp(reEsc(form) + '[^\\s"\'<>]*', 'gi'), '<MACHINE-DATA>');
+    }
+  }
+  const lits = [o.home, o.localDir, o.baseDir, os.homedir()].concat(o.extra || []).filter(Boolean).sort((a, b) => b.length - a.length);
   for (const l of lits) {
     for (const form of [l, l.replace(/\\/g, '/'), l.replace(/\\/g, '\\\\')]) s = s.split(form).join('<PATH>');
   }
+  if (o.token && String(o.token).length >= 8) s = s.split(String(o.token)).join('<TOKEN>');
   s = s.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '<EMAIL>');
+  s = s.replace(/https?:\/\/claude\.ai\/(?:code\/)?artifact\/[A-Za-z0-9_-]+/g, '<URL>');
+  s = s.replace(/\b(X-Console-Token\s*[:=]\s*)\S+/gi, '$1<TOKEN>');
+  s = s.replace(/([?&](?:token|access_token|auth|key)=)[^\s&"'<>]+/gi, '$1<TOKEN>');
   s = s.replace(/\bsk-ant-[A-Za-z0-9_-]{8,}/g, '<TOKEN>');
   s = s.replace(/\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/g, '<TOKEN>');
-  s = s.replace(/\b(sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,})/g, '<TOKEN>');
+  s = s.replace(/\b(sk-[A-Za-z0-9_-]{16,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,})/g, '<TOKEN>');
   s = s.replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}/g, '<TOKEN>');
   s = s.replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '<ID>');
-  s = s.replace(/\b[0-9a-f]{40,}\b/gi, '<HEX>');
+  s = s.replace(/\b[0-9a-f]{32,}\b/gi, '<HEX>');
   s = s.replace(/[A-Za-z]:\\Users\\[^\\\s"'<>]+/gi, '<PATH>');
   s = s.replace(/[A-Za-z]:\/Users\/[^/\s"'<>]+/gi, '<PATH>');
   s = s.replace(/\/(home|Users)\/[^/\s"'<>]+/g, '<PATH>');
+  // The user and host names anywhere (not only inside a home path); short names (< 3
+  // chars) would eat ordinary words, so the needles pass below catches those instead.
+  for (const [name, tag] of [[o.username, '<USER>'], [o.hostname, '<HOST>']]) {
+    if (name && String(name).length >= 3) s = s.replace(new RegExp('(?<![A-Za-z0-9])' + reEsc(name) + '(?![A-Za-z0-9])', 'gi'), tag);
+  }
   return s;
+}
+
+// Second pass after scrub(): needles that must not remain (case-insensitive). Returns the
+// needles found (empty = clean). Needles: the given list plus <dataDir>/privacy-needles.txt
+// (one per line) when needlesFile is given.
+function needleHits(text, needles, needlesFile) {
+  const list = (needles || []).slice();
+  if (needlesFile) {
+    try { for (const l of fs.readFileSync(needlesFile, 'utf8').split(/\r?\n/)) if (l.trim()) list.push(l.trim()); } catch (e) { /* none */ }
+  }
+  const t = String(text).toLowerCase();
+  return [...new Set(list.filter((n) => n && String(n).length >= 2 && t.includes(String(n).toLowerCase())))];
 }
 
 // Unified diff of one file pair via git (no git: a whole-file replacement block).
@@ -112,4 +143,4 @@ function send(result, o) {
   return r && r.status === 0 ? { sent: true, url: String(r.stdout || '').trim() } : { sent: false, reason: 'gh failed', issueUrl: result.issueUrl };
 }
 
-module.exports = { scrub, makePatch, send, diffStat };
+module.exports = { scrub, needleHits, makePatch, send, diffStat };

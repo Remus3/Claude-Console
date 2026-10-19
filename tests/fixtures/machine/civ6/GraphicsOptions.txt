@@ -1,0 +1,37 @@
+;Altering this number will cause the app to overwrite this file with defaults
+Version 10
+
+[Video]
+;Overrides all other options to achieve desired performance profile. Must be set to -1 for changes in this file to be applied.
+PerformanceImpact -1
+
+;MSAA sample count.  0 ==> 1. -1 ==> Max available
+MSAA 1
+
+;MSAA quality, enables EQAA or CSAA if supported
+MSAAQuality 0
+
+;Refresh rate for fullscreen mode. Ignored for windowed mode
+RefreshRateInHz 60
+
+[Terrain]
+;Set to use low quality terrain shader (reduces texture filtering quality and specular lighting)
+LowQualityTerrainShader 1
+
+[General]
+;Disable high quality water (no refraction or reflection).
+UseLowQualityWaterShader 1
+
+;Minimap size (0 is minimum size, 1 is maximum size)
+MinimapSize 0.000000
+
+;Enable screen-space overlay effect.
+ScreenSpaceOverlay 1
+
+[AO]
+;Whether or not to turn on AO
+EnableAO 0
+
+[General]
+;Force d3d debug layer.  This is a debugging switch
+ForceDebugLayer 0

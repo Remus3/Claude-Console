@@ -15,6 +15,7 @@ const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
 const drops = require('./drops');
+const clean = require('../installer/machine-advisors-cleanliness');
 
 const CORE_STEPS = Object.freeze([
   { id: 'console.drops', group: 'Console', label: 'Old composer attachments (drops/ day folders over 14 days)', eta_s: 10, default: true, deletes: 'drops/ day folders over 14 days old, to the Recycle Bin' },
@@ -23,6 +24,72 @@ const CORE_STEPS = Object.freeze([
   { id: 'console.memory', group: 'Console', label: 'Server memory (RSS, heap) and leak trend', eta_s: 1, default: true, deletes: null },
   { id: 'console.scrollback', group: 'Console', label: 'Scrollback held by panes', eta_s: 1, default: true, deletes: null },
 ].map((s) => Object.freeze(Object.assign({ cost: { usd: 0, tokens: 0 } }, s))));
+
+// CON-013 L9 (mach-findings-rules, generic subset): machine-health steps. Report-only
+// (deletes: null) and off by default; a cleanup is a separate, consented act per
+// suggestion (applyCleanup), always through the Recycle Bin. Passed to HealthRunner by
+// whoever mounts them: `core: Object.assign(coreRunners(d), machineRunners(m))` with
+// `steps: CORE_STEPS.concat(MACHINE_STEPS)`.
+const MACHINE_STEPS = Object.freeze([
+  { id: 'machine.temp', group: 'Machine', label: 'Temp hygiene: file count against the alarm line', eta_s: 20, default: false, deletes: null },
+  { id: 'machine.disk', group: 'Machine', label: 'Disk free per drive', eta_s: 2, default: false, deletes: null },
+  { id: 'machine.scratch', group: 'Machine', label: 'Scratch in repos, Temp and outside folders (suggestions only)', eta_s: 20, default: false, deletes: null },
+].map((s) => Object.freeze(Object.assign({ cost: { usd: 0, tokens: 0 } }, s))));
+
+const DISK_FREE_WARN_PCT = 20;
+
+// Free space per fixed drive (read-only CIM query).
+function listDisks() {
+  return new Promise((resolve) => {
+    const ps = "Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | ForEach-Object { '{0}|{1}|{2}' -f $_.DeviceID, $_.Size, $_.FreeSpace }";
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, timeout: 30000 }, (err, out) => {
+      if (err) return resolve(null);
+      const rows = [];
+      for (const ln of String(out).split(/\r?\n/)) {
+        const m = /^([A-Z]:)\|(\d+)\|(\d+)$/.exec(ln.trim());
+        if (m) rows.push({ id: m[1], size: +m[2], free: +m[3] });
+      }
+      resolve(rows);
+    });
+  });
+}
+
+// deps: {temp, repos, outside, untracked, disks(), now, alarm}
+function machineRunners(deps) {
+  deps = deps || {};
+  const temp = deps.temp || os.tmpdir();
+  return {
+    'machine.temp': async () => {
+      const c = clean.tempCensus(temp, { alarm: deps.alarm });
+      const findings = c.alarm ? ['Temp holds ' + c.files + ' files, over the ' + c.alarm_line + ' alarm line; Temp file count is logon time - review the machine.scratch suggestions'] : [];
+      return result('machine.temp', true, 'Temp: ' + c.files + ' files, ' + Math.round(c.bytes / MB) + ' MB (alarm at ' + c.alarm_line + ')', { files: c.files, mb: Math.round(c.bytes / MB), alarm_line: c.alarm_line, alarm: c.alarm }, findings);
+    },
+    'machine.disk': async () => {
+      const rows = await (deps.disks || listDisks)();
+      if (!rows) return result('machine.disk', false, 'disk list not readable', {}, ['Get-CimInstance Win32_LogicalDisk failed']);
+      const pct = (d) => (d.size ? Math.round((100 * d.free) / d.size) : 0);
+      const low = rows.filter((d) => d.size && pct(d) < DISK_FREE_WARN_PCT);
+      const numbers = {};
+      for (const d of rows) numbers[d.id] = pct(d);
+      return result('machine.disk', true, rows.map((d) => d.id + ' ' + pct(d) + '% free').join(', ') || 'no fixed drives', numbers, low.map((d) => d.id + ' ' + pct(d) + '% free (under ' + DISK_FREE_WARN_PCT + '%) - review the cleanup suggestions'));
+    },
+    'machine.scratch': async () => {
+      const list = await cleanupCandidates(deps);
+      const mb = Math.round(list.reduce((a, c) => a + c.bytes, 0) / MB);
+      const findings = list.slice(0, 40).map((c) => c.where + ': ' + path.basename(c.path) + ' (' + c.files + ' files) - ' + c.why);
+      return result('machine.scratch', true, list.length + ' cleanup suggestion' + (list.length === 1 ? '' : 's') + ', ' + mb + ' MB; nothing deleted - choose in the cleanup list', { candidates: list.length, mb }, findings);
+    },
+  };
+}
+
+function cleanupCandidates(deps) {
+  deps = deps || {};
+  return clean.candidates({ repos: deps.repos || [], temp: deps.temp || os.tmpdir(), outside: deps.outside || [], untracked: deps.untracked, now: deps.now });
+}
+
+function applyCleanup(list, accept, opts) {
+  return clean.applyCleanup(list, accept, opts);
+}
 
 const EXITED_CLOSE_MS = 3600 * 1000;
 const IDLE_REPORT_MS = 12 * 3600 * 1000;
@@ -236,9 +303,11 @@ function suiteHolders(dir) {
 
 class HealthRunner {
   // opts: {core: runners map, plugins: [{name, steps(): meta[], plan(): Promise<meta[]>, run(id, timeoutMs)}],
-  //        busy: () => reason|null, suiteHolders: () => n, reportDir, progressFile, now, onChange}
+  //        busy: () => reason|null, suiteHolders: () => n, reportDir, progressFile, now, onChange,
+  //        steps: meta list for the core runners (default CORE_STEPS)}
   constructor(opts) {
     this.core = opts.core || {};
+    this.steps = opts.steps || CORE_STEPS;
     this.plugins = (opts.plugins || []).filter(Boolean);
     this.busyFn = opts.busy || (() => null);
     this.suiteFn = opts.suiteHolders || (() => suiteHolders());
@@ -253,13 +322,13 @@ class HealthRunner {
 
   // The allowlist: core ids plus each plugin's FIXED id list. Never built from input.
   allowlist() {
-    const ids = CORE_STEPS.map((s) => s.id).filter((id) => this.core[id]);
+    const ids = this.steps.map((s) => s.id).filter((id) => this.core[id]);
     for (const p of this.plugins) for (const id of p.ids) if (!ids.includes(id)) ids.push(id);
     return ids;
   }
 
   async plan() {
-    const steps = CORE_STEPS.filter((s) => this.core[s.id]).map((s) => Object.assign({}, s));
+    const steps = this.steps.filter((s) => this.core[s.id]).map((s) => Object.assign({}, s));
     for (const p of this.plugins) {
       let meta = [];
       try { meta = await p.plan(); } catch (e) { meta = []; }
@@ -436,4 +505,4 @@ class HealthRunner {
   }
 }
 
-module.exports = { CORE_STEPS, HealthRunner, MemSampler, coreRunners, leakVerdict, fit, findOrphans, suiteHolders, listProcesses, killTree, result, day, EXITED_CLOSE_MS, IDLE_REPORT_MS };
+module.exports = { CORE_STEPS, MACHINE_STEPS, machineRunners, cleanupCandidates, applyCleanup, tempCensus: clean.tempCensus, listDisks, HealthRunner, MemSampler, coreRunners, leakVerdict, fit, findOrphans, suiteHolders, listProcesses, killTree, result, day, EXITED_CLOSE_MS, IDLE_REPORT_MS };

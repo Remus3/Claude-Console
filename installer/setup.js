@@ -137,8 +137,34 @@ function statuslineFor(L, consoleRoot) {
   return path.resolve(consoleRoot).toLowerCase().startsWith(app) ? path.join(L.home, 'statusline.js') : null;
 }
 
+// CON-013: once the shipped setup profile has its `console` module, `claude-console setup`
+// is `profile apply --only console --target user` (same dry-run default, same --apply
+// --yes gate, journaled and revertable). The old setup.json ids map onto the profile items.
+const LEGACY_IDS = { 'cmd-done': 'console-done-chip', statusline: 'console-statusline-basic', 'pane-hooks': 'console-pane-hooks' };
+
+function profileRoute(consoleRoot, deps) {
+  if (deps.legacySetup) return null;
+  const dir = deps.profileDir || path.join(consoleRoot, 'profile');
+  const pj = readJson(path.join(dir, 'profile.json'), null);
+  return pj && Array.isArray(pj.modules) && pj.modules.includes('console') ? dir : null;
+}
+
+function profileArgs(a, only) {
+  const args = ['apply', '--target', 'user', '--only', only.join(',')];
+  if (a['config-dir'] && a['config-dir'] !== true) args.push('--config-dir', a['config-dir']);
+  if (a.apply) args.push('--apply');
+  if (a.yes === true) args.push('--yes');
+  if (a.json) args.push('--json');
+  return args;
+}
+
 async function cliSetup(a, L, deps, emit, out) {
   const consoleRoot = deps.consoleRoot || path.resolve(__dirname, '..');
+  const routed = profileRoute(consoleRoot, deps);
+  if (routed) {
+    const ids = typeof a.only === 'string' ? a.only.split(',').map((s) => s.trim()).filter(Boolean).map((id) => LEGACY_IDS[id] || id) : ['console'];
+    return require('./profile-cli').cliProfile(profileArgs(a, ids), L, Object.assign({}, deps, { out, profileDir: routed }));
+  }
   const configDir = a['config-dir'] && a['config-dir'] !== true ? path.resolve(a['config-dir']) : configDirFor(process.env);
   const only = typeof a.only === 'string' ? a.only.split(',').map((s) => s.trim()).filter(Boolean) : null;
   const plan = planSetup({ consoleRoot, configDir, nodePath: deps.nodePath, only, force: !!a.force, replace: !!a.replace, statuslinePath: statuslineFor(L, consoleRoot) });
@@ -155,4 +181,4 @@ async function cliSetup(a, L, deps, emit, out) {
   return 0;
 }
 
-module.exports = { loadSpec, configDirFor, planSetup, applySetup, planLines, cliSetup, statuslineFor };
+module.exports = { loadSpec, configDirFor, planSetup, applySetup, planLines, cliSetup, statuslineFor, LEGACY_IDS, profileRoute };

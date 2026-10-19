@@ -1,0 +1,1 @@
+- Run an idle control before you attribute a timing change to your edit - why: background processes changed timings between runs and were mistaken for the effect of a change (prevents: misattribution)

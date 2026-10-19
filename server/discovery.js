@@ -10,7 +10,14 @@ function norm(p) {
   try {
     r = fs.realpathSync.native(r); // expands 8.3 short names (ADMINI~1) like git does
   } catch (e) { /* keep resolved */ }
-  return r.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  return trimTrailingSlashes(r.replace(/\\/g, '/')).toLowerCase();
+}
+
+// Drops trailing '/' in linear time (a /\/+$/ regex is quadratic on '////x').
+function trimTrailingSlashes(s) {
+  let e = s.length;
+  while (e > 0 && s.charCodeAt(e - 1) === 47) e--;
+  return s.slice(0, e);
 }
 
 // Tests swap _exec.fn to simulate a box without git.
@@ -98,4 +105,4 @@ async function discoverProjects(cfg) {
   return out;
 }
 
-module.exports = { discoverProjects, isRepoRoot, gitToplevel, slug, norm, _exec, GIT_MISSING };
+module.exports = { discoverProjects, isRepoRoot, gitToplevel, slug, norm, trimTrailingSlashes, _exec, GIT_MISSING };

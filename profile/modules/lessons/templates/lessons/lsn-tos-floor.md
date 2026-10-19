@@ -1,0 +1,1 @@
+- Never touch a running game or app process, its memory or its input; edit only its offline config files - why: anti-cheat systems treat process access as cheating, and account bans cannot be undone (prevents: irreversible account action)

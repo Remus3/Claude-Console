@@ -1,0 +1,872 @@
+{
+  "schema": 1,
+  "id": "docs-memory",
+  "order": 9,
+  "title": "Docs, memory and size budgets",
+  "summary": "Size budgets with a checker, a memory layout, an open-only roadmap, briefs, rulings and the hand-off archive, plus commands that keep them in sync.",
+  "why": "Context is the budget every session spends first. A file past its budget is paid for on every turn, and deleting detail destroys what the budget is meant to protect, so detail is relocated instead.",
+  "default": "on",
+  "items": [
+    {
+      "id": "conv-doc-size-budget",
+      "order": 901,
+      "title": "Size budgets: relocate, never delete",
+      "does": "Adds the budget rule and .claude/doc-budgets.json with your budgets: CLAUDE.md and auto-loaded files, the memory index and leaves, the roadmap, the hand-off and agent files.",
+      "why": "A document past its budget costs context on every turn of every session; moving detail out with a pointer keeps it reachable at no standing cost.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "tool-doc-budget"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/conv-doc-size-budget.md"
+        },
+        {
+          "kind": "file",
+          "target": "repo:.claude/doc-budgets.json",
+          "template": "templates/doc-budgets.json",
+          "mode": "replace-ask"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/doc-budgets.json"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "repo:.claude/doc-budgets.json"
+        }
+      ]
+    },
+    {
+      "id": "tool-doc-budget",
+      "order": 902,
+      "title": "Budget checker",
+      "does": "Installs doc_budget.py, which prints every budgeted file against its budget and exits non-zero only on a hard limit.",
+      "why": "A warning that blocks a commit gets switched off and then enforces nothing, so warnings here never block.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "conv-doc-size-budget"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/tools/doc_budget.py",
+          "template": "templates/tools/doc_budget.py",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/tools/doc_budget.py"
+        }
+      ],
+      "verify": [
+        {
+          "budget": "claude_md_kb"
+        }
+      ]
+    },
+    {
+      "id": "conv-memory-layout",
+      "order": 903,
+      "title": "Memory index with one fact per leaf",
+      "does": "Adds the memory rule and starts the project memory with an index and one example leaf in the Claude config dir.",
+      "why": "A fact measured once and not written down gets probed again by the next session; small leaves keep each fact cheap to load.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "conv-doc-size-budget"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/conv-memory-layout.md"
+        },
+        {
+          "kind": "file",
+          "target": "user:projects/{project_slug}/memory/MEMORY.md",
+          "template": "templates/memory/MEMORY.md",
+          "mode": "create-only"
+        },
+        {
+          "kind": "file",
+          "target": "user:projects/{project_slug}/memory/example-leaf.md",
+          "template": "templates/memory/example-leaf.md",
+          "mode": "create-only"
+        }
+      ],
+      "detect": [
+        {
+          "file": "user:projects/{project_slug}/memory/MEMORY.md"
+        }
+      ],
+      "scope": "template"
+    },
+    {
+      "id": "conv-roadmap-open-only",
+      "order": 904,
+      "title": "Roadmap of open work only",
+      "does": "Creates ROADMAP.md and the rule that it lists open items only, each with an acceptance check.",
+      "why": "A roadmap that keeps closed items hides the open ones among them.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:ROADMAP.md",
+          "template": "templates/ROADMAP.md",
+          "mode": "create-only"
+        },
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/conv-roadmap-open-only.md"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:ROADMAP.md"
+        }
+      ],
+      "verify": [
+        {
+          "budget": "roadmap_kb"
+        }
+      ]
+    },
+    {
+      "id": "conv-docs-briefs",
+      "order": 905,
+      "title": "Docs as standing briefs",
+      "does": "Adds the rule that the docs folder holds one dated brief per workstream, and a README that says so.",
+      "why": "Hand-offs kept in the docs folder drifted out of date; briefs hold the facts that last.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/conv-docs-briefs.md"
+        },
+        {
+          "kind": "file",
+          "target": "repo:{docs_dir}/README.md",
+          "template": "templates/briefs-README.md",
+          "mode": "create-only"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:{docs_dir}/README.md"
+        }
+      ]
+    },
+    {
+      "id": "conv-rulings-dir",
+      "order": 906,
+      "title": "Rulings folder",
+      "does": "Creates the rulings folder with its record format: decision, alternatives, why, and what would reverse it.",
+      "why": "An adjudicated call must be auditable and reversible, which needs it written down in one known place.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "rule-act-dont-ask"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/conv-rulings-dir.md"
+        },
+        {
+          "kind": "file",
+          "target": "repo:{docs_dir}/rulings/README.md",
+          "template": "templates/rulings-README.md",
+          "mode": "create-only"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:{docs_dir}/rulings/*"
+        }
+      ]
+    },
+    {
+      "id": "conv-handoff-archive",
+      "order": 907,
+      "title": "Hand-off archive",
+      "does": "Creates the hand-off archive folder and the /done step that moves closed hand-off blocks into it before the size cap is reached.",
+      "why": "The done marker refuses an oversized hand-off; archiving closed blocks keeps it under the cap without losing them.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "conv-handoff-file",
+        "conv-doc-size-budget"
+      ],
+      "pairs_with": [
+        "md-handoff-cap"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:{docs_dir}/handoff-archive/README.md",
+          "template": "templates/handoff-archive-README.md",
+          "mode": "create-only"
+        },
+        {
+          "kind": "block",
+          "target": "repo:.claude/commands/done.md",
+          "block": "done-handoff-archive",
+          "template": "templates/done/handoff-archive.md"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:{docs_dir}/handoff-archive/*"
+        }
+      ]
+    },
+    {
+      "id": "cmd-sync-docs",
+      "order": 908,
+      "title": "/sync-docs",
+      "does": "Installs a command that reconciles every markdown file against its owning source, fixes drift and flags broken references and stale files.",
+      "why": "Numbers restated in several files drift apart quietly until a session acts on the wrong one.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "agent-doc-sync"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/commands/sync-docs.md",
+          "template": "templates/commands/sync-docs.md",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/commands/sync-docs.md"
+        }
+      ]
+    },
+    {
+      "id": "cmd-weekly-hygiene",
+      "order": 909,
+      "title": "/weekly-hygiene",
+      "does": "Installs a weekly command: relocate-only trims of files near their budget, a memory staleness scan and a look at recent session start-ups.",
+      "why": "Budgets only hold when someone trims a little every week instead of a lot once things break.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "conv-doc-size-budget"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/commands/weekly-hygiene.md",
+          "template": "templates/commands/weekly-hygiene.md",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/commands/weekly-hygiene.md"
+        }
+      ]
+    },
+    {
+      "id": "hook-facts-inject",
+      "order": 910,
+      "title": "Facts file injected at start-up",
+      "does": "Creates .claude/facts.md and a SessionStart hook that prints it (at most 20 lines) so sessions start with verified state.",
+      "why": "Injecting a short fact block is cheaper than having every session re-read files to rediscover it.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/facts.md",
+          "template": "templates/facts.md",
+          "mode": "create-only"
+        },
+        {
+          "kind": "file",
+          "target": "repo:.claude/hooks/facts_inject.py",
+          "template": "templates/hooks/facts_inject.py",
+          "mode": "managed"
+        },
+        {
+          "kind": "json-merge",
+          "target": "repo:.claude/settings.json",
+          "value": {
+            "hooks": {
+              "SessionStart": [
+                {
+                  "hooks": [
+                    {
+                      "type": "command",
+                      "command": "\"{python}\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/facts_inject.py\"",
+                      "timeout": 5
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "mode": "add"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/facts.md"
+        }
+      ],
+      "verify": [
+        {
+          "hook-smoke": "repo:.claude/settings.json"
+        }
+      ],
+      "scope": "template"
+    },
+    {
+      "id": "hook-edit-guards",
+      "order": 911,
+      "title": "ASCII and LF check after each edit",
+      "does": "Adds a PostToolUse hook that checks the file just edited or written and reports the first line with a CR or a non-ASCII byte.",
+      "why": "An encoding fault caught at the edit costs one line; caught at commit time it costs a hunt. Your own linters stay yours to add.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "rule-encoding-ascii-lf"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/hooks/ascii_lf_guard.py",
+          "template": "templates/hooks/ascii_lf_guard.py",
+          "mode": "managed"
+        },
+        {
+          "kind": "json-merge",
+          "target": "repo:.claude/settings.json",
+          "value": {
+            "hooks": {
+              "PostToolUse": [
+                {
+                  "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+                  "hooks": [
+                    {
+                      "type": "command",
+                      "command": "\"{python}\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/ascii_lf_guard.py\"",
+                      "timeout": 10
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "mode": "add"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:.claude/settings.json",
+          "regex": "ascii_lf_guard"
+        }
+      ],
+      "verify": [
+        {
+          "hook-smoke": "repo:.claude/settings.json"
+        }
+      ],
+      "scope": "template"
+    },
+    {
+      "id": "hook-precommit-gate",
+      "order": 912,
+      "title": "Gate on commit tool calls",
+      "does": "Adds a PreToolUse hook that runs the budget checker before a git commit tool call and denies the call on a hard failure.",
+      "why": "A red commit costs a revert; refusing the tool call is cheaper. The git hooks stay the authoritative gate.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "tool-doc-budget"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/hooks/precommit_gate.py",
+          "template": "templates/hooks/precommit_gate.py",
+          "mode": "managed"
+        },
+        {
+          "kind": "json-merge",
+          "target": "repo:.claude/settings.json",
+          "value": {
+            "hooks": {
+              "PreToolUse": [
+                {
+                  "matcher": "Bash|PowerShell",
+                  "hooks": [
+                    {
+                      "type": "command",
+                      "command": "\"{python}\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/precommit_gate.py\"",
+                      "timeout": 10
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "mode": "add"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:.claude/settings.json",
+          "regex": "precommit_gate"
+        }
+      ],
+      "verify": [
+        {
+          "hook-smoke": "repo:.claude/settings.json"
+        }
+      ],
+      "scope": "template"
+    },
+    {
+      "id": "hook-claimed-green-gate",
+      "order": 913,
+      "title": "Flag green claims without a test run",
+      "does": "Adds a Stop hook that notices a reply claiming the tests pass when no test command ran in that turn, and says so in one line.",
+      "why": "Unverified success claims are the most expensive kind of wrong report. The hook informs and never blocks Stop.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "rule-hook-output"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/hooks/claimed_green_gate.py",
+          "template": "templates/hooks/claimed_green_gate.py",
+          "mode": "managed"
+        },
+        {
+          "kind": "json-merge",
+          "target": "repo:.claude/settings.json",
+          "value": {
+            "hooks": {
+              "Stop": [
+                {
+                  "hooks": [
+                    {
+                      "type": "command",
+                      "command": "\"{python}\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/claimed_green_gate.py\"",
+                      "timeout": 10
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "mode": "add"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:.claude/settings.json",
+          "regex": "claimed_green"
+        }
+      ],
+      "verify": [
+        {
+          "hook-smoke": "repo:.claude/settings.json"
+        }
+      ],
+      "scope": "template"
+    },
+    {
+      "id": "md-handoff-cap",
+      "order": 914,
+      "title": "Hand-off size cap at /done",
+      "does": "Adds the rule that the done marker refuses a hand-off over its budget and warns at 90 percent.",
+      "why": "The largest hand-off seen reached 164 KB, roughly 36,000 tokens loaded at the start of every session.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "conv-handoff-file",
+        "kit-fleet-done"
+      ],
+      "pairs_with": [
+        "conv-handoff-archive"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/md-handoff-cap.md"
+        }
+      ],
+      "verify": [
+        {
+          "budget": "handoff_kb"
+        }
+      ]
+    },
+    {
+      "id": "md-handoff-lint",
+      "order": 915,
+      "title": "Hand-off lint",
+      "does": "Installs handoff_lint.py and its /done step: at least 2,000 bytes, one SESSION line on line 1, at most one fenced block, ASCII, no secret-shaped strings or home paths.",
+      "why": "A truncated hand-off once lost the next action, and secrets and paths have leaked through hand-offs before.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "conv-handoff-file"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/tools/handoff_lint.py",
+          "template": "templates/tools/handoff_lint.py",
+          "mode": "managed"
+        },
+        {
+          "kind": "block",
+          "target": "repo:.claude/commands/done.md",
+          "block": "done-handoff-lint",
+          "template": "templates/done/handoff-lint.md"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/tools/handoff_lint.py"
+        }
+      ]
+    },
+    {
+      "id": "md-handoff-prefix-grammar",
+      "order": 916,
+      "title": "Hand-off bullet prefixes",
+      "does": "Adds the rule that a bullet's prefix decides where it goes: a note, another repository, an act for you, or lane work.",
+      "why": "Rewording a carried bullet once made a background loop dispatch it again as new work. Useful only with background lanes.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "conv-handoff-file",
+        "kit-fleet-lanes"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/md-handoff-prefix-grammar.md"
+        }
+      ]
+    },
+    {
+      "id": "md-budget-enforcement-points",
+      "order": 917,
+      "title": "Where budgets are enforced",
+      "does": "Adds the rule naming the three enforcement points (pre-commit, hosted CI, the /done pre-flight) and the /done step that runs the checker.",
+      "why": "Budgets that were stated but enforced nowhere drifted to two or three times their size.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "tool-doc-budget"
+      ],
+      "pairs_with": [
+        "ci-hook-pre-commit-content"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/md-budget-enforcement-points.md"
+        },
+        {
+          "kind": "block",
+          "target": "repo:.claude/commands/done.md",
+          "block": "done-budget",
+          "template": "templates/done/budget.md"
+        }
+      ]
+    },
+    {
+      "id": "md-doc-topology",
+      "order": 918,
+      "title": "Docs map: one owner per fact",
+      "does": "Adds a table to CLAUDE.md naming the file that owns each kind of fact and what must never go in it.",
+      "why": "The same threshold written in two files drifted to two different values within weeks.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "rule-claude-md-layout"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "docs-map",
+          "template": "templates/docs-map.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[oO][wW][nN][sS]"
+        }
+      ]
+    },
+    {
+      "id": "md-ledger",
+      "order": 919,
+      "title": "Ledger for closed work",
+      "does": "Creates an append-only ledger folder with an index and one file per session, and the rule that closed records go there.",
+      "why": "Completion history kept in CLAUDE.md or the hand-off was paid for on every turn. Enable it when closed records get cited later; the hand-off archive covers most people.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "conv-handoff-archive"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/md-ledger.md"
+        },
+        {
+          "kind": "file",
+          "target": "repo:{docs_dir}/ledger/README.md",
+          "template": "templates/ledger-README.md",
+          "mode": "create-only"
+        }
+      ]
+    },
+    {
+      "id": "md-wakeup-notes",
+      "order": 920,
+      "title": "Rolling notes of the last sessions",
+      "does": "Creates a short narrative file of the last two or three sessions; older blocks move to a history file.",
+      "why": "Some people like narrative context beside the hand-off. It overlaps the hand-off, so it is offered as an explicit choice and stays off by default.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:{docs_dir}/wakeup-notes.md",
+          "template": "templates/wakeup-notes.md",
+          "mode": "create-only"
+        }
+      ]
+    },
+    {
+      "id": "md-plans-dir",
+      "order": 921,
+      "title": "Numbered plans with reviews",
+      "does": "Creates a plans folder: one numbered plan per batch of work, its reviews beside it and an index with each plan's status.",
+      "why": "Large work needs a reviewable spec that outlives the session that wrote it. Enable it for multi-session projects.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "conv-rulings-dir"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:{docs_dir}/plans/README.md",
+          "template": "templates/plans-README.md",
+          "mode": "create-only"
+        }
+      ]
+    },
+    {
+      "id": "md-claude-md-rules-only",
+      "order": 922,
+      "title": "CLAUDE.md keeps rules only",
+      "does": "Records that CLAUDE.md holds rules and pointers while the long form lives in the rules archive; it adds nothing of its own.",
+      "why": "The rationale of a rule is needed rarely, and loading it on every turn cost context in every repository surveyed.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "conv-claude-md-history"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [],
+      "notes": "A variant record of the rules archive item: no second contribution."
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+- Never saturate the machine: keep load harnesses at or below the core count and run at most two whole suites at once - why: a load harness at twice the core count made the whole machine unresponsive (prevents: resource exhaustion)

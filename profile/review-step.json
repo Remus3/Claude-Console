@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "step": "review",
+  "title": "Before you enable anything",
+  "lead": "Before you enable modules, read what each one does and review the .md files it adds. You're in control and can turn anything off later.",
+  "licence": "The console and its setup are provided as-is under the Apache-2.0 licence. The author isn't liable for what they do on your machine.",
+  "safeguards_heading": "Already in place",
+  "safeguards": [
+    {
+      "glyph": "[+]",
+      "word": "Dry run",
+      "text": "Nothing is written until the final Apply step; every change is shown first."
+    },
+    {
+      "glyph": "[+]",
+      "word": "Copy first",
+      "text": "Adopting an existing project works on a copy; your original stays untouched until you promote it."
+    },
+    {
+      "glyph": "[+]",
+      "word": "Your choice",
+      "text": "Every module and every change has its own yes or no."
+    },
+    {
+      "glyph": "[+]",
+      "word": "Backups",
+      "text": "Each apply saves what it replaces, and revert puts it back byte for byte."
+    },
+    {
+      "glyph": "[+]",
+      "word": "Recycle Bin",
+      "text": "Files the profile created go to the Recycle Bin when removed, never straight to deletion."
+    },
+    {
+      "glyph": "[+]",
+      "word": "No telemetry",
+      "text": "Nothing about you or your work is sent anywhere."
+    },
+    {
+      "glyph": "[+]",
+      "word": "Stop",
+      "text": "Stop everything halts the console's processes, profile tasks and hooks (small scripts Claude runs before or after its actions) in one step."
+    }
+  ],
+  "checkbox": "I've read this and I'm choosing what to enable",
+  "ask_again": "major"
+}

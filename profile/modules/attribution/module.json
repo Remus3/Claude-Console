@@ -1,0 +1,193 @@
+{
+  "schema": 1,
+  "id": "attribution",
+  "order": 7,
+  "title": "Commit attribution",
+  "summary": "Git hooks and account keys that keep AI and bot identities out of your commit history.",
+  "why": "This is the mechanism behind the attribution floor: the floor states the rule, these items enforce it at the harness, at commit time and before any push.",
+  "default": "on",
+  "items": [
+    {
+      "id": "hook-git-commit-msg",
+      "order": 701,
+      "title": "commit-msg hook strips AI trailers",
+      "does": "Records your identity in local git config, copies kit_identity.py and adds a commit-msg check (run by the git hook dispatchers of the ci-gates module) that removes forbidden attribution lines.",
+      "why": "This is the prevention step: the trailer is removed before the commit exists, so nothing has to be rewritten later.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "floor-no-ai-attribution",
+        "ci-hooks-install-check"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "git",
+          "key": "kit.operatorIdent",
+          "value": "{operator_ident}",
+          "scope": "local"
+        },
+        {
+          "kind": "git",
+          "key": "profile.python",
+          "value": "{python}",
+          "scope": "local"
+        },
+        {
+          "kind": "kit",
+          "files": [
+            "kit_identity.py"
+          ],
+          "target": "repo:{kit_dir}"
+        },
+        {
+          "kind": "file",
+          "target": "repo:.githooks/commit-msg.d/0701-identity",
+          "template": "templates/hooks/commit-msg.d/0701-identity.sh",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "git": "kit.operatorIdent"
+        },
+        {
+          "file": "repo:.githooks/commit-msg.d/*"
+        }
+      ],
+      "verify": [
+        {
+          "git-hooks": "repo:.githooks"
+        },
+        {
+          "file-ascii-lf": "repo:.githooks/commit-msg.d/0701-identity"
+        }
+      ]
+    },
+    {
+      "id": "hook-git-pre-push-identity",
+      "order": 702,
+      "title": "pre-push hook refuses foreign identities",
+      "does": "Adds a pre-push check that refuses a push whose new commits carry a non-owner author, committer or attribution trailer.",
+      "why": "It is the last check before the code host records a contributor; a mistake caught here never becomes public history.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "floor-no-ai-attribution",
+        "hook-git-commit-msg"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.githooks/pre-push.d/0702-identity",
+          "template": "templates/hooks/pre-push.d/0702-identity.sh",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.githooks/pre-push.d/*"
+        }
+      ],
+      "verify": [
+        {
+          "git-hooks": "repo:.githooks"
+        },
+        {
+          "file-ascii-lf": "repo:.githooks/pre-push.d/0702-identity"
+        }
+      ]
+    },
+    {
+      "id": "set-attribution-empty",
+      "order": 703,
+      "title": "No attribution footer from Claude",
+      "does": "Sets the account keys attribution.commit and attribution.pr to empty and includeCoAuthoredBy to false.",
+      "why": "Stopping the trailer at its source means the hooks rarely have anything to strip.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "floor-no-ai-attribution"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "attribution": {
+              "commit": "",
+              "pr": ""
+            },
+            "includeCoAuthoredBy": false
+          },
+          "mode": "replace-ask"
+        }
+      ],
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "attribution"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
+        }
+      ]
+    },
+    {
+      "id": "kit-fleet-rewrite",
+      "order": 704,
+      "title": "History rewrite helper",
+      "does": "Copies kit_rewrite.py, which plans, bundles and then rewrites foreign identities out of history, only when you run it with the plan's confirmation id.",
+      "why": "History that is already polluted can be cleaned, but a rewrite must never happen implicitly; the helper makes a backup bundle first and needs your explicit go.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "hook-git-commit-msg"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "kit",
+          "files": [
+            "kit_rewrite.py"
+          ],
+          "target": "repo:{kit_dir}"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:{kit_dir}/kit_rewrite.py"
+        }
+      ],
+      "notes": "Never runs on its own. The UI shows the plan only; running it needs your typed confirmation."
+    }
+  ]
+}

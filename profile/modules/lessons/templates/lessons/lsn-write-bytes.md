@@ -1,0 +1,1 @@
+- Write files as bytes, or with an explicit newline setting, whenever sizes or hashes matter - why: text-mode writes on Windows turn LF into CRLF, so byte counts and hashes stop matching what was meant (prevents: line-endings)

@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "id": "console",
+  "order": 15,
+  "title": "Console integration",
+  "summary": "How the console works with this profile: pane hooks, the /done chip, the DONE band and the scheduler view.",
+  "why": "The console already provides these; listing them here shows how they connect to the rest of the profile and lets you see each one's reason in the same place.",
+  "default": "on",
+  "items": [
+    {
+      "id": "console-pane-hooks",
+      "order": 1501,
+      "title": "Turn-state hooks for console panes",
+      "does": "Passes the console's turn-state hooks to each pane as an additive settings file, so nothing is installed globally.",
+      "why": "The console knows when a pane is working or waiting without ever editing your account settings.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [],
+      "notes": "Built into the console (setup item pane-hooks); nothing is written by the profile."
+    },
+    {
+      "id": "console-done-chip",
+      "order": 1502,
+      "title": "/done chip in the composer",
+      "does": "Offers a /done chip in each pane's composer that runs the repository's own /done, or the console's plain one when there is none.",
+      "why": "Ending a session cleanly should be one click, not a command to remember.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "cmd-done"
+      ],
+      "conflicts_with": [],
+      "contributes": [],
+      "notes": "The repository's own /done (from the session module) wins over the console's."
+    },
+    {
+      "id": "console-done-band",
+      "order": 1503,
+      "title": "DONE band from the verified marker",
+      "does": "Shows a DONE band on a pane only when the done marker validates against the pane, HEAD, the hand-off hash and the last prompt time.",
+      "why": "DONE has to be verified and persistent; a band that trusted chat text could say done when it was not.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "kit-fleet-done"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": []
+    },
+    {
+      "id": "console-scheduler",
+      "order": 1504,
+      "title": "Scheduler view with backup and read-back",
+      "does": "Lists, adds, changes and removes Windows scheduled tasks with an XML backup first and a read-back after; every profile task goes through it.",
+      "why": "Consent, backup and rollback for scheduled tasks belong in one place, the same one every task uses.",
+      "risk": "medium",
+      "default": "on",
+      "platform": [
+        "win32"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [],
+      "notes": "It writes nothing itself; the profile's per-task consent step uses this engine."
+    }
+  ]
+}

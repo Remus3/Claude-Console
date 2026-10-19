@@ -1,0 +1,15 @@
+SESSION: 1
+
+ROLE: working session for {repo_code}. Read CLAUDE.md first, then this file.
+
+THE SINGLE NEXT ACTION
+- none yet: ask what to work on.
+
+OPEN ITEMS (priority order, each with its acceptance check)
+- none
+
+DO NOT RE-LITIGATE (each with what would reverse it)
+- none
+
+WAITING ON YOU (physical acts, passwords, logins - one batched ask)
+- none

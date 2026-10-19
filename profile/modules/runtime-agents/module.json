@@ -1,0 +1,232 @@
+{
+  "schema": 1,
+  "id": "runtime-agents",
+  "order": 21,
+  "title": "Runtime agent roster (supervisor + numbered agents)",
+  "summary": "A supervisor and eight numbered agent charters (gatekeeper, lead, backend, testing, analyst, UI, auditor, context) with a single-writer queue and a bounded spawn, as templates.",
+  "why": "When a project is itself an agent system that runs unattended, each agent needs one charter and one write area, one owner of state, and bounded runs; most users never need this, so all of it stays off.",
+  "default": "off",
+  "locked": false,
+  "items": [
+    {
+      "id": "rta-supervisor",
+      "order": 2101,
+      "title": "Runtime agent supervisor (orchestrator daemon)",
+      "does": "Adds a supervisor charter and skeleton: one process that owns runtime state, refreshes a heartbeat lock, reconciles stale tasks every 5 minutes and dispatches ready tasks to numbered agents.",
+      "why": "An app with long-running analysis needs agents that keep working while no Claude session is open, and that only works safely with one owner of state.",
+      "risk": "high",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["kit-fleet-headless"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:runtime/supervisor.md", "template": "templates/runtime/supervisor.md", "mode": "create-only"},
+        {"kind": "file", "target": "repo:runtime/supervisor.py", "template": "templates/runtime/supervisor.py", "mode": "create-only"}
+      ],
+      "detect": [
+        {"file": "repo:runtime/supervisor.py"}
+      ],
+      "scope": "template",
+      "notes": "Enable later: when the project itself is an agent system that must keep working unattended."
+    },
+    {
+      "id": "rta-agent0-gatekeeper",
+      "order": 2102,
+      "title": "Runtime agent 0: gatekeeper",
+      "does": "Adds the charter for agent 0, a deterministic policy gate that accepts or rejects routed tasks against fixed criteria, with no model call; the charter fixes role, write-list, what it never touches, trigger, model, order and output.",
+      "why": "Each agent owns one write area and one charter, so unattended work stays inside a declared scope and a reviewer can see who may change what.",
+      "risk": "medium",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["rta-supervisor"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:runtime/agents/agent0-gatekeeper.md", "template": "templates/runtime/agent0-gatekeeper.md", "mode": "create-only"}
+      ],
+      "scope": "template",
+      "notes": "Enable later: together with the runtime supervisor, when this agent's role exists in your app."
+    },
+    {
+      "id": "rta-agent1-lead",
+      "order": 2103,
+      "title": "Runtime agent 1: lead",
+      "does": "Adds the charter for agent 1, the only writer of the task queue, routing each task to approval, the gatekeeper or ready; the charter fixes role, write-list, what it never touches, trigger, model, order and output.",
+      "why": "Each agent owns one write area and one charter, so unattended work stays inside a declared scope and a reviewer can see who may change what.",
+      "risk": "medium",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["rta-supervisor"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:runtime/agents/agent1-lead.md", "template": "templates/runtime/agent1-lead.md", "mode": "create-only"}
+      ],
+      "scope": "template",
+      "notes": "Enable later: together with the runtime supervisor, when this agent's role exists in your app."
+    },
+    {
+      "id": "rta-agent2-backend",
+      "order": 2104,
+      "title": "Runtime agent 2: backend",
+      "does": "Adds the charter for agent 2, the backend owner, changing only its declared folders and proposing changes to frozen files; the charter fixes role, write-list, what it never touches, trigger, model, order and output.",
+      "why": "Each agent owns one write area and one charter, so unattended work stays inside a declared scope and a reviewer can see who may change what.",
+      "risk": "high",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["rta-supervisor"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:runtime/agents/agent2-backend.md", "template": "templates/runtime/agent2-backend.md", "mode": "create-only"}
+      ],
+      "scope": "template",
+      "notes": "Enable later: together with the runtime supervisor, when this agent's role exists in your app."
+    },
+    {
+      "id": "rta-agent3-testing",
+      "order": 2105,
+      "title": "Runtime agent 3: testing",
+      "does": "Adds the charter for agent 3, the test owner, running the suite deterministically and using a model only to write tests; the charter fixes role, write-list, what it never touches, trigger, model, order and output.",
+      "why": "Each agent owns one write area and one charter, so unattended work stays inside a declared scope and a reviewer can see who may change what.",
+      "risk": "high",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["rta-supervisor"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:runtime/agents/agent3-testing.md", "template": "templates/runtime/agent3-testing.md", "mode": "create-only"}
+      ],
+      "scope": "template",
+      "notes": "Enable later: together with the runtime supervisor, when this agent's role exists in your app."
+    },
+    {
+      "id": "rta-agent4-analyst",
+      "order": 2106,
+      "title": "Runtime agent 4: analyst",
+      "does": "Adds the charter for agent 4, an advisory analyst started after a domain event, writing curated data and proposals only; the charter fixes role, write-list, what it never touches, trigger, model, order and output.",
+      "why": "Each agent owns one write area and one charter, so unattended work stays inside a declared scope and a reviewer can see who may change what.",
+      "risk": "high",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["rta-supervisor"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:runtime/agents/agent4-analyst.md", "template": "templates/runtime/agent4-analyst.md", "mode": "create-only"}
+      ],
+      "scope": "template",
+      "notes": "Enable later: together with the runtime supervisor, when this agent's role exists in your app."
+    },
+    {
+      "id": "rta-agent5-ui",
+      "order": 2107,
+      "title": "Runtime agent 5: UI",
+      "does": "Adds the charter for agent 5, the UI owner, changing only the declared UI folders; the charter fixes role, write-list, what it never touches, trigger, model, order and output.",
+      "why": "Each agent owns one write area and one charter, so unattended work stays inside a declared scope and a reviewer can see who may change what.",
+      "risk": "high",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["rta-supervisor"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:runtime/agents/agent5-ui.md", "template": "templates/runtime/agent5-ui.md", "mode": "create-only"}
+      ],
+      "scope": "template",
+      "notes": "Enable later: together with the runtime supervisor, when this agent's role exists in your app."
+    },
+    {
+      "id": "rta-agent6-auditor",
+      "order": 2108,
+      "title": "Runtime agent 6: auditor",
+      "does": "Adds the charter for agent 6, a weekly auditor writing ASCII reports and proposals with the strongest model; the charter fixes role, write-list, what it never touches, trigger, model, order and output.",
+      "why": "Each agent owns one write area and one charter, so unattended work stays inside a declared scope and a reviewer can see who may change what.",
+      "risk": "high",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["rta-supervisor"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:runtime/agents/agent6-auditor.md", "template": "templates/runtime/agent6-auditor.md", "mode": "create-only"}
+      ],
+      "scope": "template",
+      "notes": "Enable later: together with the runtime supervisor, when this agent's role exists in your app."
+    },
+    {
+      "id": "rta-agent7-context",
+      "order": 2109,
+      "title": "Runtime agent 7: context",
+      "does": "Adds the charter for agent 7, an intake agent that turns plain-language requests into task filings and never dispatches; the charter fixes role, write-list, what it never touches, trigger, model, order and output.",
+      "why": "Each agent owns one write area and one charter, so unattended work stays inside a declared scope and a reviewer can see who may change what.",
+      "risk": "high",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["rta-supervisor"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:runtime/agents/agent7-context.md", "template": "templates/runtime/agent7-context.md", "mode": "create-only"}
+      ],
+      "scope": "template",
+      "notes": "Enable later: together with the runtime supervisor, when this agent's role exists in your app."
+    },
+    {
+      "id": "rta-ephemeral-spawn",
+      "order": 2110,
+      "title": "Ephemeral agent spawn with charter, budget and timeout",
+      "does": "Adds runtime/spawn.py, which runs one agent task through the profile's headless spawn helper with its charter, an explicit tool list, no session persistence, a timeout, and provider auth variables stripped.",
+      "why": "Unbounded agent runs and a stray key in the environment once broke every spawn, and logs piled up by the thousand; going through the helper puts route, budget and usage logging on every run. It never passes a skip-permissions flag.",
+      "risk": "high",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["rta-supervisor", "kit-fleet-headless"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:runtime/spawn.py", "template": "templates/runtime/spawn.py", "mode": "create-only"}
+      ],
+      "scope": "template",
+      "notes": "Enable later: together with the runtime supervisor, once agents need to run without you."
+    },
+    {
+      "id": "rta-task-queue",
+      "order": 2111,
+      "title": "Single-writer append-only task queue with category gates",
+      "does": "Adds runtime/task_queue.py: an append-only queue written by the lead alone under a lock, with hard-gate, policy-gate and ready categories, retry once then dead-letter, and rotation past a size cap.",
+      "why": "Two writers to one queue lost tasks, and a queue with no cap grew without limit; one writer, a lock and a rotation fix both.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["rta-supervisor"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:runtime/task_queue.py", "template": "templates/runtime/task_queue.py", "mode": "create-only"}
+      ],
+      "scope": "template",
+      "notes": "Enable later: together with the runtime supervisor, as its queue."
+    },
+    {
+      "id": "rta-propose-only",
+      "order": 2112,
+      "title": "Unattended agents propose, never apply, on protected files",
+      "does": "Adds a rule and a proposals folder: unattended agents change frozen files and prompts only by writing a proposal that you apply yourself.",
+      "why": "Unattended edits to frozen files bypass review; a proposal keeps the change visible and the decision yours.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["rta-supervisor"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "rules", "slot": 2112, "template": "templates/rules/propose-only.md"},
+        {"kind": "file", "target": "repo:runtime/proposals/README.md", "template": "templates/runtime/proposals-readme.md", "mode": "create-only"}
+      ],
+      "notes": "Enable later: together with the runtime supervisor, before any agent runs unattended."
+    }
+  ]
+}

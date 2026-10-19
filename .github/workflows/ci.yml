@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Windows / Node 24
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Test
+        run: npm test
+      - name: Privacy scan
+        run: node tools/privacy-scan.js .
+      - name: Parse PowerShell scripts (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $bad = 0
+          if (-not (Test-Path 'release/install.ps1')) { Write-Host 'release/install.ps1 missing'; exit 1 }
+          Get-ChildItem -Recurse -File -Filter *.ps1 | Where-Object { $_.FullName -notmatch '\\node_modules\\' } | ForEach-Object {
+            $errs = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$errs)
+            if ($errs) { $bad++; foreach ($e in $errs) { Write-Host ("{0}:{1}: {2}" -f $_.Name, $e.Extent.StartLineNumber, $e.Message) } }
+            else { Write-Host ("parsed: {0}" -f $_.Name) }
+          }
+          if ($bad) { exit 1 }

@@ -114,17 +114,20 @@ async function tick(o) {
   const rep = await upd.applyUpdate({
     home: L.home, releaseDir: rel.dir, requireClean: true, npmCi: o.npmCi, selftest: o.selftest, nodePath: o.nodePath, now,
     reintegrate: makeReintegrator({ settings, run: o.run, now }),
+    beforeSwap: o.beforeSwap, writeArp: o.writeArp, retry: o.retry,
   });
+  // CON-0.1.3: a console the swap had to stop is started again whatever the outcome.
+  if (rep.stoppedConsole && !(rep.status === 'updated' || rep.status === 'updated-with-conflicts')) await restart(L, readMarker(L.home), port);
   st.lastResult = { status: rep.status, from: rep.from, to: rep.to, at: now.toISOString(), report: rep.reportFile };
   if (rep.status === 'needs-review') {
     st.review = { version: latest.version, conflicts: conflictsOf(rep), prompt: rep.reintegration ? rep.reintegration.prompt : null };
     return save({ status: 'needs-review', badge: latest.version, conflicts: st.review.conflicts, prompt: st.review.prompt, from: rep.from, to: rep.to });
   }
-  if (rep.status !== 'updated' && rep.status !== 'updated-with-conflicts') return save({ status: rep.status, from: rep.from, to: rep.to, badge: latest.version });
+  if (rep.status !== 'updated' && rep.status !== 'updated-with-conflicts') return save({ status: rep.status, from: rep.from, to: rep.to, badge: latest.version, line: rep.line });
   st.review = null;
   // 6. restart
   let restarted = false;
-  if (d.restart) {
+  if (d.restart || rep.stoppedConsole) {
     await restart(L, readMarker(L.home), port);
     restarted = true;
   } else if (server) {
@@ -176,9 +179,14 @@ async function cliAutoupdate(a, L, deps, emit, out) {
     emit({ script: file }, ['wrote ' + file, 'run it yourself: powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + file + '"']);
     return 0;
   }
-  const r = await tick({ home: L.home, force: !!a.force, fetch: deps.fetch, serverInfo: deps.serverInfo, restart: deps.restart, npmCi: deps.npmCi, selftest: deps.selftest, run: deps.run, nodePath: deps.nodePath });
+  // CON-0.1.3: stop-before-swap only outside tests (a fake npmCi) unless injected.
+  const port = +(localCfg(L).port || 7800);
+  const beforeSwap = deps.beforeSwap !== undefined ? deps.beforeSwap
+    : (deps.npmCi && !deps.listServers ? null : require('./swap').realBeforeSwap(L, port, { listServers: deps.listServers, postShutdown: deps.postShutdown, isAlive: deps.isAlive, kill: deps.kill, sleep: deps.sleep, serverInfo: deps.serverInfo }, 'the update target'));
+  const r = await tick({ home: L.home, force: !!a.force, fetch: deps.fetch, serverInfo: deps.serverInfo, restart: deps.restart, npmCi: deps.npmCi, selftest: deps.selftest, run: deps.run, nodePath: deps.nodePath, beforeSwap, writeArp: deps.writeArp, retry: deps.retry });
   emit(r, ['autoupdate: ' + r.status + (r.reason ? ' (' + r.reason + ')' : '') + (r.badge ? ' - v' + r.badge + ' available' : '') + (r.to ? ' v' + r.from + ' -> v' + r.to : '')]);
-  return /failed|rolled-back/.test(r.status) ? 1 : 0;
+  if (r.line && !a.json) out(r.line);
+  return /failed|rolled-back|blocked/.test(r.status) ? 1 : 0;
 }
 
 module.exports = { tick, readState, registerScript, unregisterScript, cliAutoupdate, TASK, defaultServerInfo, defaultRestart };

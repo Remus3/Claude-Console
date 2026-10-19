@@ -1,0 +1,1 @@
+- Strip provider auth variables from the environment of every spawned child - why: an unrelated key in the environment redirected every spawned run and broke it (prevents: auth misroute)

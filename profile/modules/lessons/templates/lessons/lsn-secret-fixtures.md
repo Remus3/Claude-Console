@@ -1,0 +1,1 @@
+- Pin secrets by hash, test with planted fake values, and never echo an environment value - why: a real token was committed, and later pasted back in as a fix (prevents: secret leak)

@@ -1,0 +1,872 @@
+{
+  "schema": 1,
+  "id": "tdd-agents",
+  "order": 8,
+  "title": "Test-first and the agent roster",
+  "summary": "Test-first work, an orchestrated session shape and a roster of planner, builder, verifier, adversary and adjudicator agents with the commands that drive them.",
+  "why": "Fixes without a reproduction kept coming back, and work graded by its own author passed defects nobody could see. Separate roles with a failing test first keep both from happening.",
+  "default": "on",
+  "items": [
+    {
+      "id": "conv-tdd-first",
+      "order": 801,
+      "title": "Failing test first",
+      "does": "Adds the rule: spec, then a test that fails for the right reason, then the smallest change, then the verification its tier needs.",
+      "why": "A fix without a reproduction re-broke later; the failing test is what proves a change is about the bug.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "cmd-root-cause-fix",
+        "agent-verifier"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/conv-tdd-first.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[tT][eE][sS][tT] [fF][iI][rR][sS][tT]|[tT][dD][dD]"
+        }
+      ]
+    },
+    {
+      "id": "conv-session-shape",
+      "order": 802,
+      "title": "Orchestrated, self-checking session shape",
+      "does": "Adds the rule that one merger holds the plan, disjoint slices run in parallel worktrees, and every finding gets a refuting pass.",
+      "why": "The merger's context stays small because the slices carry the detail, and a finding that survives a deliberate refutation is worth reporting.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "agent-planner",
+        "agent-builder",
+        "agent-verifier",
+        "agent-adversary",
+        "agent-adjudicator"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/conv-session-shape.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[aA][dD][jJ][uU][dD][iI][cC][aA][tT]"
+        }
+      ]
+    },
+    {
+      "id": "agent-planner",
+      "order": 803,
+      "title": "Planner agent",
+      "does": "Installs a planner agent that writes the spec and a slice plan with disjoint write-lists before any code.",
+      "why": "Building on an assumption that a spec would have exposed is the most expensive way to find it.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "conv-session-shape"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/agents/planner.md",
+          "template": "templates/agents/planner.md",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/agents/planner.md"
+        }
+      ],
+      "verify": [
+        {
+          "file-ascii-lf": "repo:.claude/agents/planner.md"
+        },
+        {
+          "budget": "agent_file_kb"
+        }
+      ]
+    },
+    {
+      "id": "agent-builder",
+      "order": 804,
+      "title": "Builder agent",
+      "does": "Installs a builder agent that implements exactly one slice in its own worktree, test first, inside its write-list.",
+      "why": "Disjoint slices are checked before dispatch rather than hoped for, so parallel builders never collide.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "conv-session-shape"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/agents/builder.md",
+          "template": "templates/agents/builder.md",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/agents/builder.md"
+        }
+      ],
+      "verify": [
+        {
+          "file-ascii-lf": "repo:.claude/agents/builder.md"
+        },
+        {
+          "budget": "agent_file_kb"
+        }
+      ]
+    },
+    {
+      "id": "agent-verifier",
+      "order": 805,
+      "title": "Verifier agent",
+      "does": "Installs a verifier agent that re-runs the tests from a clean checkout and checks every cited file and claim.",
+      "why": "A done claim is only as good as the evidence behind it; the verifier is that evidence and never edits.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "conv-session-shape"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/agents/verifier.md",
+          "template": "templates/agents/verifier.md",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/agents/verifier.md"
+        }
+      ],
+      "verify": [
+        {
+          "file-ascii-lf": "repo:.claude/agents/verifier.md"
+        },
+        {
+          "budget": "agent_file_kb"
+        }
+      ]
+    },
+    {
+      "id": "agent-adversary",
+      "order": 806,
+      "title": "Adversary agent",
+      "does": "Installs an adversary agent that tries to refute one finding through one lens and says REFUTED when unsure.",
+      "why": "Two agents agreeing is not evidence. A deliberate attempt to break a finding is.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "conv-session-shape"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/agents/adversary.md",
+          "template": "templates/agents/adversary.md",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/agents/adversary.md"
+        }
+      ],
+      "verify": [
+        {
+          "file-ascii-lf": "repo:.claude/agents/adversary.md"
+        },
+        {
+          "budget": "agent_file_kb"
+        }
+      ]
+    },
+    {
+      "id": "agent-adjudicator",
+      "order": 807,
+      "title": "Adjudicator agent",
+      "does": "Installs an adjudicator agent that decides between candidates against stated criteria and records the call.",
+      "why": "Acting without asking needs someone neutral to settle the real blocks, and a record so the call can be revisited.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "conv-session-shape"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/agents/adjudicator.md",
+          "template": "templates/agents/adjudicator.md",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/agents/adjudicator.md"
+        }
+      ],
+      "verify": [
+        {
+          "file-ascii-lf": "repo:.claude/agents/adjudicator.md"
+        },
+        {
+          "budget": "agent_file_kb"
+        }
+      ]
+    },
+    {
+      "id": "agent-researcher",
+      "order": 808,
+      "title": "Researcher agent",
+      "does": "Installs a researcher agent that searches for prior art and checks each source's licence, without copying code in.",
+      "why": "Third-party code arrives through a licence gate, not through a paste.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "conv-session-shape"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/agents/researcher.md",
+          "template": "templates/agents/researcher.md",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/agents/researcher.md"
+        }
+      ],
+      "verify": [
+        {
+          "file-ascii-lf": "repo:.claude/agents/researcher.md"
+        },
+        {
+          "budget": "agent_file_kb"
+        }
+      ]
+    },
+    {
+      "id": "agent-ui-auditor",
+      "order": 809,
+      "title": "UI auditor agent",
+      "does": "Installs a UI auditor agent that reviews changed screens for structure, typography, hit targets, characters and hierarchy.",
+      "why": "Interface regressions are cheap to catch before a commit and costly to notice after a release.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "conv-session-shape"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/agents/ui-auditor.md",
+          "template": "templates/agents/ui-auditor.md",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/agents/ui-auditor.md"
+        }
+      ],
+      "verify": [
+        {
+          "file-ascii-lf": "repo:.claude/agents/ui-auditor.md"
+        },
+        {
+          "budget": "agent_file_kb"
+        }
+      ]
+    },
+    {
+      "id": "agent-doc-sync",
+      "order": 810,
+      "title": "Doc-sync agent",
+      "does": "Installs a doc-sync agent that compares every restated fact in the markdown files with its one owning file.",
+      "why": "A number restated in three files drifts in two of them; one owner per fact keeps them honest.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "conv-session-shape"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/agents/doc-sync.md",
+          "template": "templates/agents/doc-sync.md",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/agents/doc-sync.md"
+        }
+      ],
+      "verify": [
+        {
+          "file-ascii-lf": "repo:.claude/agents/doc-sync.md"
+        },
+        {
+          "budget": "agent_file_kb"
+        }
+      ]
+    },
+    {
+      "id": "cmd-orchestrated-run",
+      "order": 811,
+      "title": "/orchestrated-run",
+      "does": "Installs a command that runs recall, plan, parallel builders, the verifier gate and the merge as one entry point.",
+      "why": "One command makes the session shape the easy path instead of a checklist to remember.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "conv-session-shape"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/commands/orchestrated-run.md",
+          "template": "templates/commands/orchestrated-run.md",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/commands/orchestrated-run.md"
+        }
+      ]
+    },
+    {
+      "id": "cmd-root-cause-fix",
+      "order": 812,
+      "title": "/root-cause-fix",
+      "does": "Installs a command for bugs: reproduction test first, every sibling occurrence of the cause, the minimal fix, and a backfill of data the bug already damaged.",
+      "why": "Bugs came back through sibling code paths with the same shape, and fixed code left corrupted rows behind.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "conv-tdd-first"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/commands/root-cause-fix.md",
+          "template": "templates/commands/root-cause-fix.md",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/commands/root-cause-fix.md"
+        }
+      ]
+    },
+    {
+      "id": "cmd-diagnose",
+      "order": 813,
+      "title": "/diagnose",
+      "does": "Installs a five-step debugging command: reproduce, minimise, hypothesise, fix one thing, verify.",
+      "why": "An investigation without a loop flails: it changes several things at once and cannot say which one helped.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/commands/diagnose.md",
+          "template": "templates/commands/diagnose.md",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/commands/diagnose.md"
+        }
+      ]
+    },
+    {
+      "id": "plugin-superpowers",
+      "order": 814,
+      "title": "superpowers plugin (listed only)",
+      "does": "Names the superpowers plugin from the official marketplace: skills for test-driven work, planning, worktrees, verification and review.",
+      "why": "The author's sessions invoke these packaged disciplines constantly. Installing a plugin is your own act, so the profile only lists it.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [],
+      "notes": "Install it yourself from the official plugin marketplace; nothing is installed here."
+    },
+    {
+      "id": "plugin-playwright",
+      "order": 815,
+      "title": "Playwright plugin (listed only)",
+      "does": "Names the Playwright plugin, which drives a browser for interface checks and end-to-end tests.",
+      "why": "Interface read-backs need a real browser; this is the one the author uses for them.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [],
+      "notes": "Listed with its reason; you install it from the marketplace if you want it."
+    },
+    {
+      "id": "plugin-chrome-devtools",
+      "order": 816,
+      "title": "Chrome DevTools plugin (listed only)",
+      "does": "Names the Chrome DevTools plugin for accessibility, performance and network audits.",
+      "why": "Accessibility and performance audits catch interface faults that a screenshot does not show.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [],
+      "notes": "The profile never installs plugins; marketplace installs stay your decision."
+    },
+    {
+      "id": "conv-worktree-branches",
+      "order": 817,
+      "title": "Same-day work on worktree branches",
+      "does": "Adds the rule that versions and multi-step builds live on a worktree branch and reach main only by a fast-forward once verified.",
+      "why": "Late edits on main broke tools that read it, and a public project should not see every intermediate version.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/conv-worktree-branches.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[wW][oO][rR][kK][tT][rR][eE][eE]"
+        }
+      ]
+    },
+    {
+      "id": "ag-session-default-file",
+      "order": 818,
+      "title": "Shared rule file for every agent",
+      "does": "Creates .claude/session-default.md with the shape, hard rules, progress contract and verdict lines, which every agent definition reads first.",
+      "why": "Sub-agents do not inherit the main session's CLAUDE.md; one shared file beats restating the rules in eight agent files.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "agent-planner",
+        "agent-builder",
+        "agent-verifier"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/session-default.md",
+          "template": "templates/session-default.md",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/session-default.md"
+        }
+      ],
+      "verify": [
+        {
+          "file-ascii-lf": "repo:.claude/session-default.md"
+        }
+      ]
+    },
+    {
+      "id": "ag-agent-file-cap",
+      "order": 819,
+      "title": "Size cap per agent file",
+      "does": "Adds the rule that each agent definition stays under the agent file budget, which the budget checker enforces.",
+      "why": "Agent files load into every dispatch, so each extra kilobyte is paid on every sub-agent call.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "conv-doc-size-budget",
+        "tool-doc-budget"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/ag-agent-file-cap.md"
+        }
+      ],
+      "verify": [
+        {
+          "budget": "agent_file_kb"
+        }
+      ]
+    },
+    {
+      "id": "ag-phase0-recall",
+      "order": 820,
+      "title": "Recall before the spec",
+      "does": "Adds phase 0: before planning, read the hand-off, history, roadmap, rulings and memory; a CLOSED or REFUTED hit stops the work.",
+      "why": "Work that had already been closed or refuted was being built a second time; reading first is cheaper than building twice.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "cmd-orchestrated-run"
+      ],
+      "pairs_with": [
+        "rec-recall-before-build"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/ag-phase0-recall.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[rR][eE][cC][aA][lL][lL]"
+        }
+      ]
+    },
+    {
+      "id": "ag-risk-scaled-lenses",
+      "order": 821,
+      "title": "Review depth scaled by risk",
+      "does": "Adds the rule that diffs touching core logic get the full adversary lens set, plumbing gets one lens, and refute rounds are capped before the adjudicator decides.",
+      "why": "Full adversarial review on every small plumbing change spent most of the review budget where defects were least likely.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "agent-adversary"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/ag-risk-scaled-lenses.md"
+        }
+      ]
+    },
+    {
+      "id": "ag-recusal",
+      "order": 822,
+      "title": "No agent grades its own work",
+      "does": "Adds the rule that the producer of a slice, spec or candidate is never its verifier, adversary or adjudicator.",
+      "why": "Self-grading passed exactly the defects the producer could not see.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "agent-verifier",
+        "agent-adjudicator"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/ag-recusal.md"
+        }
+      ]
+    },
+    {
+      "id": "ag-truth-gate",
+      "order": 823,
+      "title": "Claims check for multi-builder rounds",
+      "does": "Installs claims_check.py: the verifier lists the files, absences and counts a report claims, and the tool re-measures each one and refuses on the first that does not hold.",
+      "why": "A replayed tool output once reported fabricated counts. Enable it once several builders report in one round; the verifier alone covers most work.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "agent-verifier"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/tools/claims_check.py",
+          "template": "templates/tools/claims_check.py",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/tools/claims_check.py"
+        }
+      ],
+      "scope": "template"
+    },
+    {
+      "id": "ag-model-routing",
+      "order": 824,
+      "title": "Model and effort chosen by run kind",
+      "does": "Adds the routing rule: planning on the strongest model, fixes on a mid-size one, verification and inbox replies on a mid-size model at low effort.",
+      "why": "Running every background job on the top model spent most of the budget on acknowledgements. Enable it once headless spend matters to you.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "kit-fleet-headless"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/ag-model-routing.md"
+        }
+      ]
+    },
+    {
+      "id": "ag-lane-path-ownership",
+      "order": 825,
+      "title": "Each lane owns its paths",
+      "does": "Creates .claude/lanes.json, a registry of the paths each background lane may write, with shared directories listed explicitly.",
+      "why": "Two lanes editing one file collided before file claims existed; a path registry makes the boundary visible up front. Useful only with parallel lanes.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "kit-fleet-lanes"
+      ],
+      "pairs_with": [
+        "kit-fleet-claims"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/lanes.json",
+          "template": "templates/lanes.json",
+          "mode": "create-only"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/lanes.json"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "repo:.claude/lanes.json"
+        }
+      ]
+    },
+    {
+      "id": "ag-loop-roles",
+      "order": 826,
+      "title": "Director, auditor and executor roles",
+      "does": "Adds the loop rule that the director and auditor run read-only in plan mode, only the executor changes files, and cycles are capped.",
+      "why": "Separating planning from execution kept an autonomous loop from approving its own work. It is for heavy users once background lanes are proven.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "kit-fleet-headless"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/ag-loop-roles.md"
+        }
+      ]
+    }
+  ]
+}

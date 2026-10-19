@@ -1,0 +1,372 @@
+{
+  "schema": 1,
+  "id": "fleet",
+  "order": 10,
+  "title": "Several repositories",
+  "summary": "A roster of your repositories, a note channel between them, one supervisor repository that speaks for you, and a shared kit kept in sync.",
+  "why": "With several repositories on one machine, a finding in one is often a problem in all of them. A channel and a supervisor let you fix it once, without pasting the same instruction into every session.",
+  "default": "off",
+  "items": [
+    {
+      "id": "fleet-roster",
+      "order": 1001,
+      "title": "Roster of your repositories",
+      "does": "Creates ops/roster.json: one entry per repository with its code, name, root (entered in the wizard), colour, and whether it is retired.",
+      "why": "Every report kept its own list of repositories, and the lists disagreed; one roster read by all of them settles it.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:ops/roster.json",
+          "template": "templates/roster.json",
+          "mode": "create-only"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:ops/roster.json"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "repo:ops/roster.json"
+        }
+      ],
+      "scope": "template",
+      "notes": "Keep the file gitignored in a public repository: it holds your local paths."
+    },
+    {
+      "id": "fleet-channel",
+      "order": 1002,
+      "title": "Note channel between repositories",
+      "does": "Adds the channel rule (outbox first, byte-copy delivery, re-hashed destinations, an N/M count) and an outbox README.",
+      "why": "Without a channel, each repository re-diagnosed the same machine finding on its own, and triage by title missed the section that mattered.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/fleet-channel.md"
+        },
+        {
+          "kind": "file",
+          "target": "repo:{outbox_dir}/README.md",
+          "template": "templates/outbox-README.md",
+          "mode": "create-only"
+        },
+        {
+          "kind": "block",
+          "target": "repo:.claude/commands/done.md",
+          "block": "done-notes",
+          "template": "templates/done/notes.md"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:{inbox_dir}/*"
+        }
+      ]
+    },
+    {
+      "id": "fleet-stand-in",
+      "order": 1003,
+      "title": "Supervisor notes count as your instruction",
+      "does": "Adds the rule that a hash-verified note from the supervisor repository is your instruction, bounded by the floors.",
+      "why": "It gives you one place to act across all repositories instead of pasting the same order into each session.",
+      "risk": "medium",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "fleet-channel"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/fleet-stand-in.md"
+        }
+      ]
+    },
+    {
+      "id": "kit-fleet-inbox",
+      "order": 1004,
+      "title": "Cheap inbox triage",
+      "does": "Copies kit_inbox.py and adds the inbox cost rules: free classification first, mechanical acknowledgements, a daily outbound cap and a hop limit.",
+      "why": "When measured, about 60 percent of background spend was repositories chatting about notes rather than doing work.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "fleet-channel"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "kit",
+          "files": [
+            "kit_inbox.py"
+          ],
+          "target": "repo:{kit_dir}"
+        },
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/kit-fleet-inbox.md"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:{kit_dir}/kit_inbox.py"
+        }
+      ]
+    },
+    {
+      "id": "kit-vendoring",
+      "order": 1005,
+      "title": "Kit files are pinned copies",
+      "does": "Adds the rule that kit files are byte copies pinned by their manifest, and copies the manifest that pins them.",
+      "why": "Local edits to shared helpers forked them silently; a pinned manifest makes any fork visible.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "kit",
+          "files": [
+            "MANIFEST.json"
+          ],
+          "target": "repo:{kit_dir}"
+        },
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/kit-vendoring.md"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:{kit_dir}/MANIFEST.json"
+        }
+      ]
+    },
+    {
+      "id": "kit-common-block",
+      "order": 1006,
+      "title": "Managed shared rules block",
+      "does": "Adds the rule that the shared rules in CLAUDE.md are rendered from the enabled modules and changed only through the profile, which reports a hand edit.",
+      "why": "One rule text for every repository only stays one text if nobody edits a copy.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "rule-claude-md-layout"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/kit-common-block.md"
+        }
+      ]
+    },
+    {
+      "id": "tool-kit",
+      "order": 1007,
+      "title": "Drift check every session",
+      "does": "Adds the start-up step that runs the profile status check for every repository in the roster.",
+      "why": "A fork caught at the next session start is a one-line fix; caught a month later it is an archaeology project.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "kit-vendoring",
+        "fleet-roster"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/tool-kit.md"
+        }
+      ]
+    },
+    {
+      "id": "kit-train",
+      "order": 1008,
+      "title": "At most one kit version a week",
+      "does": "Adds the rule: one new profile version per seven days, built on a worktree branch, the next only after all repositories adopted the last; fixes exempt.",
+      "why": "Repositories stopped their own work to adopt version after version; a slower train let them build again.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "kit-vendoring"
+      ],
+      "pairs_with": [
+        "sched-kit-rollout"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/kit-train.md"
+        }
+      ]
+    },
+    {
+      "id": "kit-fleet-watch",
+      "order": 1009,
+      "title": "Watcher helper",
+      "does": "Copies kit_watch.py: a watcher primitive that takes a baseline first, advances only after delivery, runs once at a time and reports going stale once.",
+      "why": "Hand-written watchers re-delivered old history or died silently; one primitive does it correctly.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "kit",
+          "files": [
+            "kit_watch.py"
+          ],
+          "target": "repo:{kit_dir}"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:{kit_dir}/kit_watch.py"
+        }
+      ]
+    },
+    {
+      "id": "os-self-apply-grant",
+      "order": 1010,
+      "title": "Agent applies OS settings itself",
+      "does": "Adds the grant that firewall, network adapter, service and UAC changes are made by the agent instead of being handed to you to paste.",
+      "why": "The author prefers the agent to make such changes with backup and read-back than to type them by hand. This hands real power to the agent, so it stays off unless you choose it.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "floor-os-settings-backup"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/os-self-apply-grant.md"
+        }
+      ]
+    },
+    {
+      "id": "sched-kit-rollout",
+      "order": 1011,
+      "title": "Nightly note delivery and drift record",
+      "does": "Registers a nightly task (04:00, 55-minute limit) that delivers queued notes to every repository and records each one's profile drift; it applies nothing.",
+      "why": "Delivering kit notes during the day made repositories stop mid-session to adopt; once a night they do it while idle.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32"
+      ],
+      "depends_on": [
+        "kit-vendoring",
+        "fleet-roster",
+        "fleet-channel"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/tools/kit_rollout.py",
+          "template": "templates/tools/kit_rollout.py",
+          "mode": "managed"
+        },
+        {
+          "kind": "task",
+          "name": "ClaudeProfile-KitRollout",
+          "template": "templates/tasks/kit-rollout.xml"
+        }
+      ],
+      "verify": [
+        {
+          "task-readback": "ClaudeProfile-KitRollout"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+"UserLocalConfigStore"
+{
+	"Software"
+	{
+		"Valve"
+		{
+			"Steam"
+			{
+				"SteamController_PSSupport"		"1"
+			}
+		}
+	}
+}

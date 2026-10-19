@@ -1,0 +1,1 @@
+- Write a commit message to a file in your own scratch folder and commit with -F - why: shell quoting mangled message text, and a shared temp file once delivered another session's message (prevents: cross-session collision)

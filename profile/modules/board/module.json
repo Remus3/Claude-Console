@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "id": "board",
+  "order": 14,
+  "title": "Status board",
+  "summary": "A claude.ai status board per repository, rendered from the checklist and progress files at fixed moments.",
+  "why": "A board you can open on a phone shows every repository's plan and progress at the cost of two tool calls per push.",
+  "default": "off",
+  "items": [
+    {
+      "id": "kit-fleet-board",
+      "order": 1401,
+      "title": "Status board renderer",
+      "does": "Copies kit_board.py, which renders the board deterministically from the checklist and progress files and prints the two tool calls that publish it; the board link is yours, entered in the wizard.",
+      "why": "Rendering from files rather than from the model keeps each push cheap and the board identical to the real state.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "conv-session-checklist"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "kit",
+          "files": [
+            "kit_board.py"
+          ],
+          "target": "repo:{kit_dir}"
+        },
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/kit-fleet-board.md"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:{kit_dir}/kit_board.py"
+        }
+      ],
+      "scope": "template"
+    },
+    {
+      "id": "conv-board-push-points",
+      "order": 1402,
+      "title": "Board pushed only at fixed moments",
+      "does": "Adds the rule that the board is pushed at session start, after each checklist reprint and at /done, and the /done step for the final push.",
+      "why": "A bounded number of pushes keeps the board's cost predictable.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "kit-fleet-board"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/conv-board-push-points.md"
+        },
+        {
+          "kind": "block",
+          "target": "repo:.claude/commands/done.md",
+          "block": "done-board",
+          "template": "templates/done/board.md"
+        }
+      ]
+    }
+  ]
+}

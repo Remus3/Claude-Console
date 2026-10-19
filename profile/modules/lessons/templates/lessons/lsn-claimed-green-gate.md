@@ -1,0 +1,1 @@
+- Refuse a 'tests pass' claim at the end of a session when no test run backs it - why: green claimed without a run was the most often recorded failure of all (prevents: false claim)

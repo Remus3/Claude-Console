@@ -1,0 +1,1 @@
+- Restrict test discovery to the repo's own test folders - why: a bare test run imported test code from a folder that other tools write into, which ran code nobody reviewed (prevents: untrusted code execution)

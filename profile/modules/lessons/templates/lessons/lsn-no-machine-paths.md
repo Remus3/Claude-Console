@@ -1,0 +1,1 @@
+- Keep home paths, host names, private names and account ids out of every tracked file - why: paths and names reached public history and the history had to be rewritten more than once (prevents: PII leak)

@@ -1,0 +1,1 @@
+- Never silence the test runner's summary line - why: an extra-quiet flag dropped the counts line, so nobody could read the result (prevents: unreadable result)

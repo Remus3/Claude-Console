@@ -1,0 +1,56 @@
+name: Bug report
+description: Something in Claude Console does not work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Never paste secrets: no tokens, API keys, passwords,
+        user names or private paths. Replace them with `<redacted>`.
+        If the console crashed or a setup step failed, use the Crash report template instead.
+  - type: input
+    id: version
+    attributes:
+      label: Console version
+      description: Settings, or Apps & features.
+      placeholder: "0.1.3"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Windows version and build
+      placeholder: "Windows 11 23H2 (22631)"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Click ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Error text, or a screenshot with private details cropped out.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you send
+      options:
+        - label: I am on the latest release (`claude-console update --check`).
+          required: true
+        - label: This report contains no secrets, tokens or private paths.
+          required: true

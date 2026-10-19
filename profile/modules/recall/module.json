@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "id": "recall",
+  "order": 17,
+  "title": "Memory recall (recall-before-build; vault off)",
+  "summary": "Look before you build: search memory and settled records first, and keep the memory folder valid and reachable.",
+  "why": "Memory only helps when it is searched before work starts and when every leaf can be found; the heavier vault tooling stays off until memory is large enough to need it.",
+  "default": "on",
+  "locked": false,
+  "items": [
+    {
+      "id": "rec-recall-before-build",
+      "order": 1701,
+      "title": "Recall before building; a CLOSED hit stops the work",
+      "does": "Adds a rule: before any non-trivial item, search memory, the ledger and the settled list for the task in your own words; a settled or closed hit stops the work.",
+      "why": "Settled items were re-opened and re-built across sessions because nobody looked first; a search costs seconds, a rebuild costs a session.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": [],
+      "pairs_with": ["conv-memory-layout", "ag-phase0-recall"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "rules", "slot": 1701, "template": "templates/rules/recall-before-build.md"}
+      ],
+      "detect": [
+        {"text": "repo:CLAUDE.md", "regex": "RECALL BEFORE BUILD|[Rr]ecall before build"}
+      ]
+    },
+    {
+      "id": "rec-domain-indexes",
+      "order": 1702,
+      "title": "Split memory index into domain sub-indexes",
+      "does": "Adds a rule that MEMORY.md points to one index file per domain, new leaves go into their domain index, and an index is split once it passes 16 KB.",
+      "why": "A flat index stops scaling past about a hundred leaves and once reached a few bytes under its budget; domain indexes keep the always-loaded part small.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["conv-memory-layout"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "rules", "slot": 1702, "template": "templates/rules/domain-indexes.md"}
+      ],
+      "notes": "Enable later: when the memory index passes about 60 leaves; the budget checker warns before that."
+    },
+    {
+      "id": "rec-memory-validate",
+      "order": 1703,
+      "title": "Memory frontmatter and reachability validator",
+      "does": "Adds tools/memory_validate.py and a rule to run it: every memory leaf has name, description and type, every leaf is reachable from the index, and the index and leaves stay within budget.",
+      "why": "An unindexed leaf is never recalled, and stale leaves kept citing files that no longer existed; a validator finds both before they mislead a session.",
+      "risk": "low",
+      "default": "on",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["conv-memory-layout"],
+      "pairs_with": ["tool-doc-budget"],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:tools/memory_validate.py", "template": "templates/tools/memory_validate.py", "mode": "managed"},
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "rules", "slot": 1703, "template": "templates/rules/memory-validate.md"}
+      ],
+      "detect": [
+        {"file": "repo:tools/memory_validate.py"}
+      ]
+    },
+    {
+      "id": "rec-vault-mcp",
+      "order": 1704,
+      "title": "Local memory vault (MCP server) mirror",
+      "does": "Adds a contract file describing how a local vault you install yourself can mirror the markdown memory and inject one bounded recall block per session over MCP.",
+      "why": "Keyword search misses paraphrased past decisions once memory is large; a bounded injected block costs at most a few thousand characters per session. The profile never installs a vault binary.",
+      "risk": "medium",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["conv-memory-layout"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:{docs_dir}/memory-vault.md", "template": "templates/memory-vault.md", "mode": "create-only"}
+      ],
+      "scope": "machine-specific",
+      "notes": "Enable later: once memory passes a few hundred leaves and keyword search starts missing decisions."
+    },
+    {
+      "id": "rec-recall-compact",
+      "order": 1705,
+      "title": "Compact recall wrapper (key + summary, top 8)",
+      "does": "Adds a rule that vault recall returns only category, key and a short summary per hit, eight hits by default, with the body fetched by key.",
+      "why": "Raw recall returned every body, sometimes twice, and flooded the context it was meant to save.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["rec-vault-mcp"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "rules", "slot": 1705, "template": "templates/rules/recall-compact.md"}
+      ],
+      "notes": "Enable later: together with a memory vault, to keep each recall to a few thousand characters."
+    },
+    {
+      "id": "rec-vault-sync-coverage",
+      "order": 1706,
+      "title": "Vault sync + coverage gate (embedded == active)",
+      "does": "Adds a rule that the vault mirror is idempotent and that a coverage gate requires every active row to be embedded before the vault counts as healthy.",
+      "why": "An ingest once embedded a small fraction of the rows and still reported healthy; a count check is the only proof that recall can find what memory holds.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["rec-vault-mcp"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "block", "target": "repo:CLAUDE.md", "block": "rules", "slot": 1706, "template": "templates/rules/vault-sync-coverage.md"}
+      ],
+      "notes": "Enable later: together with a memory vault, before relying on it for recall."
+    },
+    {
+      "id": "rec-project-slug",
+      "order": 1707,
+      "title": "Project slug resolver (worktrees and moved repos)",
+      "does": "Adds tools/project_slug.py, which prints the Claude project folder for the main checkout from any worktree and lists folders that look like stale copies after a move.",
+      "why": "After a repo moved, readers kept using a dead project folder and memory existed in two diverging copies; resolving the folder from the main checkout avoids both.",
+      "risk": "low",
+      "default": "off",
+      "platform": ["win32", "darwin", "linux"],
+      "depends_on": ["conv-memory-layout"],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {"kind": "file", "target": "repo:tools/project_slug.py", "template": "templates/tools/project_slug.py", "mode": "managed"}
+      ],
+      "notes": "Enable later: after moving the repo to another drive or folder, or when you work from worktrees."
+    }
+  ]
+}

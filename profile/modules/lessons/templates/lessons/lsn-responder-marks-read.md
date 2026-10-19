@@ -1,0 +1,1 @@
+- Make an automated responder mark every note handled, and disable a task whose runs all halt - why: an unread note re-fired the responder on every tick and spent budget for days (prevents: cost loop)

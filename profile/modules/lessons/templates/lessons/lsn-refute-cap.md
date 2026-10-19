@@ -1,0 +1,1 @@
+- Cap review and refute rounds, then hand the question to an adjudicator - why: an uncapped review loop ran for a dozen rounds without converging (prevents: unbounded review)

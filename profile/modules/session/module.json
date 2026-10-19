@@ -1,0 +1,464 @@
+{
+  "schema": 1,
+  "id": "session",
+  "order": 3,
+  "title": "Session shape",
+  "summary": "One hand-off file carries every session into the next, a numbered checklist shows the plan, and /done closes the session verifiably.",
+  "why": "Chat does not survive /clear. Continuity therefore lives in one tracked file, and a session counts as finished only when a marker proves the commit and the hand-off match.",
+  "default": "on",
+  "items": [
+    {
+      "id": "conv-handoff-file",
+      "order": 301,
+      "title": "Hand-off file at the repo root",
+      "does": "Creates {handoff_name} and the rule that every session reads it first and /done rewrites it, carrying forward every open item.",
+      "why": "The next session starts cold, from the file, not from memory. Dated hand-off files in a docs folder drifted apart; one overwritten file cannot.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "cmd-done",
+        "conv-session-counter",
+        "conv-dnr-reversal"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:{handoff_name}",
+          "template": "templates/handoff.txt",
+          "mode": "create-only"
+        },
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/conv-handoff-file.md"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:*-NEXT-SESSION.txt"
+        },
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "NEXT-SESSION\\.txt"
+        }
+      ],
+      "verify": [
+        {
+          "file-ascii-lf": "repo:{handoff_name}"
+        },
+        {
+          "regex": "repo:{handoff_name}",
+          "line1": "^SESSION: \\d+$"
+        }
+      ]
+    },
+    {
+      "id": "conv-dnr-reversal",
+      "order": 302,
+      "title": "Settled items name what would reverse them",
+      "does": "Adds the rule that every do-not-re-litigate entry states its reversal condition and is re-checked when it depends on someone else.",
+      "why": "One entry was carried for ten days after its condition had been met, because the list protected it from being read again.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "conv-handoff-file"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/conv-dnr-reversal.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[rR][eE]-[lL][iI][tT][iI][gG][aA][tT][eE]"
+        }
+      ]
+    },
+    {
+      "id": "conv-session-counter",
+      "order": 303,
+      "title": "SESSION counter in the hand-off",
+      "does": "Adds the rule that the hand-off starts with SESSION: n and that /done writes n+1.",
+      "why": "A checklist number has to be read from somewhere; a guessed one breaks the link between a session and its commit.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "conv-handoff-file"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/conv-session-counter.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:{handoff_name}",
+          "regex": "^SESSION: \\d+"
+        }
+      ]
+    },
+    {
+      "id": "conv-session-checklist",
+      "order": 304,
+      "title": "Numbered session checklist",
+      "does": "Adds the rule that each session prints its task list at the start, reprints the remainder after every four completions, and runs /done when the list is empty.",
+      "why": "The list is easy to read on a phone: tasks only, in order, so you can see what a session is doing without reading its log.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "conv-session-counter"
+      ],
+      "pairs_with": [
+        "kit-fleet-checklist",
+        "cmd-done"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/conv-session-checklist.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[cC][hH][eE][cC][kK][lL][iI][sS][tT]"
+        }
+      ]
+    },
+    {
+      "id": "kit-fleet-checklist",
+      "order": 305,
+      "title": "Checklist helper",
+      "does": "Copies kit_checklist.py, which prints the checklist in the fixed format and writes the remaining tasks into a background run's progress file.",
+      "why": "One implementation of the checklist keeps every kind of session, interactive or background, printing the same shape.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "conv-session-checklist"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "kit",
+          "files": [
+            "kit_checklist.py"
+          ],
+          "target": "repo:{kit_dir}"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:{kit_dir}/kit_checklist.py"
+        }
+      ]
+    },
+    {
+      "id": "cmd-done",
+      "order": 306,
+      "title": "/done end-of-session command",
+      "does": "Installs a /done command that runs pre-flight, checks, the hand-off rewrite, one commit and the done marker; other modules add their own steps inside it.",
+      "why": "The hand-off is the only continuity, so the ritual that writes it must lose nothing, and you need a reliable moment when it is safe to clear.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "conv-handoff-file"
+      ],
+      "pairs_with": [
+        "kit-fleet-done",
+        "hook-stop-done-title"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/commands/done.md",
+          "template": "templates/commands/done.md",
+          "mode": "managed"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:.claude/commands/done.md"
+        }
+      ],
+      "verify": [
+        {
+          "file-ascii-lf": "repo:.claude/commands/done.md"
+        }
+      ],
+      "notes": "The console ships a plain /done; this one replaces it in the repository and is composed from the enabled modules."
+    },
+    {
+      "id": "kit-fleet-done",
+      "order": 307,
+      "title": "Verified done marker",
+      "does": "Copies kit_done.py and adds the marker step to /done: it records HEAD, the hand-off hash and the session number, and refuses a hand-off over the size budget.",
+      "why": "DONE must be checked, persistent and cleared only by your next act, never by a timer or by reading chat.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "cmd-done"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "kit",
+          "files": [
+            "kit_done.py"
+          ],
+          "target": "repo:{kit_dir}"
+        },
+        {
+          "kind": "block",
+          "target": "repo:.claude/commands/done.md",
+          "block": "done-marker",
+          "template": "templates/done/marker.md"
+        }
+      ],
+      "detect": [
+        {
+          "file": "repo:{kit_dir}/kit_done.py"
+        }
+      ]
+    },
+    {
+      "id": "hook-stop-done-title",
+      "order": 308,
+      "title": "DONE in the terminal title",
+      "does": "Adds a Stop hook that, once the marker is valid and nothing runs in the background, titles the tab '{repo_code} DONE' and sends one notification.",
+      "why": "A second signal beside the status line lets you see from across the room which tabs are safe to clear. The hook never blocks Stop.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "kit-fleet-done"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "repo:.claude/settings.json",
+          "value": {
+            "hooks": {
+              "Stop": [
+                {
+                  "hooks": [
+                    {
+                      "type": "command",
+                      "command": "\"{python}\" \"$CLAUDE_PROJECT_DIR/{kit_dir}/kit_done.py\" stop-hook",
+                      "timeout": 10
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "mode": "add"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:.claude/settings.json",
+          "regex": "kit_done\\.py.{0,4} stop-hook"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "repo:.claude/settings.json"
+        },
+        {
+          "hook-smoke": "repo:.claude/settings.json"
+        }
+      ]
+    },
+    {
+      "id": "hook-sessionstart-checklist",
+      "order": 309,
+      "title": "Session number at start-up",
+      "does": "Adds a SessionStart hook that reads SESSION: n from the hand-off and tells Claude which checklist number to print.",
+      "why": "An admitted gap is better than a guessed number; this hook removes the guess.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "conv-session-counter"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "file",
+          "target": "repo:.claude/hooks/session_counter.py",
+          "template": "templates/hooks/session_counter.py",
+          "mode": "managed"
+        },
+        {
+          "kind": "json-merge",
+          "target": "repo:.claude/settings.json",
+          "value": {
+            "hooks": {
+              "SessionStart": [
+                {
+                  "hooks": [
+                    {
+                      "type": "command",
+                      "command": "\"{python}\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_counter.py\"",
+                      "timeout": 5
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "mode": "add"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:.claude/settings.json",
+          "regex": "session_counter\\.py"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "repo:.claude/settings.json"
+        },
+        {
+          "hook-smoke": "repo:.claude/settings.json"
+        }
+      ]
+    },
+    {
+      "id": "conv-session-start",
+      "order": 310,
+      "title": "Fixed start-up order",
+      "does": "Adds the start-up order: read the hand-off, switch to quiet output, print the checklist, run the enabled start-up checks, then work.",
+      "why": "A fixed order keeps start-up cheap and predictable, and it guarantees the session begins from the file.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "conv-handoff-file"
+      ],
+      "pairs_with": [
+        "out-caveman-ultra",
+        "conv-session-checklist"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/conv-session-start.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "[sS][eE][sS][sS][iI][oO][nN] [sS][tT][aA][rR][tT]"
+        }
+      ]
+    },
+    {
+      "id": "conv-session-end",
+      "order": 311,
+      "title": "Unprompted /done, then your /clear",
+      "does": "Adds the rule that /done runs by itself when work runs out or context gets heavy, and that only you type /clear.",
+      "why": "Context and continuity stay under control without anyone having to remember the ritual.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "cmd-done"
+      ],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "block",
+          "target": "repo:CLAUDE.md",
+          "block": "rules",
+          "template": "templates/rules/conv-session-end.md"
+        }
+      ],
+      "detect": [
+        {
+          "text": "repo:CLAUDE.md",
+          "regex": "/[dD][oO][nN][eE].{0,40}[uU][nN][pP][rR][oO][mM][pP][tT][eE][dD]"
+        }
+      ]
+    }
+  ]
+}

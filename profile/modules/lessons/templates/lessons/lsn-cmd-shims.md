@@ -1,0 +1,1 @@
+- From CreateProcess, start command shims by their full name, such as npm.cmd - why: a bare npm or claude name fails with file-not-found from CreateProcess, so the automation never starts (prevents: dead automation)
