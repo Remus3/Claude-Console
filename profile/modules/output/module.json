@@ -384,7 +384,8 @@
       "depends_on": [],
       "pairs_with": [],
       "conflicts_with": [
-        "set-statusline"
+        "set-statusline",
+        "set-statusline-user"
       ],
       "contributes": [],
       "notes": "Installed by the console's own setup; choosing it here only records the choice."
@@ -484,6 +485,67 @@
         {
           "text": "repo:CLAUDE.md",
           "regex": "[sS][iI][lL][eE][nN][tT] [bB][yY] [dD][eE][fF][aA][uU][lL][tT]"
+        }
+      ]
+    },
+    {
+      "id": "set-statusline-user",
+      "order": 413,
+      "title": "Status lines for every repository",
+      "does": "Copies the fixed-slot status line and the agent row script into your Claude config folder and points your account settings at them, so they show in every repository.",
+      "why": "The repository variant only shows where it was applied; at account level the same line is everywhere you work.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "set-statusline",
+        "set-subagent-statusline"
+      ],
+      "conflicts_with": [
+        "console-statusline-basic"
+      ],
+      "contributes": [
+        {
+          "kind": "kit",
+          "files": [
+            "kit_statusline.js",
+            "kit_subagent_status.js",
+            "tokens.json"
+          ],
+          "target": "user:statusline"
+        },
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "statusLine": {
+              "type": "command",
+              "command": "\"{node}\" \"{config_dir}/statusline/kit_statusline.js\"",
+              "padding": 0,
+              "refreshInterval": 5
+            },
+            "subagentStatusLine": {
+              "type": "command",
+              "command": "\"{node}\" \"{config_dir}/statusline/kit_subagent_status.js\""
+            }
+          },
+          "mode": "add"
+        }
+      ],
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "statusLine"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
         }
       ]
     }

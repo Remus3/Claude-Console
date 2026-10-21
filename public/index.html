@@ -71,6 +71,10 @@
   </section>
   <aside id="statuspanel">
     <div class="side-head"><span>Status</span><span id="status-age" class="muted"></span></div>
+    <section id="trk" class="trk" aria-label="Trackers">
+      <button type="button" id="trk-toggle" class="trk-head" aria-expanded="true" aria-controls="trk-body" title="Show or hide the trackers (remembered in this browser)"><span class="trk-caret" aria-hidden="true">-</span><span class="trk-title">Trackers</span><span id="trk-sum" class="trk-sum muted"></span></button>
+      <div id="trk-body" class="trk-body"></div>
+    </section>
     <div id="status-list"></div>
   </aside>
 </div>
@@ -162,6 +166,19 @@
     <label class="check"><input type="checkbox" name="idleBadge"> Badge panes waiting for input</label>
     <label class="check"><input type="checkbox" name="desktopNotify"> Desktop notification when a hidden pane needs you</label>
     <label class="check"><input type="checkbox" name="hideCliChrome"> Composer-only claude panes: hide claude's own input box and status rows (this window)</label>
+    <label title="Refresh: the pane's task rows and project card restart, claude keeps running. Reopen: claude restarts fresh in the same pane (new session, cleared screen).">After /clear in a claude pane <select name="clearMode" id="set-clear-mode"><option value="refresh">Refresh the workflow rows</option><option value="reopen">Reopen the pane fresh</option></select></label>
+    <p class="muted small">Refresh: the workflow rows restart; claude keeps running. Reopen: claude restarts with a new session and the pane's screen is cleared.</p>
+    <fieldset class="proj-admin keys-admin" id="set-trackers">
+      <legend>Status panel trackers (unticked = hidden)</legend>
+      <div class="fs-checks" id="set-trk-list"></div>
+    </fieldset>
+    <fieldset class="proj-admin health-admin" id="set-credits" hidden>
+      <legend>API keys and credits</legend>
+      <p class="muted small">Each account reads its own key from a user environment variable, on this machine only; the key never reaches this page. An Admin key shows this month's API spend; Extra Usage shows when a source reports it.</p>
+      <label class="ha-row small"><input type="checkbox" id="credits-optin"> Read this month's API spend from api.anthropic.com (off by default; while off, no key is read and no call is made)</label>
+      <div id="set-credit-rows"></div>
+      <div class="ha-row"><span class="muted small" id="credit-note" role="status"></span><button type="button" id="btn-credits" class="small">Re-read now</button></div>
+    </fieldset>
     <fieldset class="proj-admin health-admin" id="set-profile">
       <legend>Setup profile <span class="pf-beta">Beta</span></legend>
       <div class="ha-row"><span class="muted small" id="prof-line" role="status">Setup profile: loading.</span><span><button type="button" id="btn-prof-browse" class="small">Browse</button> <button type="button" id="btn-prof-setup" class="small">Run setup...</button></span></div>

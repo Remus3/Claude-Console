@@ -7,7 +7,17 @@
 //
 // A change: {id, file, key, title, why, to: value | (spec) => value, when?: (spec) =>
 // bool, requires?: [change ids]}. Keys are "Section.Key" for ini, a dotted path for
-// json, a tag name or "Tag@attr" for xml, a slash path for vdf.
+// json, a tag name or "Tag@attr" for xml, a slash path for vdf. A change may add
+// expect: RegExp - the CURRENT value read from the file must match it, or the change is
+// not proposed (a key whose meaning or value range is only partly documented is touched
+// only while it holds a value the documented range covers). A change may also add
+// satisfied: RegExp - a current value matching it already has the effect, so the change
+// is not proposed (e.g. a mode above the target that includes it).
+//
+// A recipe whose config lives in its install folder names it with the path token
+// %STEAMAPP_<appid>% (resolved from the Steam inventory, else from install_default), and
+// may carry missing: text - shown as a finding when the game is installed but none of its
+// config files exist yet (a game that writes its config on first launch).
 //
 // Pattern source: the recorded app tuning of 2026-10-11 (detect the hardware, back up
 // every file, edit existing keys, read back, then confirm the effect in the app - one
@@ -20,6 +30,16 @@ const hz = (spec) => {
   const d = spec && (spec.primary_display || (spec.displays || [])[0]);
   return d ? Number(d.max_hz || d.hz) || 0 : 0;
 };
+
+const width = (spec) => {
+  const d = spec && (spec.primary_display || (spec.displays || [])[0]);
+  return d ? Number(d.width) || 0 : 0;
+};
+const height = (spec) => {
+  const d = spec && (spec.primary_display || (spec.displays || [])[0]);
+  return d ? Number(d.height) || 0 : 0;
+};
+const nvidia = (spec) => /nvidia|geforce|\brtx\b/i.test(String((spec && spec.gpu && spec.gpu.name) || ''));
 
 const CIV6_DIR = "%LOCALAPPDATA%\\Firaxis Games\\Sid Meier's Civilization VI";
 
@@ -82,7 +102,58 @@ const REGISTRY = [
       },
     ],
   },
+  {
+    // OH-RECIPE (2026-10-19). NetEase NeoX engine: neox.xml (binary XML in the install
+    // folder) sets GraphicConfigPath = Documents/GraphicConfig.xml, relative to the
+    // install folder; the game writes it on first launch. Keys are <setting_*> elements
+    // with the value as element text. Each key below is named by a public source and is
+    // read back from the file (existing key, same type, value in `expect`) before any
+    // write; everything else stays in the in-game menu.
+    id: 'once-human',
+    title: 'Once Human',
+    steam_appid: '2139460',
+    install_default: '%ProgramFiles(x86)%\\Steam\\steamapps\\common\\Once Human',
+    processes: ['ONCE_HUMAN.exe'],
+    files: {
+      graphics: { path: '%STEAMAPP_2139460%\\Documents\\GraphicConfig.xml', format: 'xml' },
+    },
+    missing: 'Once Human has no Documents\\GraphicConfig.xml yet: launch the game once to generate its config, quit, then advise again.',
+    confirm: 'Start the game and check Settings > Video shows the new values; NeoX rewrites GraphicConfig.xml from the menu on exit, so change values there afterwards, not in the file.',
+    changes: [
+      {
+        id: 'd3d12', file: 'graphics', key: 'setting_enable_d3d12', to: '1', expect: /^[01]$/,
+        title: 'Graphics API: DirectX 12',
+        why: 'DLSS, frame generation and Reflex run only under DirectX 12 in this game; DX12 also fixed missing ground textures on recent GPUs (Proton issue 7888).',
+      },
+      {
+        // 0 off, 1 on, 2 on + boost (a generated file holds 2; setting_nvidia_reflex_mode
+        // is a separate key, untouched). 1 and 2 are already on: proposed only from 0.
+        id: 'reflex', file: 'graphics', key: 'setting_nvidia_reflex', to: '1', expect: /^[012]$/, satisfied: /^[12]$/, when: nvidia, requires: ['d3d12'],
+        title: 'NVIDIA Reflex low latency on',
+        why: 'Reflex keeps the GPU render queue short, cutting input latency at a high frame rate and offsetting the latency frame generation adds; it needs DirectX 12 and an NVIDIA GPU.',
+      },
+      {
+        id: 'resolution', file: 'graphics', key: 'setting_resolution', to: (s) => '(' + width(s) + ', ' + height(s) + ')', expect: /^\(\s*\d+\s*,\s*\d+\s*\)$/, when: (s) => width(s) >= 1280 && height(s) >= 720,
+        title: 'Render resolution = the primary display\'s native resolution',
+        why: 'The game can start below native resolution; rendering at native and letting DLSS do the upscaling keeps the image sharp at the same cost.',
+      },
+    ],
+  },
 ];
+
+// Env copy with STEAMAPP_<appid> set for every recipe that has a Steam app id: the
+// install folder from the Steam inventory, else the recipe's install_default expanded.
+// expand is machine-inventory's %VAR% expander (passed in: that module requires this one).
+function withAppDirs(env, games, expand) {
+  const out = Object.assign({}, env || {});
+  for (const r of REGISTRY) {
+    if (!r.steam_appid) continue;
+    const g = (games || []).find((x) => x && String(x.appid) === r.steam_appid && x.install);
+    const dir = g ? g.install : r.install_default ? expand(r.install_default, env) : null;
+    if (dir && !/%[^%]+%/.test(dir)) out['STEAMAPP_' + r.steam_appid] = dir;
+  }
+  return out;
+}
 
 function list() {
   return REGISTRY.slice();
@@ -99,6 +170,7 @@ function validate(r) {
   if (!/^[a-z0-9-]+$/.test(String(r.id || ''))) errs.push('bad id');
   if (!r.title) errs.push('no title');
   if (!Array.isArray(r.processes)) errs.push('processes must be a list');
+  if (r.missing !== undefined && (typeof r.missing !== 'string' || !r.missing)) errs.push('missing must be text');
   const files = r.files && typeof r.files === 'object' ? r.files : {};
   if (!Object.keys(files).length) errs.push('no files');
   for (const k of Object.keys(files)) {
@@ -115,10 +187,12 @@ function validate(r) {
     if (c.to === undefined) errs.push(c.id + ': no target value');
     if (!c.title) errs.push(c.id + ': no title');
     if (!c.why) errs.push(c.id + ': no why');
+    if (c.expect !== undefined && !(c.expect instanceof RegExp)) errs.push(c.id + ': expect must be a RegExp');
+    if (c.satisfied !== undefined && !(c.satisfied instanceof RegExp)) errs.push(c.id + ': satisfied must be a RegExp');
   }
   for (const c of Array.isArray(r.changes) ? r.changes : []) for (const q of (c && c.requires) || []) if (!ids.has(q)) errs.push(c.id + ': requires unknown ' + q);
   if (!Array.isArray(r.changes) || !r.changes.length) errs.push('no changes');
   return errs;
 }
 
-module.exports = { REGISTRY, FORMATS, list, get, validate };
+module.exports = { REGISTRY, FORMATS, list, get, validate, withAppDirs };

@@ -20,8 +20,8 @@ const L8_MODULES = ['ci-gates', 'recall', 'lessons', 'permissions-context', 'sid
 // Item id prefix -> L8 module, used only to place stub items for references into L8 content.
 const L8_PREFIX = { 'ci-': 'ci-gates', 'rec-': 'recall', 'lsn-': 'lessons', 'cfg-': 'permissions-context',
   'sc-': 'sidecar', 'rta-': 'runtime-agents', 'mach-': 'machine-profile' };
-const ITEM_COUNTS = { floors: 9, 'core-rules': 18, session: 11, output: 12, 'subagent-first': 6, 'race-guards': 4,
-  attribution: 4, 'tdd-agents': 26, 'docs-memory': 22, fleet: 11, headless: 12, maintenance: 11, insights: 8,
+const ITEM_COUNTS = { floors: 9, 'core-rules': 24, session: 11, output: 13, 'subagent-first': 6, 'race-guards': 4,
+  attribution: 4, 'tdd-agents': 26, 'docs-memory': 22, fleet: 11, headless: 13, maintenance: 11, insights: 8,
   board: 2, console: 4 };
 // The neutral-name kit lane L2 generates into profile/kit/ (design a.1). A kit contribution names only these.
 const KIT_FILES = ['kit_headless.py', 'kit_done.py', 'kit_checklist.py', 'kit_claims.py', 'kit_gitlock.py',
@@ -161,7 +161,8 @@ test('kit contributions name only files of the neutral-name kit', () => {
   for (const it of l1Items()) for (const c of it.contributes) {
     if (c.kind !== 'kit') continue;
     for (const f of c.files) assert.ok(KIT_FILES.includes(f), it.id + ': unknown kit file ' + f);
-    assert.equal(c.target, 'repo:{kit_dir}');
+    // FB-1021: the account-level status lines copy into the Claude config folder
+    assert.ok(['repo:{kit_dir}', 'user:statusline'].includes(c.target), it.id + ': kit target ' + c.target);
   }
 });
 
@@ -317,7 +318,7 @@ test('the remus3 preset covers every module and every L1 item', () => {
     const e = r.items[it.id];
     assert.ok(e, it.id + ' missing from the preset');
     assert.ok(['on', 'off'].includes(e.state));
-    assert.ok(['author-runs', 'author-off', 'fleet-4-of-6', 'fleet-below-4', 'locked', 'dependency'].includes(e.rule), it.id + ' rule ' + e.rule);
+    assert.ok(['author-runs', 'author-off', 'fleet-4-of-6', 'fleet-below-4', 'module-default', 'locked', 'dependency'].includes(e.rule), it.id + ' rule ' + e.rule);
   }
   for (const it of moduleOf('floors').items) assert.equal(r.items[it.id].state, 'on');
   const declared = new Set(Object.keys(profile().variables));

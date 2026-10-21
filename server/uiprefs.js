@@ -3,6 +3,7 @@
 // CON-UX-*). Each value is sanitized on read and on PUT, so a hand-edited or stale
 // settings file never breaks the page. The client (public/app.js) holds the same
 // defaults; tests/typescale.test.js pins the two together.
+const { TRACKER_IDS, sanitizeTrackers } = require('./trackers'); // CON-GATE-PANEL toggles
 
 // CON-UX-TYPESCALE: one base size (px) plus a per-level offset (px, half-pixel steps).
 const TYPE_LEVELS = ['header', 'sub', 'body', 'secondary', 'mono', 'badge'];
@@ -18,12 +19,23 @@ const FLOW_STATES_DEFAULT = { running: true, stale: true, failed: true, pending:
 const KEY_IDS = ['esc', 'ctrlc', 'enter', 'ctrlx', 'stab', 'up', 'down', 'left', 'right'];
 const CHIPS_DEFAULT = [{ text: 'continue', on: true }, { text: '/done', on: true }, { text: '/clear', on: true }];
 
+// CON-CLEAR-MODE: what a /clear in a claude pane does - 'refresh' (its rows restart, the
+// process keeps running) or 'reopen' (the server restarts the process fresh in place).
+const CLEAR_MODES = ['refresh', 'reopen'];
+const CLEAR_MODE_DEFAULT = 'refresh';
+function sanitizeClearMode(v) {
+  return CLEAR_MODES.includes(v) ? v : CLEAR_MODE_DEFAULT;
+}
+
 const UI_DEFAULTS = {
   typeScale: TYPE_DEFAULTS,
   flowRows: FLOW_ROWS_DEFAULT,
   flowStates: FLOW_STATES_DEFAULT,
   keyStrip: Object.fromEntries(KEY_IDS.map((k) => [k, true])),
   quickChips: CHIPS_DEFAULT,
+  clearMode: CLEAR_MODE_DEFAULT,
+  // CON-GATE-PANEL: one show flag per status-panel tracker (server/trackers.js ids)
+  trackers: Object.fromEntries(TRACKER_IDS.map((k) => [k, true])),
 };
 
 function sanitizeKeyStrip(v) {
@@ -84,10 +96,12 @@ function sanitizeUiPrefs(s) {
   s.flowStates = sanitizeFlowStates(s.flowStates);
   s.keyStrip = sanitizeKeyStrip(s.keyStrip);
   s.quickChips = sanitizeChips(s.quickChips);
+  s.clearMode = sanitizeClearMode(s.clearMode);
+  s.trackers = sanitizeTrackers(s.trackers);
   return s;
 }
 
 module.exports = {
-  UI_DEFAULTS, TYPE_LEVELS, FLOW_STATES, KEY_IDS,
-  sanitizeTypeScale, sanitizeFlowRows, sanitizeFlowStates, sanitizeKeyStrip, sanitizeChips, sanitizeUiPrefs,
+  UI_DEFAULTS, TYPE_LEVELS, FLOW_STATES, KEY_IDS, CLEAR_MODES,
+  sanitizeClearMode, sanitizeTypeScale, sanitizeFlowRows, sanitizeFlowStates, sanitizeKeyStrip, sanitizeChips, sanitizeUiPrefs,
 };

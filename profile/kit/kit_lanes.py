@@ -1049,8 +1049,11 @@ def main(argv=None, stdout=None):
                              status="done" if args.done else "running", commit=args.commit)
         else:
             doc = resume_point(args.root, args.lane)
-    except (ValueError, OSError) as exc:
+    except ValueError as exc:
         print(json.dumps({"error": str(exc)[:200]}), file=out)
+        return 2
+    except OSError as exc:  # v21 (SC 2356 item 6): the class only, never a path
+        print(json.dumps({"error": exc.__class__.__name__}), file=out)
         return 2
     print(json.dumps(doc), file=out)
     return 0

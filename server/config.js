@@ -59,4 +59,56 @@ function loadConfig(opts) {
   return cfg;
 }
 
-module.exports = { loadConfig, readJson, deepMerge, expandHome, ROOT };
+// FB-1021: the configured accounts' setup problems, words only (never a path), keyed by
+// account id. configDir null is the default ~/.claude, which belongs to the FIRST account;
+// a later account with null (or with the same dir as an earlier one) is the same login,
+// so its quota and settings would land on that one. o: {home, exists} for tests.
+function accountDir(a, first, home) {
+  if (a && typeof a.configDir === 'string' && a.configDir) return path.resolve(a.configDir);
+  return first ? path.join(home, '.claude') : null;
+}
+
+function accountProblems(accounts, o) {
+  o = o || {};
+  const home = o.home || os.homedir();
+  const exists = o.exists || fs.existsSync;
+  const out = {};
+  const dirs = new Map();
+  const labels = new Map();
+  Object.entries(accounts || {}).forEach(([id, a], i) => {
+    if (!isPlainObject(a)) return;
+    const p = [];
+    const d = accountDir(a, i === 0, home);
+    const key = d ? d.toLowerCase() : null;
+    if (!d) p.push('dir missing, create + log in');
+    else if (dirs.has(key)) p.push('same config dir as ' + dirs.get(key) + ' (one login)');
+    else if (i > 0 && !exists(d)) p.push('dir missing, create + log in');
+    if (key && !dirs.has(key)) dirs.set(key, id);
+    const lb = String(a.label || id).trim().toLowerCase();
+    if (labels.has(lb)) p.push('same label as ' + labels.get(lb));
+    else labels.set(lb, id);
+    if (p.length) out[id] = p.join('; ');
+  });
+  return out;
+}
+
+// The accounts other than `primaryId` that have a config dir of their own (no problem
+// above): {id: {dir, label}}. The setup profile applies user-scope settings to each.
+function extraAccountDirs(accounts, primaryId, o) {
+  o = o || {};
+  const home = o.home || os.homedir();
+  const probs = accountProblems(accounts, o);
+  const ids = Object.keys(accounts || {});
+  const prim = accounts && accounts[primaryId] ? accountDir(accounts[primaryId], ids.indexOf(primaryId) === 0, home) : null;
+  const out = {};
+  ids.forEach((id, i) => {
+    const a = accounts[id];
+    if (id === primaryId || !isPlainObject(a) || probs[id]) return;
+    const d = accountDir(a, i === 0, home);
+    if (!d || (prim && d.toLowerCase() === prim.toLowerCase())) return;
+    out[id] = { dir: d, label: a.label || id };
+  });
+  return out;
+}
+
+module.exports = { loadConfig, readJson, deepMerge, expandHome, accountProblems, extraAccountDirs, ROOT };

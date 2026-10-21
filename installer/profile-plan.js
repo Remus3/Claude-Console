@@ -30,7 +30,13 @@ function sortKeys(v) {
 
 const LOCK_REL = '.claude/profile.lock.json';
 function repoLockFile(repo) { return path.join(repo, '.claude', 'profile.lock.json'); }
-function userLockFile(dataDir) { return path.join(P.profileStateDir(dataDir), 'locks', 'user.json'); }
+// The user lock of the primary account's config dir is user.json; another account's dir
+// (FB-1021: user-scope settings applied per account) gets its own user-<hash>.json.
+function userLockFile(dataDir, configDir, primary) {
+  const norm = (d) => path.resolve(d).toLowerCase();
+  const own = configDir && primary && norm(configDir) !== norm(primary);
+  return path.join(P.profileStateDir(dataDir), 'locks', own ? 'user-' + sha(Buffer.from(norm(configDir))).slice(0, 12) + '.json' : 'user.json');
+}
 function emptyLock(model) {
   return { schema: 1, profile: model.profile ? model.profile.profile : null, version: model.profile ? model.profile.version : null,
     items: [], files: {}, env: {}, tasks: {}, git: {}, dirs: [] };
@@ -259,7 +265,7 @@ function plan(o) {
   const state = P.effectiveState(model, sel);
 
   const repoLockPath = target.repo ? repoLockFile(target.repo) : null;
-  const userLockPath = dataDir ? userLockFile(dataDir) : null;
+  const userLockPath = dataDir ? userLockFile(dataDir, target.configDir, o.primaryConfigDir) : null;
   const locks = {
     repo: target.repo ? (o.locks && o.locks.repo) || readLock(repoLockPath, model) : null,
     user: userLockPath ? (o.locks && o.locks.user) || readLock(userLockPath, model) : null,
@@ -305,6 +311,8 @@ function plan(o) {
   const files = new Map(); // abs -> file state
   const row = (item, kind, tgt, status, reason) => out.rows.push({ item, kind, target: tgt, status, reason: reason || null });
   const nextLock = { repo: locks.repo ? JSON.parse(JSON.stringify(locks.repo)) : null, user: locks.user ? JSON.parse(JSON.stringify(locks.user)) : null };
+  // another account's lock records its dir, so recovery can find the settings it manages
+  if (nextLock.user && userLockPath && path.basename(userLockPath) !== 'user.json') nextLock.user.configDir = path.resolve(target.configDir);
   const lockFor = (side) => (side === 'repo' ? nextLock.repo : nextLock.user);
 
   function resolveTarget(t, item) {
@@ -367,6 +375,15 @@ function plan(o) {
   }
 
   function planAdd(id, item, mod, c) {
+    // FB-1021: another account's config dir takes its user: files only; env, tasks, git,
+    // kit and app config are machine-wide and were applied with the primary account.
+    if (o.configFilesOnly && !(typeof c.target === 'string' && c.target.startsWith('user:'))) {
+      return row(id, c.kind, c.target || c.name || c.key || '-', 'skipped', 'machine-wide; applied with the main account');
+    }
+    // CON-FB-2ND: a user: contribution marked for one account (account 'second': the
+    // background account's quiet keys) is skipped on the other account's plan.
+    if (c.account === 'second' && !o.configFilesOnly) return row(id, c.kind, c.target, 'skipped', 'second account only; applied to the other account dir');
+    if (c.account === 'main' && o.configFilesOnly) return row(id, c.kind, c.target, 'skipped', 'main account only');
     if (c.kind === 'file') {
       const t = resolveTarget(c.target, id);
       if (!t.abs) return row(id, 'file', c.target, 'skipped', t.noTarget ? 'no ' + t.noTarget + ' target' : t.missing ? 'needs {' + t.missing.join('}, {') + '}' : t.bad);

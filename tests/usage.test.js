@@ -45,34 +45,60 @@ test('model: slots follow the configured account order; missing account and sour
   assert.strictEqual(a2.status, null);
   assert.strictEqual(a3.present, false);
   assert.ok(a3.wins.every((w) => w.pct === '--' && w.left === '--'));
-  assert.strictEqual(m.api, '--');
-  assert.strictEqual(m.extra, '--');
+  // CON-CREDITS: one API chip and one Extra Usage chip per account, '--' with no source
+  assert.deepStrictEqual(m.api.map((c) => [c.tag, c.text]), [['A1', '--'], ['A2', '--']]);
+  assert.deepStrictEqual(m.extra.map((c) => [c.tag, c.text]), [['A1', '--'], ['A2', '--']]);
   // numbers only: no label, id or name from the quota source leaks into the cells
-  assert.ok(!JSON.stringify(m).includes('Account'));
-  // extras render as $ when a source ever supplies them
-  const m2 = U.model(null, [], NOW, { apiCredits: 12.5, extraSpent: 152.32, extraLimit: 175 });
-  assert.strictEqual(m2.api, '$12.50');
-  assert.strictEqual(m2.extra, '$152.32/$175.00');
+  assert.ok(!JSON.stringify(m.accs).includes('Account'));
+  // per-account numbers, never summed: A1 admin spend, A2 regular key (!), extras apart
+  const credits = { accounts: [
+    { id: 'acct1', keySet: true, keyKind: 'admin', keyVar: 'V1', api: { usd: 12.5, at: NOW, error: null }, extra: { used: 152.32, limit: 175 } },
+    { id: 'acct2', keySet: true, keyKind: 'regular', keyVar: 'V2', api: null, extra: null },
+  ] };
+  const m2 = U.model(null, [{ id: 'acct1' }, { id: 'acct2' }], NOW, credits);
+  assert.deepStrictEqual(m2.api.map((c) => [c.text, c.cls]), [['$12.50', ''], ['?', 'warn']]);
+  assert.deepStrictEqual(m2.extra.map((c) => [c.text, c.cls]), [['$152/175', 'warn'], ['--', '']]);
+  assert.match(m2.api[1].title, /not an Admin key/);
+  const m3 = U.model(null, [{ id: 'acct1' }], NOW, { accounts: [{ id: 'acct1', keySet: true, keyKind: 'admin', api: { usd: null, error: 'key rejected (401)' } }] });
+  assert.deepStrictEqual([m3.api[0].text, m3.api[0].cls, m3.api[0].title], ['x', 'bad', 'Acc 1 API: key rejected (401)']);
   assert.ok(m2.accs.every((a) => !a.present));
   // compact summary = highest visible used %
   assert.strictEqual(U.summary(m, {}), '97%');
   assert.strictEqual(U.summary(m, { acc1: false }), '52%');
-  assert.strictEqual(U.summary(m, { w7d: false, acc2: false }), '75%');
+  assert.strictEqual(U.summary(m, { w7d: false, acc2: false, w5h: true, fable: true }), '75%');
   assert.strictEqual(U.summary(U.model(null, [], NOW), {}), '--');
   assert.strictEqual(U.isOn({}, 'acc3'), false);
   assert.strictEqual(U.isOn({ acc3: true }, 'acc3'), true);
-  assert.strictEqual(U.isOn({}, 'api'), true);
+  assert.strictEqual(U.isOn({}, 'api'), false);
+  assert.strictEqual(U.isOn({}, 'w7d'), true);
+  assert.strictEqual(U.isOn({ api: true }, 'api'), true);
 });
 
-test('prefs: booleans only, defaults on, unknown keys dropped', () => {
+test('prefs: booleans only, author defaults (7d, Acc 1, Acc 2), unknown keys dropped', () => {
   assert.deepStrictEqual(usage.sanitizeUsagePrefs(null), usage.DEFAULT_USAGE_PREFS);
-  const p = usage.sanitizeUsagePrefs({ acc1: false, api: 'no', evil: true, __proto__: { x: 1 } });
+  assert.deepStrictEqual(usage.USAGE_KEYS.filter((k) => usage.DEFAULT_USAGE_PREFS[k]), ['w7d', 'acc1', 'acc2']);
+  const p = usage.sanitizeUsagePrefs({ acc1: false, api: 'no', extra: true, evil: true, __proto__: { x: 1 } });
   assert.strictEqual(p.acc1, false);
   assert.strictEqual(usage.DEFAULT_USAGE_PREFS.acc3, false);
   assert.strictEqual(usage.DEFAULT_USAGE_PREFS.acc2, true);
-  assert.strictEqual(p.api, true);
+  assert.strictEqual(p.api, false);
+  assert.strictEqual(p.extra, true);
   assert.ok(!('evil' in p));
   assert.deepStrictEqual(Object.keys(p).sort(), usage.USAGE_KEYS.slice().sort());
+});
+
+test('prefs: Acc 2 defaults off without a second login of its own', () => {
+  const exists = (d) => d === path.resolve('H:/acct2').toLowerCase();
+  const o = { home: 'H:/home', exists };
+  assert.strictEqual(usage.hasSecondAccount({ acct1: { configDir: null } }, o), false);
+  assert.strictEqual(usage.hasSecondAccount({ acct1: { configDir: null }, acct2: { configDir: null } }, o), false);
+  assert.strictEqual(usage.hasSecondAccount({ acct1: { configDir: null }, acct2: { configDir: 'H:/missing' } }, o), false);
+  assert.strictEqual(usage.hasSecondAccount({ acct1: { configDir: 'H:/acct2' }, acct2: { configDir: 'H:/acct2' } }, o), false);
+  assert.strictEqual(usage.hasSecondAccount({ acct1: { configDir: null }, acct2: { configDir: 'H:/acct2' } }, o), true);
+  assert.strictEqual(usage.defaultsFor({ acct1: { configDir: null }, acct2: { configDir: null } }, o).acc2, false);
+  assert.strictEqual(usage.defaultsFor({ acct1: { configDir: null }, acct2: { configDir: 'H:/acct2' } }, o).acc2, true);
+  // a stored choice still wins over the default
+  assert.strictEqual(usage.sanitizeUsagePrefs({ acc2: true }, null, usage.defaultsFor({ acct1: {} }, o)).acc2, true);
 });
 
 test('GET/PUT /api/usage-prefs persists in data/usage.local.json across a restart', { timeout: 60000 }, async (t) => {
@@ -95,7 +121,7 @@ test('GET/PUT /api/usage-prefs persists in data/usage.local.json across a restar
   // a second patch merges over the first
   assert.strictEqual((await call('PUT', '/api/usage-prefs', { slots: { fable: true } })).body.slots.acc2, false);
   const file = JSON.parse(fs.readFileSync(path.join(fx.dataDir, 'usage.local.json'), 'utf8'));
-  assert.deepStrictEqual(file.slots, Object.assign({}, usage.DEFAULT_USAGE_PREFS, { acc2: false }));
+  assert.deepStrictEqual(file.slots, Object.assign({}, usage.DEFAULT_USAGE_PREFS, { acc2: false, fable: true }));
   await srv.close();
   srv = await createConsoleServer(opts);
   const after = (await call('GET', '/api/usage-prefs')).body.slots;

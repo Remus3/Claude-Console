@@ -91,6 +91,13 @@ function managedSettings(dataDir, configDir) {
   };
   for (const repo of readTargets(dataDir)) add(repo, readRepoLock(repo));
   if (configDir) add(configDir, readUserLock(dataDir));
+  // FB-1021: the other accounts' user locks (user-<hash>.json) record their own dir.
+  let names = [];
+  try { names = fs.readdirSync(path.join(profileDir(dataDir), 'locks')); } catch (e) { names = []; }
+  for (const n of names.filter((x) => /^user-[0-9a-f]{12}\.json$/.test(x))) {
+    const j = readJson(path.join(profileDir(dataDir), 'locks', n), null);
+    if (isObj(j) && typeof j.configDir === 'string' && path.isAbsolute(j.configDir)) add(j.configDir, j);
+  }
   return [...new Set(out)];
 }
 

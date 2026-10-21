@@ -109,6 +109,15 @@ test('quota: numbers only, mapped to our account labels, no names/emails/org ids
   for (const bad of ['example.com', 'Org One', 'org-1', 'uuid-one', 'uuid-two', 'secret@']) assert.ok(!blob.includes(bad), 'leaked ' + bad);
 });
 
+test('quota: first configured account wins a shared account uuid', () => {
+  const fx = fs.mkdtempSync(path.join(require('os').tmpdir(), 'cc-q-'));
+  const state = path.join(fx, 'q.json');
+  fs.writeFileSync(state, JSON.stringify({ quota: [{ accountUuid: 'uuid-same', quota: { unified7d: 0.5 } }] }));
+  const q = S.readQuota(state, { acct1: { configDir: null, label: 'A' }, acct2: { configDir: null, label: 'B' } }, () => 'uuid-same');
+  assert.deepStrictEqual(q.accounts.map((a) => a.id), ['acct1']);
+  assert.strictEqual(q.accounts[0].quota.unified7d, 0.5);
+});
+
 test('quota: missing state file gives null', () => {
   assert.strictEqual(S.readQuota('Z:/definitely/not/here.json', {}), null);
 });

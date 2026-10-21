@@ -1,17 +1,17 @@
 {
  "schema": 1,
  "preset": "remus3",
- "title": "Remus3's exact current settings",
+ "title": "Remus3's current settings",
  "profile_version": "1.0.0",
- "kit_source_version": 20,
- "generated_from": "12fae65326c4d1911d7e595f26e8c89c606d3e48",
- "source_sha": "3a0908462f8d85fad72d6d465a1d2e0bd27878caefb184378e6d7240ebc11655",
+ "kit_source_version": 21,
+ "generated_from": "24f0853ed42065bd573f19745f2c386115394044",
+ "source_sha": "38e4fba958a84a9859fc5fd364ef5527a24f6d7a357142ca43b412032ddc2971",
  "counts": {
   "modules": 22,
   "modules_on": 22,
-  "items": 292,
-  "on": 181,
-  "off": 111
+  "items": 300,
+  "on": 239,
+  "off": 61
  },
  "modules": {
   "floors": "on",
@@ -152,6 +152,30 @@
    "state": "on",
    "rule": "author-runs"
   },
+  "set-skip-danger-prompt": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "set-allow-maintenance": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "set-workflow-warning": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "set-model-effort": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "set-model-switch": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "set-auto-updates": {
+   "state": "on",
+   "rule": "author-runs"
+  },
   "conv-handoff-file": {
    "state": "on",
    "rule": "author-runs"
@@ -185,8 +209,8 @@
    "rule": "author-runs"
   },
   "hook-sessionstart-checklist": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "conv-session-start": {
    "state": "on",
@@ -241,6 +265,10 @@
    "rule": "author-runs"
   },
   "rule-hook-output": {
+   "state": "on",
+   "rule": "author-runs"
+  },
+  "set-statusline-user": {
    "state": "on",
    "rule": "author-runs"
   },
@@ -309,36 +337,36 @@
    "rule": "author-runs"
   },
   "agent-planner": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "agent-builder": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "agent-verifier": {
    "state": "on",
    "rule": "fleet-4-of-6"
   },
   "agent-adversary": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "agent-adjudicator": {
    "state": "on",
    "rule": "fleet-4-of-6"
   },
   "agent-researcher": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "agent-ui-auditor": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "agent-doc-sync": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "cmd-orchestrated-run": {
    "state": "on",
@@ -369,24 +397,24 @@
    "rule": "author-runs"
   },
   "ag-session-default-file": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "ag-agent-file-cap": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "ag-phase0-recall": {
    "state": "on",
    "rule": "fleet-4-of-6"
   },
   "ag-risk-scaled-lenses": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "ag-recusal": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "ag-truth-gate": {
    "state": "off",
@@ -406,7 +434,7 @@
   },
   "conv-doc-size-budget": {
    "state": "on",
-   "rule": "dependency"
+   "rule": "module-default"
   },
   "tool-doc-budget": {
    "state": "on",
@@ -433,12 +461,12 @@
    "rule": "author-runs"
   },
   "cmd-sync-docs": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "cmd-weekly-hygiene": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "hook-facts-inject": {
    "state": "on",
@@ -461,8 +489,8 @@
    "rule": "author-runs"
   },
   "md-handoff-lint": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "md-handoff-prefix-grammar": {
    "state": "off",
@@ -473,8 +501,8 @@
    "rule": "fleet-4-of-6"
   },
   "md-doc-topology": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "md-ledger": {
    "state": "on",
@@ -583,6 +611,10 @@
   "hl-fallback-armed": {
    "state": "off",
    "rule": "author-off"
+  },
+  "hl-account-quiet": {
+   "state": "on",
+   "rule": "author-runs"
   },
   "sched-temp-hygiene": {
    "state": "on",
@@ -709,12 +741,12 @@
    "rule": "fleet-4-of-6"
   },
   "ci-hook-pre-push-leak": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "ci-hook-pre-merge-commit": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "ci-hooks-install-check": {
    "state": "on",
@@ -761,8 +793,8 @@
    "rule": "fleet-4-of-6"
   },
   "rec-memory-validate": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "rec-vault-mcp": {
    "state": "off",
@@ -785,8 +817,8 @@
    "rule": "fleet-4-of-6"
   },
   "lsn-write-bytes": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-commit-msg-file": {
    "state": "on",
@@ -797,8 +829,8 @@
    "rule": "fleet-4-of-6"
   },
   "lsn-git-hook-authoritative": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-prepush-range": {
    "state": "on",
@@ -837,12 +869,12 @@
    "rule": "fleet-below-4"
   },
   "lsn-atomic-writes": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-compile-before-restart": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-kill-by-pid": {
    "state": "on",
@@ -861,104 +893,104 @@
    "rule": "fleet-4-of-6"
   },
   "lsn-scratch-not-durable": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-explicit-interpreter": {
    "state": "on",
    "rule": "fleet-4-of-6"
   },
   "lsn-cmd-shims": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-no-machine-paths": {
    "state": "on",
    "rule": "fleet-4-of-6"
   },
   "lsn-secret-fixtures": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-scan-beyond-repo": {
    "state": "off",
    "rule": "fleet-below-4"
   },
   "lsn-no-amend-no-tags": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-index-lock": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-no-cd-chain-destructive": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-worktree-gaps": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-no-prune-on-mtime": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-prove-recycle-bin": {
-   "state": "off",
-   "rule": "author-off"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-no-walk-links": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-cap-fixture-size": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-memory-aware-suites": {
    "state": "on",
    "rule": "fleet-4-of-6"
   },
   "lsn-exit-code-from-file": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-keep-summary-line": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-append-fields": {
    "state": "off",
    "rule": "fleet-below-4"
   },
   "lsn-backfill": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-fix-the-class": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-refute-cap": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-responder-marks-read": {
    "state": "off",
    "rule": "fleet-below-4"
   },
   "lsn-task-liveness": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-hermetic-tests": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-testpaths-isolation": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-readonly-responder": {
    "state": "off",
@@ -977,16 +1009,16 @@
    "rule": "fleet-below-4"
   },
   "lsn-anchored-hooks": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-one-source-per-number": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-cite-headings": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-tos-floor": {
    "state": "off",
@@ -997,12 +1029,12 @@
    "rule": "fleet-below-4"
   },
   "lsn-kill-tree": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-generated-output-gated": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-repoint-after-move": {
    "state": "on",
@@ -1013,16 +1045,16 @@
    "rule": "fleet-below-4"
   },
   "lsn-no-saturation": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-product-floor": {
    "state": "off",
    "rule": "fleet-below-4"
   },
   "lsn-deferral-dated": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "lsn-reversal-clause": {
    "state": "on",
@@ -1049,8 +1081,8 @@
    "rule": "fleet-4-of-6"
   },
   "cfg-compaction-by-done": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "cfg-hook-anchored": {
    "state": "on",
@@ -1165,8 +1197,8 @@
    "rule": "author-off"
   },
   "mach-tos-floor": {
-   "state": "off",
-   "rule": "fleet-below-4"
+   "state": "on",
+   "rule": "module-default"
   },
   "mach-adv-machine": {
    "state": "off",

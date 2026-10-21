@@ -7,7 +7,7 @@ files, prompts, pane output, settings, secrets, machine details and how you use 
 console. There is no telemetry, no analytics and no automatic crash upload, and there
 never will be: "no telemetry" is one of the setup profile's locked safety floors.
 
-The console makes exactly two kinds of network call:
+The console makes exactly two kinds of network call, plus one you can turn on:
 
 1. **The update check and download.** Once a day it asks this project's GitHub
    releases whether a newer version exists. The request carries nothing about you. When
@@ -16,6 +16,10 @@ The console makes exactly two kinds of network call:
 2. **Actions you start yourself.** For example an install step that fetches Node.js or
    Git, or a button that opens a GitHub issue page or claude.ai. Those pages open in
    your browser after your click; the console process itself does not contact them.
+3. **API spend, only if you turn it on.** Settings > API keys and credits has a box,
+   off by default, that reads your own organization's month-to-date API spend from
+   api.anthropic.com with an Admin key you keep in a user environment variable. The
+   key stays in the console's server process; the page shows numbers only.
 
 Everything else stays on your computer. The console's server listens on 127.0.0.1 only
 and every request needs a token made at start. The panes, and the optional proxy for
@@ -32,6 +36,7 @@ that, add to it or read it.
 | `github.com` | the release download, and the issue page opened in your browser |
 | `objects.githubusercontent.com`, `release-assets.githubusercontent.com` | where GitHub serves release files |
 | `claude.ai` | the help chat, opened in your browser after a click |
+| `api.anthropic.com` | OFF by default. Only after you tick "Read this month's API spend" in Settings > API keys and credits, and only with an Admin key in `CLAUDE_CONSOLE_<ACCOUNT>_API_KEY`: the month-to-date cost report, shown as numbers. While off, no key is read and the policy refuses this host. |
 | `127.0.0.1`, `localhost`, `::1` | the console's own server, panes and your local proxy |
 
 The list lives in `installer/egress.json`.
@@ -45,7 +50,8 @@ The list lives in `installer/egress.json`.
 - A runtime test replaces every network function with a recorder that refuses, then
   drives the server, a profile apply, an adoption scan and the setup wizard. Every
   recorded attempt must be to 127.0.0.1, apart from one update check when updates are
-  on.
+  on. With an Admin key set and the API spend box off, it records no outside attempt;
+  with the box on, the only outside host is api.anthropic.com.
 - The release is also tested in Windows Sandbox with networking turned off: setup,
   adoption and the wizard all complete, and the only thing that reports a problem is the
   update check, which says `offline`.

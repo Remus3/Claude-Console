@@ -11,7 +11,7 @@
       "id": "hl-second-account",
       "order": 1101,
       "title": "Second account for background runs",
-      "does": "Adds the rule that background runs use their own Claude config dir and subscription; the wizard creates the dir and opens a pane where you log in yourself.",
+      "does": "Adds the rule that background runs use their own Claude config dir and subscription; the wizard's account step flags a missing dir and opens a pane where you log in yourself.",
       "why": "Background spend must not bill the account you work in interactively, or a long night run can leave you without quota in the morning.",
       "risk": "high",
       "default": "off",
@@ -398,6 +398,49 @@
         }
       ],
       "notes": "The wizard writes the armed flag only after the typed acknowledgement apply hl-fallback-armed."
+    },
+    {
+      "id": "hl-account-quiet",
+      "order": 1113,
+      "title": "Quiet keys for the background account",
+      "does": "Sets feedbackDrafts to quiet and turns off auto mode during planning in the second account's Claude settings only (the main account is left as it is).",
+      "why": "The author's background account runs with no feedback drafts and no automatic mode switch while it plans, so unattended runs never stop for either.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "hl-second-account"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "feedbackDrafts": "quiet",
+            "useAutoModeDuringPlan": false
+          },
+          "mode": "add",
+          "account": "second"
+        }
+      ],
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "feedbackDrafts"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
+        }
+      ],
+      "notes": "The setup applies account settings to every configured account that has its own folder; the author runs these keys on the background account."
     }
   ]
 }

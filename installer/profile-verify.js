@@ -109,7 +109,7 @@ function verifyLock(o) {
   const target = o.target || {};
   const sides = [];
   if (target.repo) sides.push(['repo', target.repo, PL.readLock(PL.repoLockFile(target.repo), model)]);
-  if (o.dataDir && target.configDir) sides.push(['user', target.configDir, PL.readLock(PL.userLockFile(o.dataDir), model)]);
+  if (o.dataDir && target.configDir) sides.push(['user', target.configDir, PL.readLock(PL.userLockFile(o.dataDir, target.configDir, o.primaryConfigDir), model)]);
   for (const [side, root, lock] of sides) {
     for (const [rel, e] of Object.entries(lock.files)) {
       const b = read(path.join(root, ...rel.split('/')));

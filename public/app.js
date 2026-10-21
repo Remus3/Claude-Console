@@ -245,6 +245,13 @@
     const h = t.getHours();
     return (h % 12 || 12) + ':' + String(t.getMinutes()).padStart(2, '0') + (h < 12 ? 'AM' : 'PM');
   }
+  // KIT-ETA-REMAIN (kit v21): the start time rounds DOWN to the minute (the finish UP).
+  function fmtClockDown(ms) {
+    const t = new Date(Math.floor(ms / 60000) * 60000);
+    const h = t.getHours();
+    return (h % 12 || 12) + ':' + String(t.getMinutes()).padStart(2, '0') + (h < 12 ? 'AM' : 'PM');
+  }
+  // v21 form: `<pct>% ~<rem> of <total> Remain [<finish>]` (v20 clock + the Remain word).
   function etaClock(pct, etaS, startedMs, nowMs, updatedMs) {
     pct = typeof pct === 'number' && isFinite(pct) ? Math.max(0, Math.min(100, Math.trunc(pct))) : 0;
     const start = typeof startedMs === 'number' && startedMs > 0 ? startedMs : null;
@@ -262,12 +269,27 @@
       return '';
     }
     const rem = Math.max(0, finish - nowMs);
-    return pct + '% ~' + fmtHalfMin(rem / 1000) + ' of ' + fmtHalfMin(total / 1000) + ' [' + fmtClock(finish) + ']';
+    return pct + '% ~' + fmtHalfMin(rem / 1000) + ' of ' + fmtHalfMin(total / 1000) + ' Remain [' + fmtClock(finish) + ']';
   }
-  // The clock text of a running row with "started", else ''.
+  // KIT-ETA-REMAIN: one form everywhere (the kit checklist row format, v21):
+  //   `started <h:mmAM/PM> - <pct>% ~<rem> of <total> Remain [<finish>]`
+  // A running row without "started" reads `<pct>% ~<rem> Remain` (no start, no clock);
+  // rem there is eta_s less the time since the file's last update. '' = nothing known.
+  function etaRemain(pct, etaS, startedMs, nowMs, updatedMs) {
+    const p = typeof pct === 'number' && isFinite(pct) ? Math.max(0, Math.min(100, Math.trunc(pct))) : 0;
+    if (typeof startedMs === 'number' && startedMs > 0) {
+      const clk = etaClock(p, etaS, startedMs, nowMs, updatedMs);
+      if (clk) return 'started ' + fmtClockDown(startedMs) + ' - ' + clk;
+    }
+    if (typeof etaS !== 'number' || !isFinite(etaS)) return '';
+    const ref = typeof updatedMs === 'number' && updatedMs > 0 ? updatedMs : nowMs;
+    const rem = Math.max(0, Math.trunc(etaS) - Math.max(0, nowMs - ref) / 1000);
+    return p + '% ~' + fmtHalfMin(rem) + ' Remain';
+  }
+  // The KIT-ETA-REMAIN text of a running row, else ''.
   function clockOf(r, now) {
-    if (!r || r.state !== 'running' || !r.started) return '';
-    return etaClock(r.pct === null || r.pct === undefined ? 0 : r.pct, r.eta_s, r.started, now || Date.now(), r.updated);
+    if (!r || r.state !== 'running') return '';
+    return etaRemain(r.pct === null || r.pct === undefined ? 0 : r.pct, r.eta_s, r.started, now || Date.now(), r.updated);
   }
   // Fixed columns: glyph, label, pct, eta, step. A clock row puts the whole clock text
   // in the pct slot and leaves the eta slot empty (drawn as one wider cell, .frow.clk).
@@ -276,8 +298,9 @@
     if (clk) return [GLYPH[r.state] || '[ ]', r.label, clk, '', r.step];
     return [GLYPH[r.state] || '[ ]', r.label, r.pct !== null && r.pct !== undefined && r.state === 'running' ? Math.round(r.pct) + '%' : '', r.state === 'running' ? fmtEta(r.eta_s) : r.state === 'stale' ? 'STALE' : '', r.step];
   }
-  // R8: the project's top running item for the pane header: '<id> 45% ~5m' (fixed slot);
-  // the clock form rides in the tooltip.
+  // R8: the project's top running item for the pane header: '<id> 45% ~5m' (fixed slot).
+  // CON-ETA-REMAIN: the slot itself shows the KIT-ETA-REMAIN text when there is one
+  // ('<id> started 11:46PM - 98% ~0m of 53.5m Remain [12:39AM]'), as does the tooltip.
   function top(items, now) {
     const list = items || [];
     const it = list.find((x) => x.status === 'running' && !x.stale) || list.find((x) => x.stale);
@@ -287,12 +310,12 @@
     const id = run && run.id ? String(run.id).slice(0, 6) + ' ' : '';
     const pct = it.pct !== null && it.pct !== undefined ? Math.round(it.pct) + '%' : '';
     const eta = fmtEta(run && run.eta_s !== undefined && run.eta_s !== null ? run.eta_s : it.eta_s);
-    const text = (id + pct + ' ' + eta).replace(/\s+/g, ' ').trim() || 'running';
     const own = (v, d) => (v !== null && v !== undefined ? v : d);
     const clk = clockOf({ state: 'running', pct: own(run && run.pct, it.pct), eta_s: own(run && run.eta_s, it.eta_s), started: own(run && run.started, it.started), updated: it.updated }, now);
-    return { text, cls: 'on', title: (it.task || it.file || 'progress') + (it.step ? ': ' + it.step : '') + (run && run.task ? '\n' + (run.id ? run.id + ' ' : '') + run.task : '') + (clk ? '\n' + clk : '') };
+    const text = ((id + (clk || pct + ' ' + eta)).replace(/\s+/g, ' ').trim()) || 'running';
+    return { text, clock: clk, cls: 'on', title: (it.task || it.file || 'progress') + (it.step ? ': ' + it.step : '') + (run && run.task ? '\n' + (run.id ? run.id + ' ' : '') + run.task : '') + (clk ? '\n' + clk : '') };
   }
-  const api = { CAP, GLYPH, STATES, DEFAULT_OPTS, normalizeOpts, create, update, view, cells, clockOf, etaClock, fmtHalfMin, fmtClock, fileState, top };
+  const api = { CAP, GLYPH, STATES, DEFAULT_OPTS, normalizeOpts, create, update, view, cells, clockOf, etaClock, etaRemain, fmtHalfMin, fmtClock, fmtClockDown, fileState, top };
   if (typeof module === 'object' && module.exports) module.exports.Flow = api;
   else root.CCFlow = api;
 })(this);
@@ -480,13 +503,37 @@
         wins: WINS.map((w) => ({ key: w.key, label: w.label, frac: num(src[w.frac]) ? src[w.frac] : null, pct: pct(src[w.frac]), left: left(src[w.reset], now), band: band(src[w.frac]) })),
       };
     });
-    const ex = extras || {};
-    const extra = num(ex.extraSpent) && num(ex.extraLimit) ? usd(ex.extraSpent) + '/' + usd(ex.extraLimit) : NA;
-    return { accs, api: usd(ex.apiCredits), extra };
+    // CON-CREDITS: one API chip and one SEPARATE Extra Usage chip per account (never
+    // summed). credits = the server's /api/status "credits" view (no key ever in it).
+    const cr = (extras && Array.isArray(extras.accounts)) ? extras.accounts : [];
+    // compact $ so two accounts fit the bar: cents under $100, whole dollars to $9999, then k
+    const usdC = (v) => (!num(v) ? NA : v < 100 ? '$' + v.toFixed(2) : v < 10000 ? '$' + Math.round(v) : '$' + Math.round(v / 1000) + 'k');
+    const usd = usdC;
+    const api = [];
+    const extra = [];
+    cfg.slice(0, ACCS.length).forEach((a, i) => {
+      const c = cr.find((x) => x && x.id === a.id) || null;
+      const tag = 'A' + (i + 1);
+      const who = 'Acc ' + (i + 1);
+      let t = NA;
+      let cls = '';
+      let title = who + ' API: no key (Settings > API keys and credits)';
+      if (c && c.keySet && c.keyKind !== 'admin') { t = '?'; cls = 'warn'; title = who + ' API: the key in ' + c.keyVar + ' is not an Admin key; month-to-date spend needs one'; }
+      else if (c && c.api && c.api.error && !num(c.api.usd)) { t = 'x'; cls = 'bad'; title = who + ' API: ' + c.api.error; }
+      else if (c && c.api && num(c.api.usd)) { t = usd(c.api.usd); title = who + ' API spend this month: ' + t + (c.api.error ? ' (last read failed: ' + c.api.error + ')' : ''); }
+      else if (c && c.keySet) title = who + ' API: reading';
+      api.push({ acc: a.id, tag, text: t, cls, title });
+      const x = c && c.extra;
+      const xt = x && num(x.used) ? usd(x.used) + (num(x.limit) ? '/' + usd(x.limit).slice(1) : '') : NA;
+      extra.push({ acc: a.id, tag, text: xt, cls: x && num(x.used) && num(x.limit) && x.limit > 0 ? band(x.used / x.limit) : '', title: who + ' Extra Usage' + (xt === NA ? ': no source' : ' spent / limit: ' + xt) });
+    });
+    return { accs, api, extra };
   }
   // Compact (phone) summary: the highest used % among the visible windows.
-  // Slot toggles: on unless switched off; Acc 3 (no third account yet) off unless switched on.
-  function isOn(prefs, k) { const v = (prefs || {})[k]; return k === 'acc3' ? v === true : v !== false; }
+  // Slot toggles: an unset key takes the server default (FB-1021: 7d, Acc 1, Acc 2 on,
+  // the rest off until switched on). The server sends every key, so this is first paint only.
+  const DEFAULT_ON = ['w7d', 'acc1', 'acc2'];
+  function isOn(prefs, k) { const v = (prefs || {})[k]; return typeof v === 'boolean' ? v : DEFAULT_ON.includes(k); }
   function summary(m, prefs) {
     let best = null;
     for (const a of m.accs) {
@@ -582,9 +629,87 @@
   function placement(info, clientId) {
     return info && clientId && info.openedBy === clientId ? 'tile' : 'minimized';
   }
-  const api = { newClientId, placement };
+  // CON-CLEAR-NORESUME: a claude pane whose newest event is a /clear has nothing to
+  // continue, so closing it leaves no "reopen:" chip and no Resume button.
+  function resumable(info) {
+    return !!(info && info.kind === 'claude' && info.sessionId && !info.clearedLast);
+  }
+  function keepDormant(info) {
+    return !!info && !(info.kind === 'claude' && info.clearedLast);
+  }
+  // Layout entries whose process is gone become reopen chips, minus cleared ones.
+  function dormantFrom(entries, liveIds, cap) {
+    return (entries || []).filter((e) => e && e.kind && !liveIds.has(e.id) && keepDormant(e)).slice(0, cap || 12);
+  }
+  const api = { newClientId, placement, resumable, keepDormant, dormantFrom };
   if (typeof module === 'object' && module.exports) module.exports.Place = api;
   else root.CCPlace = api;
+})(this);
+
+// ---------- CON-GATE-PANEL tracker panel (pure; also loaded by tests/trackers.test.js) ----------
+// GET /api/trackers -> one collapsible panel in the status panel: a one-line summary
+// while collapsed, one block per shown tracker when open. The suite-gate block lists the
+// slots (tree, cmd label, KIT-ETA-REMAIN hold text, parallel ok / exclusive marker) and the
+// FIFO queue (position, tree, label, waiting, estimated start, `next` on the head row),
+// with a QUIET WINDOW banner while one is active.
+(function (root) {
+  'use strict';
+  function clock(ms) {
+    const t = new Date(ms);
+    const h = t.getHours();
+    return (h % 12 || 12) + ':' + String(t.getMinutes()).padStart(2, '0') + (h < 12 ? 'AM' : 'PM');
+  }
+  function mins(s) {
+    if (s === null || s === undefined) return '?';
+    return s < 60 ? s + 's' : Math.round(s / 60) + 'm';
+  }
+  // shown tracker ids in panel order (Settings toggles; absent = shown)
+  function shown(snap, toggles) {
+    const t = toggles || {};
+    return ((snap && snap.order) || []).filter((id) => t[id] !== false && snap.trackers && snap.trackers[id]);
+  }
+  // collapsed one-liner: the gate summary first, then any tracker not in a calm state
+  function summaryLine(snap, toggles) {
+    const ids = shown(snap, toggles);
+    if (!ids.length) return snap && snap.order && snap.order.length ? 'All trackers hidden: tick them in Settings > Status panel trackers.' : 'no trackers';
+    const parts = [];
+    for (const id of ids) {
+      const tr = snap.trackers[id];
+      if (id === 'gate' || /^(failed|stale|warn|bad|unknown)$/.test(tr.state || '')) parts.push(((snap.titles && snap.titles[id]) || id) + ': ' + tr.summary);
+    }
+    return parts.length ? parts.join(' | ') : ids.length + ' tracker' + (ids.length === 1 ? '' : 's') + ', all calm';
+  }
+  function gateLines(g) {
+    if (!g) return [];
+    const out = [];
+    if (g.quiet) out.push({ text: 'QUIET WINDOW: ' + g.quiet.name + ' until ' + clock(g.quiet.until), cls: 'banner' });
+    for (const s of g.slots || []) {
+      out.push({
+        text: 'slot ' + s.k + (s.lane ? ' (lane)' : '') + ': ' + s.tree + ' - ' + s.label + ' - ' + s.text + (s.marker ? ' [' + s.marker + ']' : '') + (s.source === 'pid map' ? ' (pid map)' : ''),
+        cls: s.marker === 'exclusive' ? 'warn' : 'on',
+      });
+    }
+    if (!(g.slots || []).length) out.push({ text: 'no suite running', cls: 'muted' });
+    for (const q of g.queue || []) {
+      out.push({
+        text: '#' + q.pos + ' ' + q.tree + ' - ' + q.label + ' - waiting ' + mins(q.waitingS) + ' - est. start ' + (q.estStart ? clock(q.estStart) : '?') + (q.next ? ' [next]' : '') + (q.source === 'pid map' ? ' (pid map)' : ''),
+        cls: q.next ? 'next' : '',
+      });
+    }
+    return out;
+  }
+  // Sparkline points for a 0..100 series in a w x h box (nulls skipped).
+  function sparkPoints(vals, w, h) {
+    const v = (vals || []).map((x) => (typeof x === 'number' && isFinite(x) ? Math.max(0, Math.min(100, x)) : null));
+    if (v.filter((x) => x !== null).length < 2) return '';
+    const n = v.length;
+    const pts = [];
+    v.forEach((x, i) => { if (x !== null) pts.push((n === 1 ? 0 : (i * w) / (n - 1)).toFixed(1) + ',' + (h - (x * h) / 100).toFixed(1)); });
+    return pts.join(' ');
+  }
+  const api = { shown, summaryLine, gateLines, sparkPoints, clock };
+  if (typeof module === 'object' && module.exports) module.exports.Trk = api;
+  else root.CCTrk = api;
 })(this);
 
 // ---------- HEALTH (order 2026-10-18 "v19.1" A; pure, also loaded by tests/health.test.js) ----------
@@ -890,6 +1015,7 @@
   const RS = window.CCRes;
   const HL = window.CCHealth;
   const PL = window.CCPlace;
+  const TK = window.CCTrk;
   const TY = window.CCType;
   const CD = window.CCCard;
   const KY = window.CCKeys;
@@ -1156,7 +1282,7 @@
 
     layoutEntry() {
       const i = this.info;
-      return { id: i.id, kind: i.kind, projectId: i.projectId, account: i.account, shell: i.shell, title: i.title, cwd: i.cwd, sessionId: i.sessionId, minimized: this.minimized, fontSize: this.fontSize };
+      return { id: i.id, kind: i.kind, projectId: i.projectId, account: i.account, shell: i.shell, title: i.title, cwd: i.cwd, sessionId: i.sessionId, minimized: this.minimized, fontSize: this.fontSize, clearedLast: !!i.clearedLast, svc: i.svc || null, recipe: i.recipe || null };
     }
 
     build() {
@@ -1353,6 +1479,8 @@
       this.composer.append(this.slashEl, this.attachRow, trow, crow, this.fileInput);
 
       root.append(head, this.menuEl, this.noteEl, this.flowEl, this.searchBar, this.termWrap, exitBar, this.composer);
+      // HOM-PANEL-2: a log pane is read only - no composer, no key strip
+      if (this.info.kind === 'log') { this.composer.hidden = true; root.classList.add('is-log'); }
       root.addEventListener('mousedown', () => setFocused(this.id));
       this.root = root;
       $('#grid').appendChild(root);
@@ -2281,7 +2409,12 @@
       }
       this.root.classList.toggle('is-exited', p.state === 'exited');
       this.exitText.textContent = 'Process exited' + (p.exitCode !== null && p.exitCode !== undefined ? ' (code ' + p.exitCode + ')' : '') + '.';
-      this.resumeBtn.style.display = p.kind === 'claude' && p.sessionId ? '' : 'none';
+      this.resumeBtn.style.display = PL.resumable(p) ? '' : 'none';
+      // CON-CLEAR-NORESUME: the saved layout follows, so a server restart makes no chip either
+      if (!!p.clearedLast !== !!this.clearedLastSeen) {
+        this.clearedLastSeen = !!p.clearedLast;
+        saveLayout();
+      }
       const note = p.state === 'attention' && p.note ? p.note : '';
       const dn = p.done || null;
       // DONE closes the session: its workflow rows fold into the band.
@@ -2346,7 +2479,7 @@
   }
 
   // ---------- pane operations ----------
-  async function openPane(req) {
+  async function openPane(req, o) {
     try {
       const pinfo = await api('POST', '/api/panes', Object.assign({}, req, { client: CLIENT_ID }));
       const v = ensureView(pinfo);
@@ -2355,7 +2488,8 @@
       setTimeout(() => v.focusInput(), 50);
       return v;
     } catch (e) {
-      alert('Could not open pane: ' + e.message);
+      if (o && o.onError) o.onError(e); // CON-AUDIT UX-A20: the caller says it in place
+      else alert('Could not open pane: ' + e.message);
       return null;
     }
   }
@@ -2391,20 +2525,23 @@
     if (!v) return;
     if (v.info.state !== 'exited' && !(await askConfirm({ title: 'Close pane', what: 'Close "' + (v.info.title || id) + '"? This ends its process.', safe: 'It stays in the taskbar as a closed chip; a claude pane resumes its session when reopened.', go: 'Close', danger: true }))) return;
     if (!views.has(id)) return; // closed meanwhile (exited and removed while the dialog was up)
-    // Keep a dormant entry so the pane can be reopened (claude resumes its session id).
-    const entry = v.layoutEntry();
-    entry.id = 'd' + Date.now().toString(36);
-    entry.minimized = true;
-    entry.closedAt = Date.now();
-    dormant.unshift(entry);
-    dormant = dormant.slice(0, 12);
+    // Keep a dormant entry so the pane can be reopened (claude resumes its session id),
+    // except after a /clear that was the last thing done there (CON-CLEAR-NORESUME).
+    if (PL.keepDormant(v.info)) {
+      const entry = v.layoutEntry();
+      entry.id = 'd' + Date.now().toString(36);
+      entry.minimized = true;
+      entry.closedAt = Date.now();
+      dormant.unshift(entry);
+      dormant = dormant.slice(0, 12);
+    }
     try { await api('DELETE', '/api/panes/' + id); } catch (e) { /* already gone */ }
     removeView(id);
   }
 
   async function reopenDormant(entry, resume) {
     dormant = dormant.filter((d) => d !== entry);
-    const req = { kind: entry.kind, projectId: entry.projectId, account: entry.account, shell: entry.shell, title: entry.title };
+    const req = { kind: entry.kind, projectId: entry.projectId, account: entry.account, shell: entry.shell, title: entry.title, svc: entry.svc || undefined, recipe: entry.recipe || undefined };
     if (!entry.projectId) req.cwd = entry.cwd;
     if (resume && entry.kind === 'claude' && entry.sessionId) req.resume = entry.sessionId;
     const v = await openPane(req);
@@ -2657,7 +2794,7 @@
       const it = el('div', 'tb-item dormant');
       const canResume = entry.kind === 'claude' && entry.sessionId;
       it.title = 'Closed pane. Click to reopen' + (canResume ? ' and resume its conversation; Shift+click opens fresh' : '');
-      it.append(el('span', null, 'reopen: ' + (entry.title || entry.kind) + (entry.kind === 'shell' ? ' (shell)' : '')));
+      it.append(el('span', null, 'reopen: ' + (entry.title || entry.kind) + (entry.kind === 'shell' ? ' (shell)' : entry.kind === 'run' && entry.recipe === 'hom-driver' ? ' - resumes from its queue' : '')));
       const x = el('span', 'x', 'x');
       x.title = 'Forget';
       x.addEventListener('click', (e) => {
@@ -3549,14 +3686,22 @@
       }
       slots.appendChild(acc);
     }
+    // CON-CREDITS: per-account chips, API and Extra Usage kept apart (A1, A2, ...)
+    const accts = ((info && info.accounts) || []).slice(0, US.ACCS.length);
     const apiSlot = el('span', 'us-slot us-api');
     apiSlot.dataset.slot = 'api';
-    apiSlot.append(el('b', 'us-lbl', 'API'), el('span', 'us-usd', US.NA));
-    apiSlot.title = 'API credits balance';
+    apiSlot.appendChild(el('b', 'us-lbl', 'API'));
     const ex = el('span', 'us-slot us-extra');
     ex.dataset.slot = 'extra';
-    ex.append(el('b', 'us-lbl us-lbl-x', 'Extra Use'), el('span', 'us-usd2', US.NA));
-    ex.title = 'Extra Usage spent / limit';
+    ex.appendChild(el('b', 'us-lbl us-lbl-x', 'Ext'));
+    accts.forEach((a, i) => {
+      for (const [box, cls] of [[apiSlot, 'us-usd'], [ex, 'us-usd2']]) {
+        const chip = el('span', 'us-chip');
+        chip.dataset.acc = a.id;
+        chip.appendChild(el('span', cls, US.NA)); // account order = Acc 1, Acc 2 (named in the tooltip)
+        box.appendChild(chip);
+      }
+    });
     slots.append(apiSlot, ex);
     const pop = $('#us-pop');
     for (const [k, label] of US.TOGGLES) {
@@ -3592,7 +3737,7 @@
 
   function renderUsage(snap) {
     const s = snap || statusSnap;
-    usageModel = US.model(s && s.quota, info && info.accounts, Date.now(), s && s.usage);
+    usageModel = US.model(s && s.quota, info && info.accounts, Date.now(), s && s.credits);
     for (const a of usageModel.accs) {
       const box = $('#us-slots .us-acc[data-slot="' + a.slot + '"]');
       if (!box) continue;
@@ -3608,10 +3753,16 @@
         if (c.box.title !== tt) c.box.title = tt;
       }
     }
-    const u = $('#us-slots .us-usd');
-    if (u) setText(u, usageModel.api);
-    const x = $('#us-slots .us-usd2');
-    if (x) setText(x, usageModel.extra);
+    for (const [list, sel, cls] of [[usageModel.api, '.us-api', 'us-usd'], [usageModel.extra, '.us-extra', 'us-usd2']]) {
+      for (const c of list) {
+        const chip = $('#us-slots ' + sel + ' .us-chip[data-acc="' + c.acc + '"]');
+        if (!chip) continue;
+        const v = chip.querySelector('.' + cls);
+        setText(v, c.text);
+        setCls(v, cls + (c.cls ? ' us-' + c.cls : ''));
+        if (chip.title !== c.title) chip.title = c.title;
+      }
+    }
     const sv = $('#us-summary .us-sum-v');
     if (sv) setText(sv, US.summary(usageModel, usagePrefs));
   }
@@ -3803,6 +3954,9 @@
       const running = p.progress.items.filter((x) => x.status === 'running' && !x.stale).length;
       const stale = p.progress.items.filter((x) => x.stale).length;
       if (running) kv.push(running + ' running');
+      // CON-ETA-REMAIN: the top running item's started / Remain text on the same line
+      const tp = running ? FL.top(p.progress.items) : null;
+      if (tp && tp.clock) { const s = el('span', 'kv-eta', tp.text); s.title = tp.title; kv.push(s); }
       if (stale) kv.push(stale + ' STALE');
     }
     if (p.handoff) kv.push(p.handoff.file);
@@ -3884,7 +4038,144 @@
   }
 
 
+  // ---------- CON-GATE-PANEL: tracker panel in the status panel ----------
+  // Collapse state per viewer (browser storage, default expanded); polled every 10 s
+  // while open, 30 s while collapsed (summary only), never while the page is hidden or
+  // the status panel is off.
+  let trkSnap = null;
+  let trkAt = 0;
+  let trkBusy = false;
+  let trkErr = ''; // CON-AUDIT UX-A1: the last read failure, shown instead of a stale summary
+  let trkOpen = prefGet('cc-trk-collapsed', '0') !== '1';
+  function setTrkOpen(on) {
+    trkOpen = !!on;
+    prefSet('cc-trk-collapsed', trkOpen ? '0' : '1');
+    renderTrackers();
+    if (trkOpen) pollTrackers(true);
+  }
+  function sparkEl(vals) {
+    const pts = TK.sparkPoints(vals, 60, 14);
+    if (!pts) return null;
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'trk-spark');
+    svg.setAttribute('viewBox', '0 0 60 14');
+    svg.setAttribute('width', '60');
+    svg.setAttribute('height', '14');
+    svg.setAttribute('aria-hidden', 'true');
+    const pl = document.createElementNS(NS, 'polyline');
+    pl.setAttribute('points', pts);
+    svg.appendChild(pl);
+    return svg;
+  }
+  function renderTrackers() {
+    const box = $('#trk');
+    if (!box) return;
+    const tog = settings.trackers || {};
+    $('#trk-toggle').setAttribute('aria-expanded', trkOpen ? 'true' : 'false');
+    box.querySelector('.trk-caret').textContent = trkOpen ? '-' : '+';
+    box.classList.toggle('collapsed', !trkOpen);
+    $('#trk-sum').textContent = trkErr ? 'trackers unavailable: ' + trkErr : trkSnap ? TK.summaryLine(trkSnap, tog) : 'loading';
+    const body = $('#trk-body');
+    body.hidden = !trkOpen;
+    if (trkOpen && !trkSnap && trkErr) { body.textContent = ''; body.appendChild(el('div', 'trk-row muted', 'Trackers could not be read; retrying every 10 s.')); }
+    if (!trkOpen || !trkSnap) return;
+    body.textContent = '';
+    for (const id of TK.shown(trkSnap, tog)) {
+      const tr = trkSnap.trackers[id];
+      const blk = el('div', 'trk-blk trk-' + id + ' st-' + (tr.state || 'ok'));
+      blk.dataset.id = id;
+      const h = el('div', 'trk-h');
+      h.append(el('span', 'trk-name', (trkSnap.titles && trkSnap.titles[id]) || id), el('span', 'trk-s', tr.summary || ''));
+      blk.appendChild(h);
+      const rows = id === 'gate' ? TK.gateLines(tr.gate) : tr.rows || [];
+      for (const r of rows) {
+        const row = el('div', 'trk-row' + (r.cls ? ' ' + r.cls : ''));
+        row.appendChild(el('span', 'trk-t', r.text));
+        row.title = r.text;
+        if (r.spark) { const s = sparkEl(r.spark); if (s) row.appendChild(s); }
+        blk.appendChild(row);
+      }
+      body.appendChild(blk);
+    }
+    if (!body.children.length) body.appendChild(el('div', 'trk-row muted', 'All trackers hidden: tick them in Settings > Status panel trackers.'));
+  }
+  async function pollTrackers(force) {
+    if (trkBusy || document.hidden || document.body.classList.contains('no-status')) return;
+    const every = trkOpen ? 10000 : 30000;
+    if (!force && Date.now() - trkAt < every) return;
+    trkBusy = true;
+    trkAt = Date.now();
+    try {
+      trkSnap = await api('GET', '/api/trackers');
+      trkErr = '';
+    } catch (e) {
+      trkErr = e.message;
+    } finally {
+      trkBusy = false;
+    }
+    renderTrackers();
+  }
+  function fillTrackerToggles() {
+    const box = $('#set-trk-list');
+    box.textContent = '';
+    const tog = settings.trackers || {};
+    const ids = trkSnap && trkSnap.order ? trkSnap.order : Object.keys(tog);
+    if (!trkSnap) pollTrackers(true).then(() => { if ($('#dlg-settings').open && trkSnap) fillTrackerToggles(); }); // UX-A18
+    for (const id of ids) {
+      const lb = el('label', 'check');
+      const cb = el('input');
+      cb.type = 'checkbox';
+      cb.name = 'trk-' + id;
+      cb.checked = tog[id] !== false;
+      lb.append(cb, ' ' + ((trkSnap && trkSnap.titles && trkSnap.titles[id]) || id));
+      box.appendChild(lb);
+    }
+  }
+  // ---------- CON-CREDITS: Settings > API keys and credits (names and numbers only) ----------
+  function creditRowText(c) {
+    if (!c.keySet) return c.label + ': ' + c.keyVar + ' not set. Create an Admin key for this account at platform.claude.com (organization settings, Admin keys) and save it as a user environment variable with that name.';
+    if (c.keyKind !== 'admin') return c.label + ': ' + c.keyVar + ' is set, but it is not an Admin key (month-to-date spend needs one).';
+    const a = c.api || {};
+    const when = a.at ? ' (read ' + TK.clock(a.at) + ')' : '';
+    if (typeof a.usd === 'number') return c.label + ': Admin key set; API spend this month $' + a.usd.toFixed(2) + when + (a.error ? '; last read failed: ' + a.error : '') + '.';
+    return c.label + ': Admin key set; ' + (a.error ? 'read failed: ' + a.error : 'not read yet') + '.';
+  }
+  async function fillCredits(force) {
+    let j = null;
+    let err = '';
+    try { j = await api('GET', '/api/credits' + (force ? '?refresh=1' : '')); } catch (e) { j = null; err = e.message; }
+    const box = $('#set-credits');
+    if (err) { if (!box.hidden) $('#credit-note').textContent = 'Could not read: ' + err; return; } // UX-A13
+    box.hidden = !(j && j.enabled);
+    if (!j || !j.enabled) return;
+    renderCredits(j, force);
+  }
+  // CON-API-PUBLIC: the opt-in switch; off = no rows, no read, no call (server side).
+  function renderCredits(j, force) {
+    const on = !!j.optIn;
+    $('#credits-optin').checked = on;
+    $('#btn-credits').disabled = !on;
+    const rows = $('#set-credit-rows');
+    rows.textContent = '';
+    if (!on) {
+      $('#credit-note').textContent = 'Off: nothing is read and no call is made.';
+      if (statusSnap) { statusSnap.credits = j; renderUsage(statusSnap); }
+      return;
+    }
+    (j.accounts || []).forEach((c, i) => rows.appendChild(el('div', 'ha-row small' + (c.keySet && c.keyKind === 'admin' && !(c.api && c.api.error) ? '' : ' status-warn'), creditRowText(Object.assign({}, c, { label: 'Acc ' + (i + 1) + ' (' + c.label + ')' })))));
+    $('#credit-note').textContent = force ? 'Read again at ' + TK.clock(Date.now()) + '. The server re-reads at most once a minute.' : '';
+    if (statusSnap) { statusSnap.credits = j; renderUsage(statusSnap); }
+  }
+
+  function readTrackerToggles() {
+    const out = Object.assign({}, settings.trackers || {});
+    for (const cb of $('#set-trk-list').querySelectorAll('input[type=checkbox]')) out[cb.name.slice(4)] = cb.checked;
+    return out;
+  }
+
   async function pollStatus() {
+    pollTrackers(false);
     try {
       statusSnap = await api('GET', '/api/status');
       renderStatus();
@@ -3897,7 +4188,8 @@
   function fillSelect(sel, items, value) {
     sel.textContent = '';
     for (const it of items) {
-      const o = el('option', null, it.label);
+      // FB-1021: an account with a setup problem says so in its own option
+      const o = el('option', null, it.problem ? it.label + ' - ' + it.problem : it.label);
       o.value = it.id;
       if (it.id === value) o.selected = true;
       sel.appendChild(o);
@@ -4144,6 +4436,9 @@
     f.idleBadge.checked = !!settings.idleBadge;
     f.desktopNotify.checked = !!settings.desktopNotify;
     f.hideCliChrome.checked = hideCliChrome;
+    f.clearMode.value = settings.clearMode === 'reopen' ? 'reopen' : 'refresh';
+    fillTrackerToggles();
+    fillCredits(false);
     $('#settings-info').textContent = 'claude: ' + (info.claudePath || 'not found') + ' | server pid ' + info.pid + ' | v' + info.version;
     refreshUpdates();
     $('#dlg-settings').returnValue = '';
@@ -4225,6 +4520,14 @@
     wireGroupEdit();
     wireTypeForm();
     wireChipList();
+    $('#trk-toggle').addEventListener('click', () => setTrkOpen(!trkOpen));
+    $('#btn-credits').addEventListener('click', () => fillCredits(true));
+    $('#credits-optin').addEventListener('change', async (ev) => {
+      const cb = ev.target;
+      cb.disabled = true;
+      try { renderCredits(await api('POST', '/api/credits/settings', { enabled: cb.checked }), false); } catch (e) { cb.checked = !cb.checked; $('#credit-note').textContent = 'Could not save: ' + e.message; }
+      cb.disabled = false;
+    });
     $('#new-kind').addEventListener('change', () => { $('#dlg-new').className = 'kind-' + $('#new-kind').value; });
     $('#dlg-new').addEventListener('close', () => {
       if ($('#dlg-new').returnValue !== 'ok') return;
@@ -4257,6 +4560,8 @@
         quickChips: readChipList(),
         idleBadge: f.idleBadge.checked,
         desktopNotify: f.desktopNotify.checked,
+        clearMode: f.clearMode.value === 'reopen' ? 'reopen' : 'refresh',
+        trackers: readTrackerToggles(),
       };
       if (f.hideCliChrome.checked !== hideCliChrome) setHideCliChrome(f.hideCliChrome.checked);
       if (patch.desktopNotify && 'Notification' in window && Notification.permission === 'default') {
@@ -4266,6 +4571,7 @@
       await saveSettings(patch);
       for (const v of views.values()) v.term.options.scrollback = settings.scrollback;
       // CON-UX-PANEROWS: pane strips and card rows follow a new count / state set now
+      renderTrackers(); // CON-GATE-PANEL: tracker toggles apply now
       if (statusSnap) renderStatus();
       else renderProjects();
       // v19.1 B: only an account pick the operator CHANGED in this dialog is applied,
@@ -4864,7 +5170,7 @@
     });
     for (const p of sorted) ensureView(p, saved.get(p.id));
     // Layout entries whose process is gone (server restarted) become reopenable chips.
-    dormant = (layout.panes || []).filter((e) => !liveIds.has(e.id) && e.kind).slice(0, 12);
+    dormant = PL.dormantFrom(layout.panes, liveIds, 12);
     maximizedId = layout.maximized && liveIds.has(layout.maximized) ? layout.maximized : null;
     relayout();
     renderProjects();
@@ -4880,7 +5186,7 @@
     // profile update, as a full-page view with "Skip for now", never a modal (VERIFY
     // ruling on UX-F23, operator agreed 2026-10-19); leaving it records the dismissal.
     refreshProfileLine().then((s) => { if (s && s.available && s.offer && window.CCSetupUI) window.CCSetupUI.open({ update: s.offer === 'update' }); });
-    window.__cc = { renderUsage, fitUsage, renderRes, fitRes, get usagePrefs() { return Object.assign({}, usagePrefs); }, views, openPane, closePane, setMinimized, toggleMax, toggleSidebar, setHideCliChrome, effTheme, relayout, get order() { return order.slice(); }, get dormant() { return dormant; } };
+    window.__cc = { renderUsage, fitUsage, renderRes, fitRes, get usagePrefs() { return Object.assign({}, usagePrefs); }, views, openPane, closePane, setMinimized, toggleMax, toggleSidebar, setHideCliChrome, effTheme, relayout, get order() { return order.slice(); }, get dormant() { return dormant; }, pollTrackers, setTrkOpen, get trkOpen() { return trkOpen; }, get trkSnap() { return trkSnap; } };
   }
 
   boot();

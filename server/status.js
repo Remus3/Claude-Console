@@ -442,7 +442,8 @@ function accountUuidFor(configDir) {
   return uuid;
 }
 
-const QUOTA_FIELDS = ['unified5h', 'unified7d', 'unified7dSonnet', 'unified7dFable', 'unified5hReset', 'unified7dReset', 'unified7dSonnetReset', 'unified7dFableReset', 'unifiedStatus', 'tokensLimit', 'tokensRemaining', 'requestsLimit', 'requestsRemaining', 'resetsAt'];
+// extraUsedUsd / extraLimitUsd (CON-CREDITS): Extra Usage numbers, read when a source writes them
+const QUOTA_FIELDS = ['unified5h', 'unified7d', 'unified7dSonnet', 'unified7dFable', 'unified5hReset', 'unified7dReset', 'unified7dSonnetReset', 'unified7dFableReset', 'unifiedStatus', 'tokensLimit', 'tokensRemaining', 'requestsLimit', 'requestsRemaining', 'resetsAt', 'extraUsedUsd', 'extraLimitUsd'];
 
 function readQuota(stateFile, accounts, uuidResolver) {
   const st = statSafe(stateFile);
@@ -457,7 +458,9 @@ function readQuota(stateFile, accounts, uuidResolver) {
   const byUuid = {};
   for (const [id, a] of Object.entries(accounts || {})) {
     const u = resolve(a.configDir);
-    if (u) byUuid[u] = { id, label: a.label || id };
+    // First configured account wins a shared uuid: two ids on one login (configDir
+    // null on both) must not move the quota row off acct1, or Acc 1 reads '--'.
+    if (u && !byUuid[u]) byUuid[u] = { id, label: a.label || id };
   }
   const list = Array.isArray(j && j.quota) ? j.quota : [];
   const out = list.map((q, i) => {

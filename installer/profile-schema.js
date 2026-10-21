@@ -31,9 +31,9 @@ const MODULE_KEYS = ['schema', 'id', 'order', 'title', 'summary', 'why', 'defaul
 const ITEM_KEYS = ['id', 'order', 'title', 'does', 'why', 'risk', 'default', 'platform', 'depends_on', 'pairs_with',
   'conflicts_with', 'contributes', 'detect', 'verify', 'scope', 'notes'];
 const CONTRIB_KEYS = {
-  file: ['kind', 'target', 'template', 'mode'],
-  block: ['kind', 'target', 'block', 'slot', 'template'],
-  'json-merge': ['kind', 'target', 'template', 'value', 'mode'],
+  file: ['kind', 'target', 'template', 'mode', 'account'],
+  block: ['kind', 'target', 'block', 'slot', 'template', 'account'],
+  'json-merge': ['kind', 'target', 'template', 'value', 'mode', 'account'],
   env: ['kind', 'name', 'value', 'secret', 'scope'],
   task: ['kind', 'name', 'template'],
   git: ['kind', 'key', 'value', 'scope'],
@@ -279,6 +279,12 @@ function validateContribution(c, at, declared, err) {
   if (!isObj(c)) return err(at, 'must be an object');
   if (!CONTRIBUTION_KINDS.includes(c.kind)) return err(at + '.kind', 'unknown kind ' + c.kind + ' (one of ' + CONTRIBUTION_KINDS.join(', ') + ')');
   unknownKeys(c, CONTRIB_KEYS[c.kind], at + '.', err);
+  // CON-FB-2ND: a user: contribution may name the account it belongs to; 'main' = the
+  // default account's config dir only, 'second' = only another configured account's dir.
+  if (c.account !== undefined) {
+    if (!['main', 'second'].includes(c.account)) err(at + '.account', 'must be main or second');
+    else if (!(typeof c.target === 'string' && c.target.startsWith('user:'))) err(at + '.account', 'only on a user: target');
+  }
   switch (c.kind) {
     case 'file':
       checkTarget(c.target, declared, at + '.target', err);

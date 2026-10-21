@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Synthetic test fixture (OH-RECIPE). Only tags named by public sources; values are
+     the reported defaults. Not a copy of a real game file. -->
+<root>
+	<setting_resolution>(1920, 1080)</setting_resolution>
+	<setting_enable_d3d12>0</setting_enable_d3d12>
+	<setting_nvidia_reflex>0</setting_nvidia_reflex>
+	<setting_frame_insertion>0</setting_frame_insertion>
+	<setting_image_sharpening>1</setting_image_sharpening>
+</root>

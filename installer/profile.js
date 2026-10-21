@@ -59,7 +59,9 @@ function loadPresets(dir, profile) {
     const name = f.replace(/\.json$/, '');
     const items = isObj(j.items) ? j.items : {};
     const modules = Array.isArray(j.modules) ? j.modules : j.modules === '*' ? all : (out[name] ? out[name].modules : all);
-    out[name] = { name, modules, items: normaliseItemMap(items), variables: presetValues(j.variables),
+    const rules = {};
+    for (const [id, v] of Object.entries(items)) if (isObj(v) && typeof v.rule === 'string') rules[id] = v.rule;
+    out[name] = { name, modules, items: normaliseItemMap(items), rules, variables: presetValues(j.variables),
       version: j.version || null, generated_from: j.generated_from || null, source_sha: j.source_sha || null, title: typeof j.title === 'string' ? j.title : null };
   }
   return out;
@@ -432,7 +434,7 @@ function openEngine(o) {
       return m ? { kind: 'module', module: listView(model, readSelection(dataDir, model)).find((x) => x.id === id) } : null;
     },
     // p = {target: {repo, configDir}, only, remove, values, resolve, selection}
-    plan: (p) => PL.plan(Object.assign({ model, dataDir, deps, platform: o.platform, ctx: o.ctx, selection: (p && p.selection) || readSelection(dataDir, model) }, p || {}, { target: targetOf(p && p.target) })),
+    plan: (p) => PL.plan(Object.assign({ model, dataDir, deps, platform: o.platform, ctx: o.ctx, primaryConfigDir: o.configDir || null, selection: (p && p.selection) || readSelection(dataDir, model) }, p || {}, { target: targetOf(p && p.target) })),
     verdict: (plan) => PL.planVerdict(plan),
     diff: (plan) => PL.diffText(plan),
     planLines: (plan) => PL.planLines(plan),
@@ -446,8 +448,8 @@ function openEngine(o) {
     enable: (ids) => { const r = enable(model, readSelection(dataDir, model), ids); if (r.ok) writeSelection(dataDir, r.selection); return r; },
     disable: (ids) => { const r = disable(model, readSelection(dataDir, model), ids); if (r.ok) writeSelection(dataDir, r.selection); return r; },
     edit: (itemId, a) => editTemplate(model, dataDir, itemId, Object.assign({ recycle: deps.recycle }, a || {})),
-    uninstall: (ids, t) => PL.plan({ model, dataDir, deps, platform: o.platform, ctx: o.ctx, selection: readSelection(dataDir, model), target: targetOf(t), remove: ids === 'all' ? model.order.slice() : ids }),
-    verify: (t, a) => ({ items: PV.verifyItems(Object.assign({ model, dataDir, deps, platform: o.platform, ctx: o.ctx, selection: readSelection(dataDir, model), target: targetOf(t) }, a || {})), lock: PV.verifyLock({ model, dataDir, target: targetOf(t) }) }),
+    uninstall: (ids, t) => PL.plan({ model, dataDir, deps, platform: o.platform, ctx: o.ctx, primaryConfigDir: o.configDir || null, selection: readSelection(dataDir, model), target: targetOf(t), remove: ids === 'all' ? model.order.slice() : ids }),
+    verify: (t, a) => ({ items: PV.verifyItems(Object.assign({ model, dataDir, deps, platform: o.platform, ctx: o.ctx, selection: readSelection(dataDir, model), target: targetOf(t) }, a || {})), lock: PV.verifyLock({ model, dataDir, target: targetOf(t), primaryConfigDir: o.configDir || null }) }),
     status: (t) => {
       const target = targetOf(t);
       // Applied = this repo's lock (or, with no repo given, every repo the profile was

@@ -15,7 +15,7 @@ LICENSE and NOTICE - and MANIFEST.json itself.
 
 ORIGIN
 
-This kit is GENERATED: a neutral-name build of the author's kit version 20,
+This kit is GENERATED: a neutral-name build of the author's kit version 21,
 produced by a mechanical, table-driven rename. MANIFEST.json records the source
 kit version, the SHA-256 of the source manifest and of the rename table, and
 the SHA-256 of every file here.

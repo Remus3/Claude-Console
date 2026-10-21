@@ -24,13 +24,13 @@ process.on('exit', () => {
 
 const { createConsoleServer } = require('../server/server');
 const GETS = ['/api/info', '/api/projects', '/api/status', '/api/settings', '/api/layout', '/api/panes', '/api/tools',
-  '/api/commands', '/api/health', '/api/resources', '/api/updates', '/api/updates/preflight', '/api/usage-prefs'];
+  '/api/commands', '/api/health', '/api/resources', '/api/updates', '/api/updates/preflight', '/api/usage-prefs', '/api/credits?refresh=1'];
 const PROFILE_ROUTES = [['GET', '/api/profile'], ['POST', '/api/profile/plan'], ['POST', '/api/profile/adopt/scan']];
 
-async function startServer(name, updates) {
+async function startServer(name, updates, extra) {
   const d = path.join(tmp, name);
   fs.mkdirSync(path.join(d, 'repo', '.git'), { recursive: true });
-  return createConsoleServer({ port: 0, dataDir: path.join(d, 'data'), runDir: path.join(d, 'run'), dropsDir: path.join(d, 'drops'),
+  return createConsoleServer({ ...(extra || {}), port: 0, dataDir: path.join(d, 'data'), runDir: path.join(d, 'run'), dropsDir: path.join(d, 'drops'),
     overrides: { scanRoots: [], extraProjects: [path.join(d, 'repo')], updates, plugins: { main: { enabled: false } } },
     healthSuiteHolders: () => 0, desktopDirs: [path.join(d, 'Desktop')] });
 }
@@ -79,6 +79,26 @@ test('updates on: exactly one update-check call, to api.github.com, refused here
   assert.strictEqual(out[0].host, 'api.github.com');
   assert.strictEqual(out[0].allowed, false);
   assert.match(c.text, /egress refused|error/, 'the console reports the failed check instead of crashing');
+});
+
+// CON-API-PUBLIC: the credits reader ships, but with an Admin key set and the opt-in OFF
+// (the default) it reads nothing and calls nothing; with it ON the one host is api.anthropic.com.
+test('credits: a key set but the opt-in off makes no outside attempt; on, only api.anthropic.com', async () => {
+  const key = 'sk-ant-adm' + 'in01-' + 'Z'.repeat(40);
+  guard.attempts.length = 0;
+  let srv = await startServer('cr-off', { check: false }, { creditsEnv: { CLAUDE_CONSOLE_ACCT1_API_KEY: key } });
+  try {
+    const c = await call(srv, 'GET', '/api/credits?refresh=1');
+    assert.match(c.text, /"optIn":false/);
+  } finally { await srv.close(); }
+  assert.deepStrictEqual(outside(), []);
+  srv = await startServer('cr-on', { check: false }, { creditsEnv: { CLAUDE_CONSOLE_ACCT1_API_KEY: key } });
+  try {
+    await call(srv, 'POST', '/api/credits/settings', { enabled: true });
+    await call(srv, 'POST', '/api/credits/settings', { enabled: false });
+  } finally { await srv.close(); }
+  const out = outside();
+  assert.ok(out.length >= 1 && out.every((a) => a.host === 'api.anthropic.com'), JSON.stringify(out));
 });
 
 test('the guard bites: planted fetch, socket and udp attempts are recorded and refused', async () => {

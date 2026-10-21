@@ -4,7 +4,11 @@
 // (a page opened in the browser after a click). egress.json freezes the allowed hosts and
 // the per-file baseline of network-capable code; L6's no-egress tests read both.
 //   check(url, kind)  - throws unless url's host is allowed for kind ('update' |
-//                       'browser'); loopback is always allowed for kind 'loopback'.
+//                       'browser' | 'credits'); loopback is always allowed for kind
+//                       'loopback'. A host marked optIn (CON-API-PUBLIC: the credits
+//                       reader's api.anthropic.com) is refused until setOptIn(kind, true).
+//   setOptIn(kind, on) - the user's opt-in for an optIn host kind; off at load (fail
+//                       closed), set by the server from console.local.json.
 //   note(url, kind)   - one egress log line {at, host, kind, allowed} (no path, no query)
 //                       into the in-memory ring and, after setLog(file), that file.
 //   installGuard(o)   - test hook: wraps http/https.request+get, net.connect /
@@ -30,14 +34,19 @@ function hostOf(u) {
 
 function isLoopback(host) { return !!host && (policy().loopback || []).includes(host); }
 
+// Kinds the user turned on (optIn hosts only). Empty at load: an optIn host is refused.
+const optIns = new Set();
+function setOptIn(kind, on) { if (on) optIns.add(String(kind)); else optIns.delete(String(kind)); }
+
 // kind: 'update' (the update check / download), 'browser' (opened after a click),
-// 'loopback' (server, panes, the user's own headless proxy).
+// 'credits' (opt-in API spend reader), 'loopback' (server, panes, the user's own
+// headless proxy).
 function allowed(url, kind) {
   const host = hostOf(url);
   if (!host) return false;
   if (isLoopback(host)) return kind === 'loopback' || kind === undefined;
   if (kind === 'update' && !/^https:/i.test(typeof url === 'string' ? url : String(url && url.href || 'https:'))) return false;
-  return (policy().hosts || []).some((h) => h.host === host && h.kind === kind);
+  return (policy().hosts || []).some((h) => h.host === host && h.kind === kind && (!h.optIn || optIns.has(kind)));
 }
 
 const ring = [];
@@ -137,4 +146,4 @@ function scanText(text) {
   return out;
 }
 
-module.exports = { policy, hostOf, isLoopback, allowed, check, note, setLog, log, installGuard, scanText, POLICY_FILE };
+module.exports = { policy, hostOf, isLoopback, allowed, setOptIn, check, note, setLog, log, installGuard, scanText, POLICY_FILE };

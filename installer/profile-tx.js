@@ -263,7 +263,7 @@ async function applyPlan(p, o) {
       }
       const empty = isEmptyLock(lock);
       if (!empty && root) sweepDirs(lock, root, lockPath);
-      await writeState(lockPath, side === 'repo' ? 'repo:' + PL.LOCK_REL : 'data:profile/locks/user.json', lock, true);
+      await writeState(lockPath, side === 'repo' ? 'repo:' + PL.LOCK_REL : 'data:profile/locks/' + path.basename(lockPath), lock, true);
       if (empty && root) sweepDirs(lock, root);
     }
     if (p.target.repo) {

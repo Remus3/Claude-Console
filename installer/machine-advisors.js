@@ -27,7 +27,8 @@ function advise(ctx) {
   for (const a of ADVISORS) {
     let got = [];
     try { got = a.run(ctx) || []; } catch (e) { got = []; }
-    (a.kind === 'findings' ? findings : proposals).push(...got);
+    // A proposals advisor may also report a finding (kind 'finding'): it is shown, never applied.
+    for (const x of got) (a.kind === 'findings' || (x && x.kind === 'finding') ? findings : proposals).push(x);
   }
   return { schema: 1, stamp: stampOf(now), created: new Date(now).toISOString(), findings, proposals };
 }

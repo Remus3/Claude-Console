@@ -8,7 +8,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const { WebSocketServer } = require('ws');
-const { loadConfig, readJson } = require('./config');
+const { loadConfig, readJson, accountProblems, extraAccountDirs } = require('./config');
 const toolsMod = require('./tools');
 const boards = require('./boards');
 const { sanitizeGroups } = require('./groups');
@@ -29,6 +29,7 @@ const scheduler = require('./scheduler');
 const { createBackendRoutes } = require('./backendroutes');
 const { HealthSchedule } = require('./healthsched');
 const { Watchdog } = require('./watchdog');
+const { TrackerService } = require('./trackers');
 // CON-013 L5: setup profile, crash report, stop everything / recovery, machine profile.
 const { createProfileRoutes } = require('./profile-routes');
 const { createAdoptRoutes } = require('./adopt-routes');
@@ -233,6 +234,32 @@ async function createConsoleServer(opts) {
   // CON-WATCHDOG: observe-only collector (thresholds from config, nothing reported out).
   const watchdog = new Watchdog({ runner: opts.watchdogRunner || (opts.dataDir ? null : scheduler.realRunner), dataDir: cfg.dataDir, cfg, projects: () => projects, consoleRoot: cfg.root });
   watchdog.start();
+  // CON-GATE-PANEL: status-panel trackers, refreshed on demand by GET /api/trackers (the
+  // page polls only while the panel is open); same no-real-runner rule as the scheduler.
+  // CON-CREDITS: per-account API spend (Admin key in the user env, read server side only)
+  // and Extra Usage numbers. A test / isolated server (opts.dataDir) reads no real key
+  // unless it passes opts.creditsEnv. CON-API-PUBLIC (ruling 2026-10-21, option A): in
+  // every build, OFF until the user's opt-in (console.local.json credits.enabled, Settings
+  // > API keys and credits); the egress policy refuses api.anthropic.com until then.
+  const egressPolicy = require('../installer/egress');
+  const creditsOn = () => !!(cfg.credits && cfg.credits.enabled === true);
+  egressPolicy.setOptIn('credits', creditsOn());
+  let credits = null;
+  try {
+    const { CreditsService } = require('./credits');
+    const fake = opts.creditsEnv !== undefined;
+    credits = new CreditsService({
+      accounts: Object.entries(cfg.accounts).map(([id, a]) => ({ id, label: a.label || id })),
+      quota: () => status.snapshot.quota,
+      enabled: fake || !opts.dataDir,
+      optIn: creditsOn,
+      env: fake ? opts.creditsEnv : process.env,
+      reg: fake ? async () => null : undefined,
+      fetch: opts.creditsFetch,
+      egress: egressPolicy,
+    });
+  } catch (e) { credits = null; }
+  const trackers = new TrackerService({ cfg, projects: () => projects, status: () => status.snapshot, scheduler: sched, runner: opts.trackersRunner || (opts.dataDir ? null : scheduler.realRunner) });
   const backendRoutes = createBackendRoutes({ scheduler: sched, healthSchedule, watchdog, send, readBody, isLoopback, log: plog });
   // CON-013 L5: setup profile routes. A server on a non-default data dir (every test and
   // the isolated e2e) gets no OS adapters, a sandboxed config dir and refusing browser /
@@ -248,6 +275,9 @@ async function createConsoleServer(opts) {
     configDir: profileReal ? ((defAcct && defAcct.configDir) || path.join(os.homedir(), '.claude')) : path.join(cfg.dataDir, 'claude-config'),
     deps: profileReal ? require('../installer/profile-tx').defaultAdapters({ dataDir: cfg.dataDir }) : {},
     updateDir: path.join(cfg.dataDir, 'profile', 'next'),
+    // FB-1021: user-scope settings go to every configured account with a dir of its
+    // own, not only the default one (a test server has none unless opts.profile says).
+    accountDirs: profileReal ? () => extraAccountDirs(cfg.accounts, cfg.defaultAccount) : () => ({}),
     projects: () => projects,
     version: VERSION,
     token,
@@ -298,7 +328,7 @@ async function createConsoleServer(opts) {
     if (p === '/api/info' && m === 'GET') {
       return send(res, 200, {
         version: VERSION, claudePath, claudeFound: !!claudePath, hooks: !!cfg.useHooks,
-        accounts: Object.entries(cfg.accounts).map(([id, a]) => ({ id, label: a.label || id, headlessProxy: a.headlessProxy === true })),
+        accounts: (() => { const pb = accountProblems(cfg.accounts); return Object.entries(cfg.accounts).map(([id, a]) => ({ id, label: a.label || id, headlessProxy: a.headlessProxy === true, problem: pb[id] || null })); })(),
         defaultAccount: cfg.defaultAccount,
         shells: Object.entries(cfg.shells || {}).filter(([, s]) => fs.existsSync(s.file)).map(([id, s]) => ({ id, label: s.label || id })),
         defaultShell: cfg.defaultShell, idleSeconds: cfg.idleSeconds, pid: process.pid,
@@ -493,7 +523,24 @@ async function createConsoleServer(opts) {
       status.refreshGit();
       return send(res, 200, { projects });
     }
-    if (p === '/api/status' && m === 'GET') return send(res, 200, status.snapshot);
+    if (p === '/api/status' && m === 'GET') return send(res, 200, credits ? Object.assign({}, status.snapshot, { credits: credits.snapshot() }) : status.snapshot);
+    if (p === '/api/credits' && m === 'GET') return send(res, 200, credits ? await credits.refresh(url.searchParams.get('refresh') === '1') : { enabled: false, optIn: false, accounts: [] });
+    // CON-API-PUBLIC: the opt-in switch (loopback + token). Saved in console.local.json.
+    if (p === '/api/credits/settings' && m === 'POST') {
+      if (!isLoopback(req)) return send(res, 403, { error: 'localhost only' });
+      let b;
+      try { b = await readBody(req, 4096); } catch (e) { return send(res, 400, { error: 'bad body' }); }
+      if (!b || typeof b.enabled !== 'boolean') return send(res, 400, { error: 'enabled must be true or false' });
+      const localFile = path.join(cfg.dataDir, 'console.local.json');
+      const local = readJson(localFile, {}) || {};
+      local.credits = Object.assign({}, local.credits && typeof local.credits === 'object' ? local.credits : {}, { enabled: b.enabled });
+      writeJsonAtomic(localFile, local);
+      cfg.credits = Object.assign({}, cfg.credits || {}, { enabled: b.enabled });
+      egressPolicy.setOptIn('credits', b.enabled);
+      if (!credits) return send(res, 200, { enabled: false, optIn: b.enabled, accounts: [] });
+      return send(res, 200, await credits.refresh(b.enabled));
+    }
+    if (p === '/api/trackers' && m === 'GET') return send(res, 200, await trackers.refresh(settings().trackers));
     if (p === '/api/resources' && m === 'GET') {
       resources.touch();
       resources.tick();
@@ -548,11 +595,11 @@ async function createConsoleServer(opts) {
       try { return send(res, 200, updates.makePatch()); } catch (e) { return send(res, 200, { error: e.message }); }
     }
     // CON-USAGE: top-bar usage strip slot toggles (data/usage.local.json).
-    if (p === '/api/usage-prefs' && m === 'GET') return send(res, 200, { slots: usagePrefs.readUsagePrefs(cfg.dataDir) });
+    if (p === '/api/usage-prefs' && m === 'GET') return send(res, 200, { slots: usagePrefs.readUsagePrefs(cfg.dataDir, cfg.accounts) });
     if (p === '/api/usage-prefs' && m === 'PUT') {
       if (!isLoopback(req)) return send(res, 403, { error: 'localhost only' });
       const b = await readBody(req, 4096);
-      return send(res, 200, { slots: usagePrefs.writeUsagePrefs(cfg.dataDir, b && b.slots, writeJsonAtomic) });
+      return send(res, 200, { slots: usagePrefs.writeUsagePrefs(cfg.dataDir, b && b.slots, writeJsonAtomic, cfg.accounts) });
     }
     if (p === '/api/layout' && m === 'GET') return send(res, 200, readJson(layoutFile, { panes: [] }));
     if (p === '/api/layout' && m === 'PUT') {
@@ -562,6 +609,7 @@ async function createConsoleServer(opts) {
     }
     if (p === '/api/panes' && m === 'GET') return send(res, 200, { panes: panes.list() });
     if (p === '/api/panes' && m === 'POST') {
+      if (!isLoopback(req)) return send(res, 403, { error: 'localhost only' }); // CON-AUDIT SEC-7: panes start processes
       const b = await readBody(req);
       let cwd = b.cwd;
       let title = b.title;
@@ -579,6 +627,7 @@ async function createConsoleServer(opts) {
           account: b.account || s.defaultAccount, shell: b.shell || s.defaultShell,
           args: b.args, resume: typeof b.resume === 'string' ? b.resume : null, name: b.kind === 'claude' ? (proj ? proj.name : title) : null,
           cols: b.cols, rows: b.rows, client: b.client,
+          svc: typeof b.svc === 'string' ? b.svc : null, recipe: typeof b.recipe === 'string' ? b.recipe : null, // CON-HOM-5
         });
         plog('pane ' + pane.id + ' open ' + pane.kind + ' "' + pane.title + '" by ' + (pane.openedBy ? 'page ' + pane.openedBy : 'api ' + who(req)));
         return send(res, 201, pane.info());
@@ -598,6 +647,7 @@ async function createConsoleServer(opts) {
       }
       if (!pm[2] && m === 'GET') return send(res, 200, pane.info());
       if (pm[2] === 'restart' && m === 'POST') {
+        if (!isLoopback(req)) return send(res, 403, { error: 'localhost only' }); // CON-AUDIT SEC-7
         const b = await readBody(req);
         try {
           return send(res, 200, panes.restart(pane.id, { args: b.args, resume: !!b.resume }).info());
@@ -611,6 +661,7 @@ async function createConsoleServer(opts) {
       }
       if (pm[2] === 'input' && m === 'POST') {
         const b = await readBody(req);
+        if (pane.kind === 'log') return send(res, 409, { error: 'a log pane takes no input' }); // HOM-PANEL-2
         return send(res, 200, { ok: pane.write(String(b.data || '')) });
       }
       if (pm[2] === 'resize' && m === 'POST') {
@@ -748,7 +799,9 @@ async function createConsoleServer(opts) {
     });
   });
   panes.hookUrl = 'http://127.0.0.1:' + port + '/';
+  panes.clearMode = () => settings().clearMode; // CON-CLEAR-MODE (Settings "After /clear")
   status.start();
+  if (credits) credits.start(); // CON-CREDITS: first read now, then every 15 min
   resources.start();
   if (opts.memSample !== false) memSampler.start();
   // Addendum e.1: every outbound attempt (host + kind only, never a path or query) is
@@ -778,6 +831,7 @@ async function createConsoleServer(opts) {
     resources.stop();
     memSampler.stop();
     watchdog.stop();
+    if (credits) credits.stop();
     healthRunner.abort('server closed during the run');
     for (const t of pruneTimers) { clearTimeout(t); clearInterval(t); }
     await panes.closeAll();
@@ -859,6 +913,7 @@ async function main() {
     process.exit(1);
   }
   log('listening on 127.0.0.1:' + srv.port + ' pid ' + process.pid + ' claude=' + (srv.panes.claudePath || 'NOT FOUND'));
+  for (const [id, t] of Object.entries(accountProblems(srv.cfg.accounts))) log('account ' + id + ': ' + t);
   console.log('Claude Console on http://127.0.0.1:' + srv.port + ' (token in run/token)');
   if (wantOpen) openWindow(srv.cfg, srv.port, srv.token);
   const stop = () => {

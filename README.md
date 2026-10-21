@@ -83,11 +83,17 @@ never a pop-up, and you can dismiss it for good. Open it later from the `...` me
 **Setup profile**, or Settings > Setup profile > **Run setup**. The setup starts with
 one question, and you can switch between the two answers on any screen:
 
-- **Use Remus3's exact current settings** is the quick path for experienced users. It
-  shows the author's modules at a glance, asks only for the inputs that cannot be
-  guessed (environment variables, keys, a second account, your git identity), asks one
-  yes or no for all scheduled tasks, and previews the result. Skip any input and the
-  modules that need it stay off, marked `off - needs <input>`.
+- **Use Remus3's current settings** is the quick path for experienced users: what the
+  author runs, plus every item the author ships on by default. It shows the author's
+  modules at a glance, with the items the preset leaves off and why, asks only for the
+  inputs that cannot be guessed (environment variables, keys, a second account, your
+  git identity), asks one yes or no for all scheduled tasks, and previews the result.
+  Skip any input and the modules that need it stay off, marked `off - needs <input>`.
+  The review step records your choices in the console data folder, so a setup you leave
+  before Apply still shows what you picked. Settings that live in your Claude account
+  folder are applied to every configured account that has its own folder; an account
+  without one (or sharing a folder or name with another) is flagged in the account step
+  and in Settings.
 - **Custom setup** lets you choose each module and each item and review every change.
   If you started on the quick path, your custom choices begin from the author's
   settings.

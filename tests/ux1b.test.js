@@ -123,8 +123,9 @@ test('R8: top running progress item for the pane header', () => {
   assert.strictEqual(F.top([]), null);
   assert.strictEqual(F.top([{ status: 'done', pct: 100 }]), null);
   const t = F.top([{ task: 'ux1b', status: 'running', pct: 45, eta_s: 300, step: 's', checklist: [{ id: 'B2', task: 'build', state: 'running', eta_s: 240 }, { id: 'B3', state: 'pending' }] }]);
-  assert.deepStrictEqual([t.text, t.cls], ['B2 45% ~4m', 'on']);
-  assert.strictEqual(F.top([{ task: 'x', status: 'running', pct: 10, eta_s: 30 }]).text, '10% ~30s');
+  // CON-ETA-REMAIN: no "started" = '<pct>% ~<rem> Remain'
+  assert.deepStrictEqual([t.text, t.cls], ['B2 45% ~4m Remain', 'on']);
+  assert.strictEqual(F.top([{ task: 'x', status: 'running', pct: 10, eta_s: 30 }]).text, '10% ~0.5m Remain');
   assert.deepStrictEqual([F.top([{ task: 'x', status: 'running', stale: true }]).text, F.top([{ task: 'x', status: 'running', stale: true }]).cls], ['STALE', 'stale']);
 });
 

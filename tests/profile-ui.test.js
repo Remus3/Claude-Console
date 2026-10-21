@@ -287,6 +287,96 @@ test('apply with a wizard draft: grouped consent stands in for the per-item acks
   });
 });
 
+test('FB-1021: user-scope settings apply to another account dir (files only, its own lock); unknown account refused', async () => {
+  const acct2 = path.join(tmpdir('cc-pui-a2-'), 'acct2cfg');
+  fs.mkdirSync(acct2, { recursive: true });
+  const w = world({ accountDirs: () => ({ acct2: { dir: acct2, label: 'Account 2' } }) });
+  // one item gains a user settings key next to its repo file
+  const mf = path.join(w.profileDir, 'modules', 'core-rules', 'module.json');
+  const mj = JSON.parse(fs.readFileSync(mf, 'utf8'));
+  mj.items[0].contributes.push({ kind: 'json-merge', target: 'user:settings.json', value: { effortLevel: 'high' }, mode: 'add' });
+  fs.writeFileSync(mf, JSON.stringify(mj, null, 2) + '\n');
+  const srv = await serve(R.createProfileRoutes({ profile: w.profile }));
+  const c = (m, p, b) => call(srv, m, p, b);
+  try {
+    const st = (await c('GET', '/api/profile')).body;
+    assert.deepStrictEqual(st.accounts, [{ id: 'acct2', label: 'Account 2' }]);
+    assert.ok(!JSON.stringify(st.accounts).includes('acct2cfg'), 'no dir leaves the server');
+    assert.strictEqual((await c('POST', '/api/profile/plan', { target: { account: 'nope' } })).status, 400);
+    const id = mj.items[0].id;
+    const plan = (await c('POST', '/api/profile/plan', { target: { account: 'acct2' }, only: [id, 'out-no-flicker'] })).body;
+    assert.ok(plan.rows.some((r) => r.item === id && r.kind === 'json-merge' && r.status === 'new'), JSON.stringify(plan.rows));
+    assert.ok(plan.rows.some((r) => r.item === 'out-no-flicker' && r.status === 'skipped' && /machine-wide/.test(r.reason)), 'env stays with the main account');
+    const r = (await c('POST', '/api/profile/apply', { planId: plan.planId, confirm: true, acks: plan.highRisk.map((x) => x.id) })).body;
+    assert.strictEqual(r.ok, true, JSON.stringify(r));
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(acct2, 'settings.json'), 'utf8')).effortLevel, 'high');
+    assert.ok(!fs.existsSync(path.join(w.configDir, 'settings.json')), 'the primary account dir is untouched');
+    assert.ok(!w.fakes.env.m.has('CLAUDE_CODE_NO_FLICKER'), 'no env var from the other-account apply');
+    const locks = fs.readdirSync(path.join(w.dataDir, 'profile', 'locks'));
+    assert.ok(locks.some((n) => /^user-[0-9a-f]{12}\.json$/.test(n)) && !locks.includes('user.json'), locks.join(','));
+    const lk = JSON.parse(fs.readFileSync(path.join(w.dataDir, 'profile', 'locks', locks.find((n) => n.startsWith('user-'))), 'utf8'));
+    assert.strictEqual(path.resolve(lk.configDir), path.resolve(acct2));
+    // the primary plan still reads its own (empty) user lock: the item is new there
+    const p0 = (await c('POST', '/api/profile/plan', { target: {}, only: [id] })).body;
+    assert.ok(p0.rows.some((x) => x.item === id && x.kind === 'json-merge' && x.status === 'new'));
+  } finally { srv.close(); }
+});
+
+// CON-FB-2ND: a contribution marked account "second" (hl-account-quiet's quiet keys) lands
+// only in another account's dir; the main account's plan skips it with a reason. "main" is
+// the reverse. The shipped hl-account-quiet item carries the mark.
+test('CON-FB-2ND: account "second" contributions skip the main account and land on the other one', async () => {
+  const acct2 = path.join(tmpdir('cc-pui-a2q-'), 'acct2cfg');
+  fs.mkdirSync(acct2, { recursive: true });
+  const w = world({ accountDirs: () => ({ acct2: { dir: acct2, label: 'Account 2' } }) });
+  const mf = path.join(w.profileDir, 'modules', 'core-rules', 'module.json');
+  const mj = JSON.parse(fs.readFileSync(mf, 'utf8'));
+  mj.items[0].contributes.push({ kind: 'json-merge', target: 'user:settings.json', value: { feedbackDrafts: 'quiet' }, mode: 'add', account: 'second' });
+  mj.items[0].contributes.push({ kind: 'json-merge', target: 'user:settings.json', value: { effortLevel: 'high' }, mode: 'add', account: 'main' });
+  fs.writeFileSync(mf, JSON.stringify(mj, null, 2) + '\n');
+  const id = mj.items[0].id;
+  const srv = await serve(R.createProfileRoutes({ profile: w.profile }));
+  const c = (m, p, b) => call(srv, m, p, b);
+  try {
+    const p0 = (await c('POST', '/api/profile/plan', { target: {}, only: [id] })).body;
+    assert.ok(p0.rows.some((x) => x.item === id && x.kind === 'json-merge' && x.status === 'skipped' && /second account only/.test(x.reason)), JSON.stringify(p0.rows));
+    const r0 = (await c('POST', '/api/profile/apply', { planId: p0.planId, confirm: true, acks: p0.highRisk.map((x) => x.id) })).body;
+    assert.strictEqual(r0.ok, true, JSON.stringify(r0));
+    const main = JSON.parse(fs.readFileSync(path.join(w.configDir, 'settings.json'), 'utf8'));
+    assert.strictEqual(main.feedbackDrafts, undefined, 'no quiet key on the main account');
+    assert.strictEqual(main.effortLevel, 'high');
+    const p2 = (await c('POST', '/api/profile/plan', { target: { account: 'acct2' }, only: [id] })).body;
+    assert.ok(p2.rows.some((x) => x.item === id && x.status === 'skipped' && /main account only/.test(x.reason)), JSON.stringify(p2.rows));
+    const r2 = (await c('POST', '/api/profile/apply', { planId: p2.planId, confirm: true, acks: p2.highRisk.map((x) => x.id) })).body;
+    assert.strictEqual(r2.ok, true, JSON.stringify(r2));
+    const sec = JSON.parse(fs.readFileSync(path.join(acct2, 'settings.json'), 'utf8'));
+    assert.deepStrictEqual([sec.feedbackDrafts, sec.effortLevel], ['quiet', undefined]);
+  } finally { srv.close(); }
+  const shipped = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'profile', 'modules', 'headless', 'module.json'), 'utf8'));
+  const q = shipped.items.find((x) => x.id === 'hl-account-quiet');
+  assert.ok(q.contributes.every((x) => x.account === 'second'), 'hl-account-quiet targets the second account only');
+});
+
+test('FB-1021: the preset answer lists what it leaves off with a reason; review records the choice', async () => {
+  await withWorld({}, async (w, c) => {
+    const pre = (await c('POST', '/api/profile/wizard', { op: 'preset', name: 'remus3' })).body;
+    assert.ok(Array.isArray(pre.presetOff));
+    const wk = pre.presetOff.find((x) => x.item === 'md-wakeup-notes');
+    assert.ok(wk && wk.title && wk.why, JSON.stringify(pre.presetOff.slice(0, 3)));
+    assert.ok(!pre.presetOff.some((x) => x.item.startsWith('floors-')), 'locked items are never listed off');
+    const r = (await c('POST', '/api/profile/wizard', { op: 'record', selection: pre.selection, path: 'preset', skipped: ['headless_base_url'], values: { repo_code: 'SA', operator_ident: 'Sam Example <sam@example.com>' }, tasks: null })).body;
+    assert.strictEqual(r.ok, true);
+    const rec = JSON.parse(fs.readFileSync(path.join(w.dataDir, 'profile', 'wizard-review.json'), 'utf8'));
+    assert.strictEqual(rec.preset, 'remus3');
+    assert.deepStrictEqual(rec.skipped, ['headless_base_url']);
+    assert.deepStrictEqual(rec.values, ['repo_code', 'operator_ident'], 'value names only');
+    assert.ok(!JSON.stringify(rec).includes('sam@example.com'));
+    assert.strictEqual(rec.tasks, 'unanswered');
+    assert.strictEqual(rec.on.length, pre.on);
+    assert.strictEqual((await c('GET', '/api/profile')).body.firstRun, true, 'a record is not an applied selection');
+  });
+});
+
 // ------------------------------------------------------------------ wizard helpers + inputs
 
 test('wizard: custom baseline from the preset, back to the preset counts the dropped toggles, inputs list what is needed', async () => {

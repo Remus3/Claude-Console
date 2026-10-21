@@ -657,6 +657,255 @@
           "file-ascii-lf": "repo:.gitattributes"
         }
       ]
+    },
+    {
+      "id": "set-skip-danger-prompt",
+      "order": 219,
+      "title": "No start-up warning for prompt-free mode",
+      "does": "Sets skipDangerousModePermissionPrompt so Claude does not ask again at every start once you chose to run tools without prompts.",
+      "why": "Without it the prompt-free mode still stops every new session at a warning screen, which defeats running unattended.",
+      "risk": "high",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "set-bypass-permissions"
+      ],
+      "pairs_with": [
+        "set-bypass-permissions"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "skipDangerousModePermissionPrompt": true
+          },
+          "mode": "add"
+        }
+      ],
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "skipDangerousModePermissionPrompt"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
+        }
+      ],
+      "notes": "A top-level key, not one under permissions; it does nothing without the prompt-free mode."
+    },
+    {
+      "id": "set-allow-maintenance",
+      "order": 220,
+      "title": "Allow the maintenance commands",
+      "does": "Adds the task kill and scheduled-task commands to the permission allow list, so sessions that do ask for permission can still run maintenance.",
+      "why": "Health checks and task registration need these two commands; asking for them every time adds nothing when you already chose the maintenance modules.",
+      "risk": "medium",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "permissions": {
+              "allow": [
+                "Bash(taskkill:*)",
+                "Bash(schtasks:*)"
+              ]
+            }
+          },
+          "mode": "add"
+        }
+      ],
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "permissions.allow"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
+        }
+      ]
+    },
+    {
+      "id": "set-workflow-warning",
+      "order": 221,
+      "title": "No workflow usage warning",
+      "does": "Sets skipWorkflowUsageWarning so starting a workflow does not stop at a usage warning first.",
+      "why": "Once workflows are on, the warning repeats what you already chose and interrupts long runs at their start.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [
+        "set-workflows"
+      ],
+      "pairs_with": [
+        "set-workflows"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "skipWorkflowUsageWarning": true
+          },
+          "mode": "add"
+        }
+      ],
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "skipWorkflowUsageWarning"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
+        }
+      ]
+    },
+    {
+      "id": "set-model-effort",
+      "order": 222,
+      "title": "Per-model reasoning effort",
+      "does": "Sets modelSettings so the largest model runs at medium effort while the default effort stays as you set it.",
+      "why": "The largest model reaches the same quality at a lower effort; a per-model value keeps it from spending the high default.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [
+        "set-effort-level"
+      ],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "modelSettings": {
+              "claude-opus-5-5": {
+                "effortLevel": "medium"
+              }
+            }
+          },
+          "mode": "add"
+        }
+      ],
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "modelSettings"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
+        }
+      ],
+      "notes": "This per-model value overrides effortLevel for that model, so the default effort no longer applies to it."
+    },
+    {
+      "id": "set-model-switch",
+      "order": 223,
+      "title": "Switch models on a flag",
+      "does": "Sets switchModelsOnFlag so Claude moves to another model when the current one is flagged instead of stopping.",
+      "why": "A long unattended run should continue on another model rather than stall until someone looks.",
+      "risk": "low",
+      "default": "off",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "switchModelsOnFlag": true
+          },
+          "mode": "add"
+        }
+      ],
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "switchModelsOnFlag"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
+        }
+      ]
+    },
+    {
+      "id": "set-auto-updates",
+      "order": 224,
+      "title": "Automatic Claude updates",
+      "does": "Sets autoUpdates to true so Claude Code keeps itself up to date.",
+      "why": "Fixes and new settings keys arrive without a manual step; the profile's keys assume a current Claude.",
+      "risk": "low",
+      "default": "on",
+      "platform": [
+        "win32",
+        "darwin",
+        "linux"
+      ],
+      "depends_on": [],
+      "pairs_with": [],
+      "conflicts_with": [],
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "autoUpdates": true
+          },
+          "mode": "add"
+        }
+      ],
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "autoUpdates"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
+        }
+      ]
     }
   ]
 }

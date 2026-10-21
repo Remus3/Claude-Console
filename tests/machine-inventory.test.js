@@ -89,6 +89,19 @@ test('buildInventory: Steam games, apps, and each recipe app with its config fil
   assert.ok(c.files.every((f) => f.exists));
 });
 
+// INV-CIV6 (S57): Steam uninstall removes appmanifest_<id>.acf but leaves the game's
+// %LOCALAPPDATA% config files. Leftover files keep the recipe listed, installed:false.
+test('recipeConfigs: leftover config files without a Steam manifest stay installed:false', () => {
+  const d = tmpdir('cc-civ-left-');
+  const civ = path.join(d, 'Firaxis Games', "Sid Meier's Civilization VI");
+  fs.mkdirSync(civ, { recursive: true });
+  fs.copyFileSync(path.join(FIX, 'civ6', 'GraphicsOptions.txt'), path.join(civ, 'GraphicsOptions.txt'));
+  const c = inv.recipeConfigs([{ appid: '3321460' }], { LOCALAPPDATA: d }).find((x) => x.recipe === 'civ6');
+  assert.ok(c, 'civ6 still listed from its leftover config');
+  assert.strictEqual(c.installed, false);
+  assert.strictEqual(inv.recipeConfigs([{ appid: '289070' }], { LOCALAPPDATA: d }).find((x) => x.recipe === 'civ6').installed, true);
+});
+
 test('saveInventory / loadInventory stay under <dataDir>/machine', () => {
   const data = tmpdir('cc-mach-');
   inv.saveInventory(data, { apps: [], games: [], configs: [] });

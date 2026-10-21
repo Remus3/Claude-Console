@@ -57,6 +57,15 @@ function buildPaneEnv(base, opts) {
   opts = opts || {};
   const env = copyEnv(base);
   for (const v of SESSION_VARS) deleteVar(env, v);
+  // CON-AUDIT SEC-1a: the console's own API keys (CON-CREDITS, possibly Admin keys) never
+  // reach a pane process or its tools.
+  for (const k of Object.keys(env)) if (/^CLAUDE_CONSOLE_.+_API_KEY$/i.test(k)) delete env[k];
+  if (opts.kind === 'run') {
+    // CON-AUDIT SEC-8: a run pane executes another tree's code: no hook channel.
+    env.COLORTERM = 'truecolor';
+    if (opts.paneId) env.CONSOLE_PANE = opts.paneId;
+    return env;
+  }
   if (opts.kind === 'claude') {
     const acct = opts.account || {};
     if (acct.configDir) env.CLAUDE_CONFIG_DIR = acct.configDir;

@@ -98,6 +98,8 @@ function createProfileRoutes(o) {
   const dataDir = pr.dataDir || path.join(os.homedir(), '.claude-console-data');
   const runDir = pr.runDir || path.join(dataDir, 'run');
   const configDir = pr.configDir || null;
+  // FB-1021: the other configured accounts' own config dirs {id: {dir, label}}.
+  const accountDirs = () => { try { const a = typeof pr.accountDirs === 'function' ? pr.accountDirs() : pr.accountDirs; return isObj(a) ? a : {}; } catch (e) { return {}; } };
   const deps = Object.assign({}, pr.deps || {});
   const openEngine = pr.openEngine || P.openEngine;
   const projects = typeof pr.projects === 'function' ? pr.projects : () => [];
@@ -129,7 +131,7 @@ function createProfileRoutes(o) {
     const MA = require('../installer/machine-advisors');
     const MS = require('../installer/machine-scan');
     return {
-      advise: (ctx) => MA.advise(Object.assign({ spec: MS.loadSpec(dataDir), env: process.env }, ctx || {})),
+      advise: (ctx) => MA.advise(Object.assign({ spec: MS.loadSpec(dataDir), inventory: MS.readMachineJson(dataDir, 'inventory.json'), env: process.env }, ctx || {})),
       save: real ? (adv) => MA.saveAdvice(dataDir, adv) : () => null,
       preview: (adv) => MA.preview(adv),
       apply: real ? (d, adv, a) => MA.applyAdvice(d, adv, a) : refuse('applying machine changes'),
@@ -201,7 +203,27 @@ function createProfileRoutes(o) {
       offer: offerKind(eng),
       review: reviewStep(),
       capabilities: { adopt: !!adoptModule(), machine: true, crash: true, recover: true },
+      // other accounts the wizard also applies user-scope settings to (labels only, no dirs)
+      accounts: Object.entries(accountDirs()).map(([id, a]) => ({ id, label: (a && a.label) || id })),
     };
+  }
+
+  // FB-1021: why a preset leaves an item off, in words, from the generator's rule.
+  const RULE_WHY = {
+    'author-off': 'the author does not run it',
+    'fleet-below-4': 'the author runs it in only a few of their projects',
+  };
+  function presetOff(model, name) {
+    const pre = model.presets[name];
+    if (!pre || !pre.items) return [];
+    const out = [];
+    for (const id of model.order) {
+      if (pre.items[id] !== 'off') continue;
+      const e = model.items.get(id);
+      if (!e || e.module.locked) continue;
+      out.push({ item: id, title: e.item.title, why: RULE_WHY[(pre.rules || {})[id]] || 'off in this preset' });
+    }
+    return out;
   }
 
   const titled = (eng, ids) => ids.map((id) => { const e = eng.model.items.get(id); return { id, title: e ? e.item.title : id }; });
@@ -210,6 +232,11 @@ function createProfileRoutes(o) {
 
   function resolveTarget(t) {
     t = isObj(t) ? t : {};
+    if (t.account !== undefined) {
+      const a = accountDirs()[String(t.account)];
+      if (!a || !a.dir) return { error: 'unknown account' };
+      return { repo: null, configDir: a.dir, configFilesOnly: true };
+    }
     if (t.project) {
       const pj = projects().find((x) => x.id === String(t.project));
       if (!pj) return { error: 'unknown project' };
@@ -240,7 +267,7 @@ function createProfileRoutes(o) {
 
   function makePlan(eng, inp) {
     const sel = inp.draft ? P.normaliseSelection(JSON.parse(JSON.stringify(inp.draft)), eng.model) : eng.selection();
-    const p = eng.plan({ target: inp.target, selection: sel, values: inp.values || {}, only: inp.only });
+    const p = eng.plan({ target: inp.target, selection: sel, values: inp.values || {}, only: inp.only, configFilesOnly: !!(inp.target && inp.target.configFilesOnly) });
     const rows = p.rows.map((r) => ({ item: r.item, kind: r.kind, target: r.target, status: r.status, reason: r.reason || null }));
     const diff = eng.diff(p);
     const digest = sha(JSON.stringify({ rows, diff, counts: p.counts, hr: p.highRisk, ack: p.needsAck })).slice(0, 16);
@@ -524,7 +551,20 @@ function createProfileRoutes(o) {
       if (op === 'preset') {
         const r = eng.presetSelection(String(body.name || ''), { skipped: Array.isArray(body.skipped) ? body.skipped.map(String) : [], values: isObj(body.values) ? body.values : {} });
         if (!r.ok) return send(res, 400, { error: r.reason });
-        return send(res, 200, withStates({ selection: r.selection, offNeeds: r.offNeeds.map((x) => Object.assign({ title: model.items.get(x.item).item.title }, x)), on: P.onIds(model, r.selection).length }));
+        return send(res, 200, withStates({ selection: r.selection, offNeeds: r.offNeeds.map((x) => Object.assign({ title: model.items.get(x.item).item.title }, x)), on: P.onIds(model, r.selection).length,
+          presetOff: presetOff(model, String(body.name || '')) }));
+      }
+      // FB-1021: the review step records what the wizard chose, so a run that stops before
+      // Apply still leaves a trace (selection, skipped inputs, value NAMES only).
+      if (op === 'record') {
+        const sel = P.normaliseSelection(isObj(body.selection) ? JSON.parse(JSON.stringify(body.selection)) : {}, model);
+        const rec = { schema: 1, at: new Date().toISOString(), path: body.path === 'custom' ? 'custom' : 'preset', preset: sel.preset || null,
+          on: P.onIds(model, sel), skipped: Array.isArray(body.skipped) ? body.skipped.map(String).slice(0, 200) : [],
+          values: isObj(body.values) ? Object.keys(body.values).map(String).slice(0, 100) : [], tasks: body.tasks === true ? 'yes' : body.tasks === false ? 'no' : 'unanswered' };
+        const file = path.join(P.profileStateDir(dataDir), 'wizard-review.json');
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, JSON.stringify(rec, null, 2) + '\n');
+        return send(res, 200, { ok: true, on: rec.on.length });
       }
       if (op === 'custom') return send(res, 200, withStates(eng.switchToCustom(isObj(body.selection) ? body.selection : undefined)));
       if (op === 'back') return send(res, 200, withStates(eng.switchBackToPreset(body.custom || {}, body.preset || {})));

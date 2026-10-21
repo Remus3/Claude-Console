@@ -3,6 +3,9 @@
 // (pane workflow rows, status-card rows, pane header tooltip) shows a running item whose
 // progress file carries the optional "started" field in the clock form
 // `<pct>% ~<rem>m of <total>m [h:mmAM/PM]`; a file without "started" keeps `45% ~3m`.
+// CON-ETA-REMAIN (KIT-ETA-REMAIN, kit v21 form, mirrored here, no kit code used):
+// `started <h:mmAM/PM> - <pct>% ~<rem> of <total> Remain [<finish>]`, and without
+// "started" `<pct>% ~<rem> Remain`; the pane header slot and the status card line too.
 // The vectors below match the checklist helper's own eta_clock vectors, times in ms here.
 const test = require('node:test');
 const assert = require('node:assert');
@@ -24,19 +27,19 @@ test('local h:mmAM/PM rounded up to the minute (kit vectors)', () => {
 });
 
 test('eta clock: the operator examples across re-estimates (kit vectors)', () => {
-  assert.strictEqual(F.etaClock(0, 1800, T0, T0), '0% ~30m of 30m [2:25PM]');
-  assert.strictEqual(F.etaClock(25, 1800, T0, T0 + 450 * S1), '25% ~22.5m of 30m [2:25PM]');
-  assert.strictEqual(F.etaClock(38, 1800, T0, T0 + 720 * S1), '38% ~20m of 32m [2:27PM]');
-  assert.strictEqual(F.etaClock(90, 5, T0, T0 + 0.9 * 1894.7 * S1), '90% ~3.5m of 32m [2:27PM]');
-  assert.strictEqual(F.etaClock(0, 1800, T0, T0 + 300 * S1), '0% ~30m of 35m [2:30PM]');
-  assert.strictEqual(F.etaClock(100, null, T0, T0 + 600 * S1), '100% ~0m of 10m [2:05PM]');
+  assert.strictEqual(F.etaClock(0, 1800, T0, T0), '0% ~30m of 30m Remain [2:25PM]');
+  assert.strictEqual(F.etaClock(25, 1800, T0, T0 + 450 * S1), '25% ~22.5m of 30m Remain [2:25PM]');
+  assert.strictEqual(F.etaClock(38, 1800, T0, T0 + 720 * S1), '38% ~20m of 32m Remain [2:27PM]');
+  assert.strictEqual(F.etaClock(90, 5, T0, T0 + 0.9 * 1894.7 * S1), '90% ~3.5m of 32m Remain [2:27PM]');
+  assert.strictEqual(F.etaClock(0, 1800, T0, T0 + 300 * S1), '0% ~30m of 35m Remain [2:30PM]');
+  assert.strictEqual(F.etaClock(100, null, T0, T0 + 600 * S1), '100% ~0m of 10m Remain [2:05PM]');
   assert.strictEqual(F.etaClock(0, null, T0, T0), '');
   assert.strictEqual(F.etaClock(null, null, null, T0), '');
 });
 
 test('eta clock: the bracket is fixed at the last update, rem counts down to it', () => {
   // updated at +720 s, read 4 min later: same finish, 4 min less remaining
-  assert.strictEqual(F.etaClock(38, 1800, T0, T0 + 960 * S1, T0 + 720 * S1), '38% ~16m of 32m [2:27PM]');
+  assert.strictEqual(F.etaClock(38, 1800, T0, T0 + 960 * S1, T0 + 720 * S1), '38% ~16m of 32m Remain [2:27PM]');
 });
 
 test('server: "started" (ISO or epoch seconds) is normalized to ms, file and checklist rows', () => {
@@ -54,23 +57,46 @@ test('workflow row: clock form with "started", old form without', () => {
   const base = { task: 'b', status: 'running', pct: 25, eta_s: 1800, step: 'compiling', updated: T0 + 450 * S1, stale: false };
   F.update(f, [Object.assign({ file: 'a.json', started: T0 }, base), Object.assign({ file: 'b.json', started: null }, base)]);
   const now = T0 + 450 * S1;
-  assert.deepStrictEqual(F.cells(f.rows[0], now), ['[>]', 'b', '25% ~22.5m of 30m [2:25PM]', '', 'compiling']);
-  assert.strictEqual(F.clockOf(f.rows[0], now), '25% ~22.5m of 30m [2:25PM]');
-  assert.deepStrictEqual(F.cells(f.rows[1], now), ['[>]', 'b', '25%', '~30m', 'compiling']);
-  assert.strictEqual(F.clockOf(f.rows[1], now), '');
+  assert.deepStrictEqual(F.cells(f.rows[0], now), ['[>]', 'b', 'started 1:55PM - 25% ~22.5m of 30m Remain [2:25PM]', '', 'compiling']);
+  assert.strictEqual(F.clockOf(f.rows[0], now), 'started 1:55PM - 25% ~22.5m of 30m Remain [2:25PM]');
+  // KIT-ETA-REMAIN fallback: no "started" = `<pct>% ~<rem> Remain` (no start, no clock)
+  assert.deepStrictEqual(F.cells(f.rows[1], now), ['[>]', 'b', '25% ~30m Remain', '', 'compiling']);
+  assert.strictEqual(F.clockOf(f.rows[1], now), '25% ~30m Remain');
+  assert.strictEqual(F.clockOf(f.rows[1], now + 600 * S1), '25% ~20m Remain', 'rem counts down from the last update');
+  assert.strictEqual(F.clockOf(Object.assign({}, f.rows[1], { eta_s: null }), now), '', 'nothing known');
 });
 
 test('checklist rows: the running row uses its own pct / started, else the file\'s', () => {
   const f = F.create(0);
   const now = T0 + 720 * S1;
   F.update(f, [{ file: 'c.json', task: 'c', status: 'running', pct: 10, eta_s: 99, step: 's', updated: now, stale: false, started: T0 - 600 * S1, checklist: [{ id: 'C1', task: 'Build', state: 'builder running', eta_s: 1800, pct: 38, started: T0 }, { id: 'C2', task: 'Commit', state: 'pending' }] }]);
-  assert.strictEqual(F.cells(f.rows[0], now)[2], '38% ~20m of 32m [2:27PM]');
+  assert.strictEqual(F.cells(f.rows[0], now)[2], 'started 1:55PM - 38% ~20m of 32m Remain [2:27PM]');
   assert.deepStrictEqual(F.cells(f.rows[1], now).slice(2, 4), ['', '']);
 });
 
-test('pane header: the short text stays, the tooltip carries the clock form', () => {
+test('pane header (CON-ETA-REMAIN): the slot shows the started / Remain text, the tooltip too', () => {
   const now = T0 + 720 * S1;
   const top = F.top([{ task: 'c', status: 'running', pct: 38, eta_s: 1800, step: 's', updated: now, started: T0, checklist: [] }], now);
-  assert.strictEqual(top.text, '38% ~30m');
-  assert.match(top.title, /38% ~20m of 32m \[2:27PM\]/);
+  assert.strictEqual(top.text, 'started 1:55PM - 38% ~20m of 32m Remain [2:27PM]');
+  assert.strictEqual(top.clock, top.text);
+  assert.match(top.title, /started 1:55PM - 38% ~20m of 32m Remain \[2:27PM\]/);
+  const run = F.top([{ task: 'c', status: 'running', pct: 10, eta_s: 99, updated: now, started: null, checklist: [{ id: 'S20', task: 'inbox', state: 'running', pct: 98, eta_s: 300, started: T0 }] }], now);
+  assert.strictEqual(run.text, 'S20 started 1:55PM - 98% ~0.5m of 12.5m Remain [2:08PM]');
+  const bare = F.top([{ task: 'c', status: 'running', pct: 40, eta_s: 300, updated: now, checklist: [] }], now);
+  assert.strictEqual(bare.text, '40% ~5m Remain');
+  const none = F.top([{ task: 'c', status: 'running', pct: 40, eta_s: null, updated: now, checklist: [] }], now);
+  assert.strictEqual(none.text, '40%');
+  assert.strictEqual(none.clock, '');
+});
+
+test('KIT-ETA-REMAIN: the operator example, midnight wrap 11:46PM -> 12:39AM, start rounds DOWN', () => {
+  const st = new Date(2026, 9, 18, 23, 46, 40).getTime();
+  const upd = st + 0.98 * 53.5 * 60 * S1;
+  assert.strictEqual(F.fmtClockDown(st), '11:46PM');
+  assert.strictEqual(F.etaRemain(98, 60, st, upd, upd), 'started 11:46PM - 98% ~1.5m of 53.5m Remain [12:41AM]');
+  const st2 = new Date(2026, 9, 18, 23, 46, 0).getTime();
+  const upd2 = st2 + 0.98 * 53 * 60 * S1;
+  assert.match(F.etaRemain(98, 60, st2, upd2, upd2), /^started 11:46PM - 98% ~\d+(\.5)?m of 53m Remain \[12:39AM\]$/);
+  assert.strictEqual(F.fmtClockDown(new Date(2026, 9, 19, 0, 0, 59).getTime()), '12:00AM');
+  assert.strictEqual(F.fmtClockDown(new Date(2026, 9, 19, 12, 5, 59).getTime()), '12:05PM');
 });

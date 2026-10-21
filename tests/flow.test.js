@@ -12,7 +12,8 @@ test('a file without a checklist is one row with the file state', () => {
   const f = F.create(T0);
   F.update(f, [item({})]);
   assert.strictEqual(f.rows.length, 1);
-  assert.deepStrictEqual(F.cells(f.rows[0]), ['[>]', 'a', '10%', '~60s', 's']);
+  // CON-ETA-REMAIN: a running row without "started" reads '<pct>% ~<rem> Remain' in one cell
+  assert.deepStrictEqual(F.cells(f.rows[0], T0 + 1), ['[>]', 'a', '10% ~1m Remain', '', 's']);
   F.update(f, [item({ status: 'done', pct: 100 })]);
   assert.strictEqual(F.cells(f.rows[0])[0], '[+]');
   F.update(f, [item({ status: 'failed' })]);

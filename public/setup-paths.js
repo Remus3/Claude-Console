@@ -1,6 +1,6 @@
 /* Claude Console - setup wizard (CON-013 L5, design d.4 + addendum f): two paths,
    "Step x of y" throughout, Back and "Switch to custom setup" on every screen after the
-   first. Path A = the author's (Remus3) exact current settings, path B = custom. Both
+   first. Path A = the author's (Remus3) current settings, path B = custom. Both
    collect only the inputs they need, then the review / liability step, the dry-run
    preview, apply and a verification summary. Nothing is written before Apply.
    The wizard is a full-page view, never a modal (VERIFY ruling on UX-F23, operator
@@ -60,6 +60,8 @@
     return s;
   }
   function offLine(x) { return '[ ] off - needs ' + (x.needs || []).map(inputLabel).join(', ') + ' - ' + (x.title || x.item); }
+  // FB-1021: an item the preset itself leaves off, with the reason (glance step).
+  function presetOffLine(x) { return '[ ] off - ' + (x.why || 'off in this preset') + ' - ' + (x.title || x.item); }
   // Skip keys an input card adds: env:NAME, secret:ref, a variable name, task:NAME.
   function skipKey(kind, name) { return kind === 'env' ? 'env:' + name : kind === 'secret' ? 'secret:' + name : kind === 'task' ? 'task:' + name : name; }
   function validValue(v, value) {
@@ -87,7 +89,7 @@
     }
     return out;
   }
-  const api = { TITLES, stepsFor, label, rail, railWord, cardMark, inputLabel, offLine, skipKey, validValue, hintFor, taskSkips, PROXY_VAR };
+  const api = { TITLES, stepsFor, label, rail, railWord, cardMark, inputLabel, offLine, presetOffLine, skipKey, validValue, hintFor, taskSkips, PROXY_VAR };
   if (typeof module === 'object' && module.exports) module.exports.Setup = api;
   else root.CCSetup = api;
 })(this);
@@ -105,7 +107,7 @@
   let st = null;
 
   function fresh(o) {
-    return { update: !!(o && o.update), offer: null, path: null, steps: null, idx: 0, base: null, sel: null, offNeeds: [], skipped: new Set(), values: {}, inputs: null,
+    return { update: !!(o && o.update), offer: null, path: null, steps: null, idx: 0, base: null, sel: null, offNeeds: [], presetOff: [], draft: null, skipped: new Set(), values: {}, inputs: null,
       target: 'user', tick: false, tasksYes: null, consent: {}, plan: null, typed: {}, modIdx: 0, saved: {}, result: null, states: {}, baseStates: {}, useSaved: false,
       applying: false, arm: null, shown: null, opener: null };
   }
@@ -177,6 +179,7 @@
     const name = presetName();
     const r = await api('POST', '/api/profile/wizard', { op: 'preset', name });
     setBase(r);
+    W.presetOff = r.presetOff || [];
     W.inputs = await api('POST', '/api/profile/wizard', { op: 'inputs', selection: W.base });
   }
   function presetName() { return st.presets.includes('remus3') ? 'remus3' : st.presets[0]; }
@@ -296,7 +299,7 @@
       const card = (id, title, sub) => h('button.wz-card', { type: 'button', role: 'radio', 'aria-checked': W.path === id ? 'true' : 'false', dataset: { path: id, title },
         on: { click: () => pick(id) } },
       h('span.wz-ctitle', { text: SP.cardMark(W.path === id) + title }), h('span.small.muted', { text: sub }));
-      grp.appendChild(card('preset', "Use Remus3's exact current settings (recommended for experienced users)", 'Everything the author runs, ready in a few steps'));
+      grp.appendChild(card('preset', "Use Remus3's current settings (recommended for experienced users)", 'What the author runs plus every item they ship on, ready in a few steps; the next screens list what stays off and why'));
       grp.appendChild(card('custom', 'Custom setup', 'Choose each module and review every change'));
       U.arrowNav(grp, '.wz-card');
       body.appendChild(grp);
@@ -331,6 +334,10 @@
       }
       body.appendChild(tog);
       body.appendChild(listBox);
+      // FB-1021: what the preset itself leaves off, and why, before anything is applied
+      const po = h('details.wz-off#wz-presetoff', h('summary.small', { text: W.presetOff.length + ' item(s) off in this preset - why' }));
+      for (const x of W.presetOff) po.appendChild(h('div.mono.small', { text: SP.presetOffLine(x) }));
+      if (W.presetOff.length) body.appendChild(po);
       offList(body);
     },
     modules(body) {
@@ -428,7 +435,9 @@
       let info = { accounts: [] };
       try { info = await api('GET', '/api/info'); } catch (e) { info = { accounts: [] }; }
       const acc = h('select#wz-acct', { 'aria-label': 'Second account' });
-      for (const a of info.accounts || []) acc.appendChild(h('option', { value: a.id, text: a.label }));
+      for (const a of info.accounts || []) acc.appendChild(h('option', { value: a.id, text: a.label + (a.problem ? ' - ' + a.problem : '') }));
+      // FB-1021: two accounts on one login / one label, or a missing dir, said before apply
+      for (const a of (info.accounts || []).filter((x) => x.problem)) body.appendChild(h('p.small.pf-bad.wz-acctwarn', { text: '[x] ' + a.id + ': ' + a.problem }));
       const login = h('button.small', { type: 'button', text: 'Log in to it in a pane', on: { click: () => { if (window.__cc && window.__cc.openPane) window.__cc.openPane({ kind: 'claude', account: acc.value, title: 'login' }); } } });
       body.appendChild(h('div.wz-input', h('div.wz-ctitle', { text: 'Second account' }), h('div', acc, ' ', login), h('div.small.muted', { text: 'You log in inside Claude; this console never sees the login.' })));
       const v = (W.inputs.variables || []).find((x) => x.name === SP.PROXY_VAR) || { name: SP.PROXY_VAR, pattern: '^http:/' + '/127\\.0\\.0\\.1:[0-9]{2,5}/?$' /* split: a pattern, not a URL (no-egress scan) */, why: 'The address of the proxy you run on this computer.' };
@@ -503,6 +512,7 @@
       whatThis(body, 'This is everything Apply would write, per module. Open a module to see each file, settings key, variable and task. Nothing is written yet.');
       next.disabled = true;
       const draft = W.useSaved ? null : Object.assign({}, W.sel, { review_ack: { version: st.profile.version, at: new Date().toISOString() } });
+      W.draft = draft;
       let plan;
       try { plan = await api('POST', '/api/profile/plan', { target: U.targetOf(W.target), draft, values: W.values }); } catch (e) { body.appendChild(h('p.pf-bad', { text: '[x] ' + e.message })); return; }
       W.plan = plan;
@@ -537,6 +547,7 @@
         ? { mode: 'grouped', yes: W.tasksYes === true, listed: planTasks }
         : { mode: 'per-task', tasks: Object.fromEntries(planTasks.filter((n) => W.consent[n]).map((n) => [n, true])) };
       try { r = await api('POST', '/api/profile/apply', { planId: W.plan.planId, confirm: true, groupedConsent: W.path !== 'custom', taskConsent, acks: W.plan.highRisk.map((x) => x.id) }); } catch (e) { r = { ok: false, line: e.message, verify: [] }; }
+      if (r.ok) r.accounts = await applyOtherAccounts();
       W.result = r;
       W.applying = false;
       body.textContent = '';
@@ -550,6 +561,7 @@
     const r = W.result;
     body.appendChild(h('p' + (r.ok ? '' : '.pf-bad'), { role: 'status', text: (r.ok ? '[+] ' : '[x] ') + r.line }));
     if (r.verify && r.verify.length) body.appendChild(U.verifyRows(r.verify, U.report));
+    for (const a of r.accounts || []) body.appendChild(h('p.small' + (a.ok ? '' : '.pf-bad'), { text: (a.ok ? '[+] ' : '[x] ') + a.label + ' settings: ' + a.line }));
     const bad = r.ok && (r.verify || []).some((v) => !v.ok && !v.skipped);
     if (r.ok && !bad) body.appendChild(h('p.wz-done', { text: '[+] Setup complete - restart Claude panes to load it' }));
     if (!r.ok) body.appendChild(h('button', { type: 'button', text: 'Report a problem', on: { click: () => U.report({ id: 'apply', reason: r.line }) } }));
@@ -558,6 +570,26 @@
     $('#wz-back').disabled = true;
     $('#wz-switch').disabled = true;
     next.focus();
+  }
+
+  // FB-1021: user-scope settings also go to every other configured account with a config
+  // dir of its own (files only; env, tasks and git are machine-wide and already applied).
+  async function applyOtherAccounts() {
+    const out = [];
+    for (const a of st.accounts || []) {
+      let x;
+      try {
+        const pl = await api('POST', '/api/profile/plan', { target: { account: a.id }, draft: W.draft, values: W.values });
+        if (pl.empty) x = { ok: true, line: 'already up to date' };
+        else if (pl.verdict.code !== 0) x = { ok: false, line: pl.verdict.line || 'refused' };
+        else {
+          const acks = pl.highRisk.map((h2) => h2.id).filter((id) => W.path !== 'custom' || W.plan.highRisk.some((y) => y.id === id));
+          x = await api('POST', '/api/profile/apply', { planId: pl.planId, confirm: true, groupedConsent: W.path !== 'custom', taskConsent: { mode: 'grouped', yes: false, listed: [] }, acks });
+        }
+      } catch (e) { x = { ok: false, line: e.message }; }
+      out.push({ label: a.label, ok: !!x.ok, line: x.line });
+    }
+    return out;
   }
 
   async function applyTaskSkips() {
@@ -622,6 +654,9 @@
       } else if (step === 'tasks' && W.path !== 'custom' && W.tasksYes === null) {
         U.note($('#wz-note'), 'Answer yes or no for the scheduled tasks.', true);
         return;
+      } else if (step === 'review') {
+        // FB-1021: record the choice now, so a run that stops before Apply leaves a trace
+        if (!W.useSaved && W.sel) api('POST', '/api/profile/wizard', { op: 'record', selection: W.sel, path: W.path, skipped: [...W.skipped], values: W.values, tasks: W.tasksYes }).catch(() => {});
       } else if (step === 'apply') {
         closeWizard();
         if (window.CCSettingsProfile) window.CCSettingsProfile();

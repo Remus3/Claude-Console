@@ -495,9 +495,9 @@
     {
       "id": "plugin-superpowers",
       "order": 814,
-      "title": "superpowers plugin (listed only)",
-      "does": "Names the superpowers plugin from the official marketplace: skills for test-driven work, planning, worktrees, verification and review.",
-      "why": "The author's sessions invoke these packaged disciplines constantly. Installing a plugin is your own act, so the profile only lists it.",
+      "title": "superpowers plugin",
+      "does": "Turns on the superpowers plugin from the official marketplace in your Claude settings: skills for test-driven work, planning, worktrees, verification and review.",
+      "why": "The author's sessions invoke these packaged disciplines constantly.",
       "risk": "low",
       "default": "off",
       "platform": [
@@ -508,14 +508,36 @@
       "depends_on": [],
       "pairs_with": [],
       "conflicts_with": [],
-      "contributes": [],
-      "notes": "Install it yourself from the official plugin marketplace; nothing is installed here."
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "enabledPlugins": {
+              "superpowers@claude-plugins-official": true
+            }
+          },
+          "mode": "add"
+        }
+      ],
+      "notes": "Switching it on is all this item does; install it once with /plugin install superpowers@claude-plugins-official inside Claude.",
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "enabledPlugins"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
+        }
+      ]
     },
     {
       "id": "plugin-playwright",
       "order": 815,
-      "title": "Playwright plugin (listed only)",
-      "does": "Names the Playwright plugin, which drives a browser for interface checks and end-to-end tests.",
+      "title": "Playwright plugin",
+      "does": "Turns on the Playwright plugin in your Claude settings; it drives a browser for interface checks and end-to-end tests.",
       "why": "Interface read-backs need a real browser; this is the one the author uses for them.",
       "risk": "low",
       "default": "off",
@@ -527,14 +549,36 @@
       "depends_on": [],
       "pairs_with": [],
       "conflicts_with": [],
-      "contributes": [],
-      "notes": "Listed with its reason; you install it from the marketplace if you want it."
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "enabledPlugins": {
+              "playwright@claude-plugins-official": true
+            }
+          },
+          "mode": "add"
+        }
+      ],
+      "notes": "Get the plugin itself first with /plugin install playwright@claude-plugins-official in Claude; this key then enables it.",
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "enabledPlugins"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
+        }
+      ]
     },
     {
       "id": "plugin-chrome-devtools",
       "order": 816,
-      "title": "Chrome DevTools plugin (listed only)",
-      "does": "Names the Chrome DevTools plugin for accessibility, performance and network audits.",
+      "title": "Chrome DevTools plugin",
+      "does": "Turns on the Chrome DevTools plugin in your Claude settings, for accessibility, performance and network audits.",
       "why": "Accessibility and performance audits catch interface faults that a screenshot does not show.",
       "risk": "low",
       "default": "off",
@@ -546,8 +590,30 @@
       "depends_on": [],
       "pairs_with": [],
       "conflicts_with": [],
-      "contributes": [],
-      "notes": "The profile never installs plugins; marketplace installs stay your decision."
+      "contributes": [
+        {
+          "kind": "json-merge",
+          "target": "user:settings.json",
+          "value": {
+            "enabledPlugins": {
+              "chrome-devtools-mcp@claude-plugins-official": true
+            }
+          },
+          "mode": "add"
+        }
+      ],
+      "notes": "Until /plugin install chrome-devtools-mcp@claude-plugins-official has run, Claude reports the enabled plugin as missing.",
+      "detect": [
+        {
+          "json": "user:settings.json",
+          "key": "enabledPlugins"
+        }
+      ],
+      "verify": [
+        {
+          "json-parse": "user:settings.json"
+        }
+      ]
     },
     {
       "id": "conv-worktree-branches",

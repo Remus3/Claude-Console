@@ -36,6 +36,12 @@
       "host": "claude.ai",
       "kind": "browser",
       "use": "help chat, opened in the browser after a click"
+    },
+    {
+      "host": "api.anthropic.com",
+      "kind": "credits",
+      "optIn": true,
+      "use": "month-to-date API spend (Admin key cost report); only after the user turns it on in Settings"
     }
   ],
   "files": [
@@ -278,6 +284,14 @@
         "127.0.0.1"
       ],
       "use": "local port probe"
+    },
+    {
+      "file": "server/credits.js",
+      "class": "opt-in",
+      "hosts": [
+        "api.anthropic.com"
+      ],
+      "use": "API spend reader: calls the host only after the Settings opt-in and with an Admin key set"
     }
   ]
 }

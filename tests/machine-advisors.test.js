@@ -139,3 +139,146 @@ test('applyAdvice refuses while Civ VI runs (ToS floor: never touch a running ga
   assert.match(r.error, /running/);
   assert.strictEqual(sha(g), before);
 });
+
+// ---- OH-RECIPE: Once Human (Steam 2139460). Config lives in the install folder
+// (Documents\GraphicConfig.xml), written by the game on first launch.
+
+function ohEnv(opts) {
+  opts = opts || {};
+  const d = tmpdir('cc-oh-');
+  const install = path.join(d, 'steamapps', 'common', 'Once Human');
+  fs.mkdirSync(path.join(install, 'Documents'), { recursive: true });
+  const cfg = path.join(install, 'Documents', 'GraphicConfig.xml');
+  if (opts.config !== false) fs.copyFileSync(path.join(FIX, 'once-human', 'GraphicConfig.xml'), cfg);
+  return { d, install, cfg, env: { LOCALAPPDATA: path.join(d, 'Local') }, inventory: { games: [{ appid: '2139460', install }] } };
+}
+
+function nvSpec() {
+  const spec = JSON.parse(JSON.stringify(SPEC));
+  spec.gpu.name = 'NVIDIA GeForce RTX 5070';
+  return spec;
+}
+
+test('recipe registry: Once Human is seeded with sourced GraphicConfig.xml keys only', () => {
+  const oh = recipes.get('once-human');
+  assert.ok(oh);
+  assert.deepStrictEqual(recipes.validate(oh), []);
+  assert.strictEqual(oh.steam_appid, '2139460');
+  assert.ok(oh.processes.includes('ONCE_HUMAN.exe'));
+  assert.strictEqual(oh.files.graphics.format, 'xml');
+  assert.match(oh.files.graphics.path, /^%STEAMAPP_2139460%\\Documents\\GraphicConfig\.xml$/);
+  assert.match(oh.missing, /launch the game once to generate its config/);
+  assert.deepStrictEqual(oh.changes.map((c) => c.key).sort(), ['setting_enable_d3d12', 'setting_nvidia_reflex', 'setting_resolution']);
+  for (const c of oh.changes) assert.ok(c.expect instanceof RegExp, c.id + ' verifies the current value before proposing');
+  assert.ok(recipes.validate(Object.assign({}, oh, { missing: '' })).some((e) => /missing/.test(e)));
+});
+
+test('games advisor: Once Human proposals from the spec (NVIDIA GPU, 2560x1440), all opt-in', () => {
+  const { env, inventory, cfg } = ohEnv();
+  const out = adv.advise({ spec: nvSpec(), inventory, env, now: NOW });
+  const oh = out.proposals.filter((p) => p.app === 'once-human');
+  const by = Object.fromEntries(oh.map((p) => [p.id, p]));
+  assert.deepStrictEqual(Object.keys(by).sort(), ['once-human.d3d12', 'once-human.reflex', 'once-human.resolution']);
+  assert.strictEqual(by['once-human.d3d12'].to, '1');
+  assert.strictEqual(by['once-human.reflex'].to, '1');
+  assert.strictEqual(by['once-human.resolution'].to, '(2560, 1440)');
+  assert.ok(by['once-human.reflex'].requires.includes('once-human.d3d12'));
+  assert.ok(oh.every((p) => p.kind === 'app-config' && p.default === 'off' && p.format === 'xml'));
+  assert.ok(oh.every((p) => p.target.file === cfg), 'install folder from the Steam inventory');
+  assert.ok(oh.every((p) => p.processes.includes('ONCE_HUMAN.exe')));
+  assert.ok(!out.findings.some((f) => f.id === 'once-human.launch-once'));
+});
+
+test('games advisor: Once Human Reflex only on an NVIDIA GPU', () => {
+  const { env, inventory } = ohEnv();
+  const amd = JSON.parse(JSON.stringify(SPEC));
+  amd.gpu.name = 'AMD Radeon RX 7800 XT';
+  const ids = adv.advise({ spec: amd, inventory, env, now: NOW }).proposals.map((p) => p.id);
+  assert.ok(ids.includes('once-human.d3d12'));
+  assert.ok(!ids.includes('once-human.reflex'), 'not an NVIDIA GPU');
+  assert.ok(adv.advise({ spec: nvSpec(), inventory, env, now: NOW }).proposals.some((p) => p.id === 'once-human.reflex'));
+});
+
+test('games advisor: Once Human installed but never launched gives a launch-once finding, no change', () => {
+  const { env, inventory, cfg } = ohEnv({ config: false });
+  const out = adv.advise({ spec: SPEC, inventory, env, now: NOW });
+  assert.strictEqual(out.proposals.filter((p) => p.app === 'once-human').length, 0);
+  const f = out.findings.find((x) => x.id === 'once-human.launch-once');
+  assert.ok(f, 'finding present');
+  assert.match(f.text, /launch the game once to generate its config/);
+  assert.deepStrictEqual(f.files, [cfg]);
+  assert.strictEqual(adv.preview(out).rows.length, 0, 'a finding is never an edit');
+});
+
+test('games advisor: Once Human not installed gives nothing at all', () => {
+  const out = adv.advise({ spec: SPEC, inventory: { games: [] }, env: { LOCALAPPDATA: tmpdir('cc-oh-') }, now: NOW });
+  assert.strictEqual(out.proposals.filter((p) => p.app === 'once-human').length, 0);
+  assert.ok(!out.findings.some((f) => f.id === 'once-human.launch-once'));
+});
+
+test('games advisor: Once Human install folder falls back to install_default without an inventory', () => {
+  const { d, cfg } = ohEnv();
+  const pf = tmpdir('cc-oh-pf-');
+  const install = path.join(pf, 'Steam', 'steamapps', 'common', 'Once Human');
+  fs.mkdirSync(path.join(install, 'Documents'), { recursive: true });
+  fs.copyFileSync(cfg, path.join(install, 'Documents', 'GraphicConfig.xml'));
+  const out = adv.advise({ spec: SPEC, inventory: null, env: { 'ProgramFiles(x86)': pf, LOCALAPPDATA: path.join(d, 'Local') }, now: NOW });
+  const oh = out.proposals.filter((p) => p.app === 'once-human');
+  assert.ok(oh.length > 0);
+  assert.ok(oh.every((p) => p.target.file === path.join(install, 'Documents', 'GraphicConfig.xml')));
+});
+
+test('games advisor: a Once Human key missing from the file or holding an unexpected value is not proposed', () => {
+  const { env, inventory, cfg } = ohEnv();
+  const t = fs.readFileSync(cfg, 'utf8');
+  fs.writeFileSync(cfg, t.replace(/\s*<setting_nvidia_reflex>0<\/setting_nvidia_reflex>/, '').replace('<setting_enable_d3d12>0<', '<setting_enable_d3d12>auto<'));
+  const ids = adv.advise({ spec: nvSpec(), inventory, env, now: NOW }).proposals.map((p) => p.id);
+  assert.ok(!ids.includes('once-human.reflex'), 'absent key');
+  assert.ok(!ids.includes('once-human.d3d12'), 'value outside the documented range');
+  assert.ok(ids.includes('once-human.resolution'));
+});
+
+test('games advisor: Once Human Reflex already on (1) or on + boost (2) is not proposed', () => {
+  const { env, inventory, cfg } = ohEnv();
+  const t = fs.readFileSync(cfg, 'utf8');
+  for (const v of ['1', '2']) {
+    fs.writeFileSync(cfg, t.replace('<setting_nvidia_reflex>0<', '<setting_nvidia_reflex>' + v + '<'));
+    const ids = adv.advise({ spec: nvSpec(), inventory, env, now: NOW }).proposals.map((p) => p.id);
+    assert.ok(!ids.includes('once-human.reflex'), 'value ' + v + ' is already enabled');
+    assert.ok(ids.includes('once-human.d3d12'));
+    assert.strictEqual(ac.getValue('xml', fs.readFileSync(cfg, 'utf8'), 'setting_nvidia_reflex').value, v, 'file untouched');
+  }
+});
+
+test('end to end: Once Human preview, accept, read back, revert to a byte-identical file', async () => {
+  const { env, inventory, cfg } = ohEnv();
+  const before = sha(cfg);
+  const data = tmpdir('cc-mach-');
+  const advice = adv.advise({ spec: nvSpec(), inventory, env, now: NOW });
+  const pv = adv.preview(advice);
+  assert.match(pv.text, /GraphicConfig\.xml/);
+  assert.strictEqual(pv.rows.find((r) => r.id === 'once-human.d3d12').status, 'change');
+  const r = await adv.applyAdvice(data, advice, { accept: ['once-human.d3d12', 'once-human.reflex', 'once-human.resolution'], isRunning: notRunning, now: NOW });
+  assert.strictEqual(r.ok, true, r.error);
+  const text = fs.readFileSync(cfg, 'utf8');
+  assert.strictEqual(ac.getValue('xml', text, 'setting_enable_d3d12').value, '1');
+  assert.strictEqual(ac.getValue('xml', text, 'setting_nvidia_reflex').value, '1');
+  assert.strictEqual(ac.getValue('xml', text, 'setting_resolution').value, '(2560, 1440)');
+  assert.strictEqual(ac.getValue('xml', text, 'setting_frame_insertion').value, '0', 'no recipe change touches it');
+  const baks = fs.readdirSync(path.dirname(cfg)).filter((n) => /^GraphicConfig\.xml\.bak-/.test(n));
+  assert.strictEqual(baks.length, 1, 'backup beside the file before the write');
+  const back = await adv.revertAdvice(r.txDir, { isRunning: notRunning });
+  assert.strictEqual(back.ok, true);
+  assert.strictEqual(sha(cfg), before);
+});
+
+test('applyAdvice refuses while Once Human runs (never touch a running game)', async () => {
+  const { env, inventory, cfg } = ohEnv();
+  const before = sha(cfg);
+  const data = tmpdir('cc-mach-');
+  const advice = adv.advise({ spec: SPEC, inventory, env, now: NOW });
+  const r = await adv.applyAdvice(data, advice, { accept: ['once-human.d3d12'], isRunning: async () => ['ONCE_HUMAN.exe'], now: NOW });
+  assert.strictEqual(r.ok, false);
+  assert.match(r.error, /running/);
+  assert.strictEqual(sha(cfg), before);
+});

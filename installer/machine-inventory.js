@@ -138,6 +138,7 @@ function expand(p, env) {
 
 function recipeConfigs(games, env) {
   const out = [];
+  env = recipes.withAppDirs(env || process.env, games, expand);
   for (const r of recipes.list()) {
     const files = Object.keys(r.files).map((k) => {
       const p = expand(r.files[k].path, env);

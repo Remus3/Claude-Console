@@ -12,6 +12,61 @@ function loadPty() {
   return pty;
 }
 
+// CON-PTY-STALE-KILL (found chasing PROFILE-ADOPT-E3, 2026-10-21). node-pty 1.1.0's
+// conpty kill() forks a console-list agent and closes the pseudoconsole in the same
+// tick; the shell is dead before the agent attaches ("AttachConsole failed"), so the
+// agent never answers and 5 s later node-pty process.kill()s the shell pid it timed
+// out on. That pid was released when the shell exited and is free for reuse: closing
+// a pane killed whatever process got the number next (in the suite: a git child, a
+// test-file process, a function-check run; on the machine: anything). Here the list
+// is read while the shell is alive (node-pty holds its process handle until exit, so
+// the pid cannot be recycled yet), its members are killed at once, and node-pty's own
+// late list kill is disarmed. The list agent is our own fork, so its pid (it is on the
+// list: it was attached when it read it) is known and never killed after it exited.
+// Exited processes get no list kill at all.
+const EXITED = new WeakSet();
+const LIST_AGENT_MS = 5000;
+
+// {pids, agentPid} of the console the shell runs in; resolves after the agent exited.
+// pids is [] when the agent could not attach or timed out (nothing is guessed).
+function consoleList(shellPid) {
+  return new Promise((resolve) => {
+    let agent;
+    try {
+      agent = require('child_process').fork(require.resolve('node-pty/lib/conpty_console_list_agent'), [String(shellPid)], { silent: true, windowsHide: true });
+    } catch (e) { return resolve({ pids: [], agentPid: null }); }
+    let pids = [];
+    let settled = false;
+    const done = () => { if (settled) return; settled = true; clearTimeout(timer); resolve({ pids, agentPid: agent.pid }); };
+    // The timer settles on its own: an agent that already exited may never emit 'close'
+    // (stage 0.1.4: a pane's pseudoconsole stayed open and held a test process for 10+
+    // min), and 'exit' settles too, one turn later so a last IPC message is still read.
+    const timer = setTimeout(() => { pids = []; try { agent.kill(); } catch (e) { /* gone */ } done(); }, LIST_AGENT_MS);
+    agent.on('message', (m) => { if (m && Array.isArray(m.consoleProcessList)) pids = m.consoleProcessList; });
+    agent.on('close', done);
+    agent.on('exit', () => setImmediate(done));
+    agent.on('error', done);
+  });
+}
+
+// o: {platform, list(shellPid) -> Promise<{pids, agentPid}>} (tests).
+function killPty(proc, o) {
+  o = o || {};
+  const a = proc && proc._agent;
+  const listable = (o.platform || process.platform) === 'win32' && a && typeof a._getConsoleProcessList === 'function' && !a._useConptyDll;
+  const close = () => { try { proc.kill(); } catch (e) { /* already gone */ } };
+  if (!listable) { close(); return Promise.resolve(); }
+  a._getConsoleProcessList = () => Promise.resolve([]);
+  if (EXITED.has(proc)) { close(); return Promise.resolve(); }
+  return Promise.resolve().then(() => (o.list || consoleList)(proc.pid)).then((r) => {
+    if (EXITED.has(proc)) return; // exited while listing: the pids may be stale now
+    for (const pid of (r && r.pids) || []) {
+      if (pid === process.pid || pid === r.agentPid) continue;
+      try { process.kill(pid); } catch (e) { /* gone */ }
+    }
+  }, () => {}).then(close);
+}
+
 const ECHO_MS = 1000; // output this soon after input is treated as echo, not activity
 const HOOK_GRACE_MS = 1500;
 const BURST_WINDOW_MS = 2000;
@@ -25,7 +80,9 @@ class Pane extends EventEmitter {
   constructor(spec, mgr) {
     super();
     this.id = spec.id || rid(4);
-    this.kind = spec.kind; // 'claude' | 'shell'
+    this.kind = spec.kind; // 'claude' | 'shell' | 'log' | 'run' (CON-HOM-5)
+    this.svc = spec.svc || null; // log pane: the integration's log name
+    this.recipe = spec.recipe || null; // run pane: the recipe id
     this.projectId = spec.projectId || null;
     this.title = spec.title || this.kind;
     this.cwd = spec.cwd;
@@ -68,6 +125,7 @@ class Pane extends EventEmitter {
     this.clearedAt = 0; // CON-UX-CLEAR: last SessionStart with source 'clear' (/clear)
     this.doneTitle = null; // { n, at } from an OSC 0/2 title `<CODE> DONE S<n> - ...`
     this.oscTail = '';
+    this.clearReopens = 0; // CON-CLEAR-MODE: restarts done by Settings "After /clear" = reopen
     this.done = null; // { kind: 'done' | 'failed', session, reason } or null
   }
 
@@ -77,8 +135,12 @@ class Pane extends EventEmitter {
       account: this.account, shell: this.shell, args: this.args, state: this.state, unseen: this.unseen,
       exitCode: this.exitCode, startedAt: this.startedAt, cols: this.cols, rows: this.rows, note: this.note,
       sessionId: this.sessionId, hooks: this.hookSeen, done: this.done, clearedAt: this.clearedAt,
+      // CON-CLEAR-NORESUME: the /clear is the newest prompt / session event of this process,
+      // so there is nothing to continue (no reopen chip, no Resume button).
+      clearedLast: !!this.clearedAt && this.clearedAt >= this.clearAt,
       busySince: this.busySince, tool: this.tool, toolSince: this.toolSince,
-      pid: this.proc ? this.proc.pid : null, openedBy: this.openedBy,
+      pid: this.proc ? this.proc.pid : null, openedBy: this.openedBy, clearReopens: this.clearReopens,
+      svc: this.svc, recipe: this.recipe,
     };
   }
 
@@ -108,7 +170,7 @@ class Pane extends EventEmitter {
     // step can tell a child left behind by an ended pane (health.js findOrphans).
     const rec = { pid: proc.pid, paneId: this.id, startedAt: Date.now(), endedAt: null };
     if (typeof this.mgr.recordPid === 'function') this.mgr.recordPid(rec);
-    try { proc.onExit(() => { rec.endedAt = Date.now(); }); } catch (e) { /* no exit event */ }
+    try { proc.onExit(() => { rec.endedAt = Date.now(); EXITED.add(proc); }); } catch (e) { /* no exit event */ }
     proc.onData((d) => {
       if (this.proc !== proc) return;
       this.push(d);
@@ -295,12 +357,89 @@ class Pane extends EventEmitter {
   }
 
   kill() {
-    const p = this.proc;
-    if (p) {
-      try {
-        p.kill();
-      } catch (e) { /* already gone */ }
+    if (this.proc) killPty(this.proc);
+  }
+}
+
+// CON-HOM-5 / HOM-PANEL-2: a `log` pane follows one integration log file, no pty and no
+// input (write() refuses). It polls the file (default every 500 ms), streams the bytes
+// appended since the last read, and starts over with a marker when the file shrinks or
+// is replaced (truncate / rotate). The file is opened only for each read, so closing the
+// pane holds no handle. The path comes from the server (homctl paneSpec), never a client.
+const LOG_POLL_MS = 500;
+const LOG_FIRST_BYTES = 64 * 1024;
+const LOG_CHUNK_BYTES = 256 * 1024;
+class LogPane extends Pane {
+  constructor(spec, mgr) {
+    super(spec, mgr);
+    this.logFile = spec.logFile;
+    this.svc = spec.svc || null;
+    this.offset = 0;
+    this.ino = null;
+    this.timer = null;
+    this.missing = false;
+    this.pollMs = (mgr && mgr.logPollMs) || LOG_POLL_MS;
+  }
+
+  start() {
+    this.state = 'waiting';
+    this.exitCode = null;
+    this.startedAt = Date.now();
+    this.offset = -1; // first read: the tail only
+    this.readMore();
+    this.timer = setInterval(() => this.readMore(), this.pollMs);
+    if (this.timer.unref) this.timer.unref();
+  }
+
+  out(text) {
+    const d = String(text).replace(/\r?\n/g, '\r\n');
+    this.push(d);
+    this.emit('data', d);
+  }
+
+  readMore() {
+    let st = null;
+    try { st = fs.statSync(this.logFile); } catch (e) { st = null; }
+    if (!st || !st.isFile()) {
+      if (!this.missing) this.out('\x1b[90m--- waiting for ' + path.basename(this.logFile) + ' ---\x1b[0m\n');
+      this.missing = true;
+      this.offset = 0;
+      this.ino = null;
+      return;
     }
+    if (this.missing) this.missing = false;
+    const rotated = this.ino !== null && st.ino !== this.ino;
+    if (this.offset >= 0 && (rotated || st.size < this.offset)) {
+      this.out('\x1b[90m--- log restarted ---\x1b[0m\n');
+      this.offset = 0;
+    }
+    this.ino = st.ino;
+    if (this.offset < 0) this.offset = Math.max(0, st.size - LOG_FIRST_BYTES);
+    if (st.size <= this.offset) return;
+    const len = Math.min(st.size - this.offset, LOG_CHUNK_BYTES);
+    let fd = null;
+    try {
+      fd = fs.openSync(this.logFile, 'r');
+      const b = Buffer.alloc(len);
+      const n = fs.readSync(fd, b, 0, len, this.offset);
+      this.offset += n;
+      if (n) {
+        this.lastActivity = Date.now();
+        // CON-AUDIT SEC-4: colour (SGR) escapes pass, every other escape sequence and
+        // control byte from another tree's log is dropped (no fake screens, no OSC).
+        this.out(b.slice(0, n).toString('utf8').replace(/\x1b(?!\[[0-9;]*m)/g, '').replace(/[\x00-\x08\x0b\x0c\x0e-\x1a\x1c-\x1f\x7f]/g, ''));
+      }
+    } catch (e) { /* the next tick tries again */ } finally {
+      if (fd !== null) try { fs.closeSync(fd); } catch (e) { /* ignore */ }
+    }
+  }
+
+  write() { return false; } // a log pane takes no input
+  resize(cols, rows) { this.cols = cols; this.rows = rows; }
+  tick() {}
+  kill() {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
   }
 }
 
@@ -313,9 +452,13 @@ class PaneManager extends EventEmitter {
     // exit yet; closeAll() waits for them too (CON-E2E-FLAKY: node exiting while a
     // pane closed moments earlier was still tearing down crashed with 0xC0000005).
     this.dying = new Set();
+    this.stopping = new Set(); // CON-AUDIT SEC-5: run panes closed but still in their graceful stop
     this.pidLog = []; // HEALTH: {pid, paneId, startedAt, endedAt} of every pane process, newest 500
     this.hookUrl = null;
     this.markerFor = null; // projectId -> validated /done marker (status.js), set by the server
+    // CON-CLEAR-MODE: () => 'refresh' | 'reopen' (Settings "After /clear"), set by the server.
+    this.clearMode = () => 'refresh';
+    this.clearReopenDelayMs = 400;
     this.claudePath = opts && opts.claudePath;
     this.nodePath = process.execPath;
     this.hookScript = path.join(__dirname, 'hook.js');
@@ -349,6 +492,20 @@ class PaneManager extends EventEmitter {
   }
 
   buildSpec(req) {
+    // CON-HOM-5: log / run panes come from an integration's pane spec (server-side recipes
+    // and log names only; a client argv or path is ignored).
+    if (req.kind === 'log' || req.kind === 'run') {
+      if (typeof this.homSpec !== 'function') throw new Error('log / run panes are not configured');
+      const hs = this.homSpec({ kind: req.kind, svc: req.svc, recipe: req.recipe });
+      if (hs.single) {
+        for (const o of [...this.panes.values(), ...this.stopping]) {
+          if (o.id !== req.selfId && o.recipe === hs.recipe && o.state !== 'exited') throw new Error(hs.title + ' is already open in this console' + (this.stopping.has(o) ? ' (still stopping)' : ''));
+        }
+      }
+      const spec = { kind: hs.kind, projectId: req.projectId || null, cwd: hs.cwd, cols: req.cols, rows: req.rows, file: hs.file, args: hs.args.slice(), title: hs.title, svc: hs.svc || null, recipe: hs.recipe || null, logFile: hs.logFile || null, stop: !!hs.stop };
+      spec.openedBy = typeof req.client === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(req.client) ? req.client : null;
+      return spec;
+    }
     const kind = req.kind === 'claude' ? 'claude' : 'shell';
     const spec = { kind, projectId: req.projectId || null, cwd: req.cwd, cols: req.cols, rows: req.rows };
     spec.openedBy = typeof req.client === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(req.client) ? req.client : null;
@@ -398,7 +555,7 @@ class PaneManager extends EventEmitter {
       st = null;
     }
     if (!st || !st.isDirectory()) throw new Error('cwd is not a directory');
-    const pane = new Pane(spec, this);
+    const pane = spec.kind === 'log' ? new LogPane(spec, this) : new Pane(spec, this);
     pane.spec = spec;
     pane.req = req;
     this.panes.set(pane.id, pane);
@@ -426,7 +583,7 @@ class PaneManager extends EventEmitter {
     opts = opts || {};
     this.trackDeath(p);
     p.kill();
-    const req = Object.assign({}, p.req, { cols: p.cols, rows: p.rows, resume: opts.resume && p.sessionId ? p.sessionId : null });
+    const req = Object.assign({}, p.req, { cols: p.cols, rows: p.rows, resume: opts.resume && !opts.fresh && p.sessionId ? p.sessionId : null, selfId: p.id });
     if (Array.isArray(opts.args)) req.args = opts.args;
     const spec = this.buildSpec(req);
     p.file = spec.file;
@@ -434,8 +591,18 @@ class PaneManager extends EventEmitter {
     p.sessionId = spec.sessionId || null;
     p.req = req;
     p.proc = null;
-    p.push('\r\n\x1b[90m--- restarted ' + new Date().toLocaleTimeString() + ' ---\x1b[0m\r\n');
-    p.emit('data', '\r\n\x1b[90m--- restarted ---\x1b[0m\r\n');
+    if (opts.wipe) {
+      // CON-CLEAR-MODE 'reopen': a fresh pane in the same slot - drop the replay buffer and
+      // clear the screen and scrollback of every attached terminal (data-ordered).
+      p.buf = [];
+      p.bufBytes = 0;
+      const cls = '\x1b[2J\x1b[3J\x1b[H';
+      p.push(cls);
+      p.emit('data', cls);
+    } else {
+      p.push('\r\n\x1b[90m--- restarted ' + new Date().toLocaleTimeString() + ' ---\x1b[0m\r\n');
+      p.emit('data', '\r\n\x1b[90m--- restarted ---\x1b[0m\r\n');
+    }
     p.start();
     this.emit('state', p.info());
     return p;
@@ -445,7 +612,14 @@ class PaneManager extends EventEmitter {
     const p = this.panes.get(id);
     if (!p) return false;
     this.trackDeath(p);
-    p.kill();
+    // HOM-PANEL-4: a run pane with a graceful stop (the driver) gets it first; the pty is
+    // killed after runStopGraceMs if the process has not ended by then.
+    if (p.spec && p.spec.stop && p.state !== 'exited' && typeof this.homStop === 'function' && this.homStop(p.recipe)) {
+      this.stopping.add(p);
+      p.once('exit', () => this.stopping.delete(p));
+      const t = setTimeout(() => { this.stopping.delete(p); if (p.state !== 'exited') p.kill(); }, this.runStopGraceMs === undefined ? 10000 : this.runStopGraceMs);
+      if (t.unref) t.unref();
+    } else p.kill();
     this.panes.delete(id);
     p.emit('closed');
     this.emit('removed', { id });
@@ -469,6 +643,25 @@ class PaneManager extends EventEmitter {
     if (!['busy', 'waiting', 'attention', 'ready', 'tool', 'tooldone'].includes(event)) return false;
     p.hook(event, note, sessionId, toolName, source);
     if (event !== 'tool' && event !== 'tooldone') this.refreshDone(p);
+    if (event === 'ready' && source === 'clear' && p.kind === 'claude') this.maybeClearReopen(p);
+    return true;
+  }
+
+  // CON-CLEAR-MODE: with Settings "After /clear" = reopen, a /clear restarts the claude
+  // process fresh (new session id, wiped buffer) in the same pane, once. Deferred so the
+  // hook request returns first; skipped when the pane closed, exited, was prompted again
+  // or restarted meanwhile. The server is the one actor however many pages are open.
+  maybeClearReopen(p) {
+    let mode = 'refresh';
+    try { mode = this.clearMode(); } catch (e) { mode = 'refresh'; }
+    if (mode !== 'reopen') return false;
+    const at = p.clearedAt;
+    const t = setTimeout(() => {
+      if (this.panes.get(p.id) !== p || p.state === 'exited' || p.clearedAt !== at || !p.info().clearedLast) return;
+      p.clearReopens += 1;
+      this.restart(p.id, { fresh: true, wipe: true });
+    }, this.clearReopenDelayMs);
+    if (t.unref) t.unref();
     return true;
   }
 
@@ -483,4 +676,4 @@ class PaneManager extends EventEmitter {
   }
 }
 
-module.exports = { PaneManager, Pane };
+module.exports = { PaneManager, Pane, LogPane, killPty, EXITED };

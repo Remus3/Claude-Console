@@ -234,6 +234,18 @@ a recorded ruling): kit_inbox.OUTBOUND_CAP
 6 -> 12 per tree per local day (SHARED RULES 14c); ORDER / FIX / RULING stay
 exempt. KIT_PATCH = 1: the manifest version stays 20; the release reads v20.1.
 
+v21 (kit train; built on branch kit-v21): KIT-ETA-REMAIN (kit_checklist
+run_clock, statusline runClock: `started h:mm - <pct>% ~<rem> of <total>
+Remain [h:mm]`), KIT-GATE-WHO and GATE-SLOTS-2 (kit_suite_gate), the
+SHARED RULES 13a / 16c text. KIT-SC-FIX (SC FIX 2026-10-21-0420, SC-1231):
+_run starts the child SUSPENDED inside a Windows job object (kill-on-close,
+breakaway allowed only when a child asks for it) and resumes it, so a timeout
+kills the whole tree, an orphaned grandchild included; it holds NO pipes
+(captured stdout / stderr and input are spooled through temp files), so an
+escaped descendant can never block the return; a timeout returns after at
+most timeout + kill + PIPE_GRACE seconds. spawn's two bare Refused re-raise
+sites are distinct (SC 2356 item 5).
+
 Pure stdlib. No machine path, account id or repo name appears in this file.
 """
 
@@ -246,12 +258,13 @@ import re
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
-KIT_VERSION = 20
-KIT_PATCH = 1  # v20.1: outbound note cap 12 (a recorded ruling)
+KIT_VERSION = 21
+KIT_PATCH = 0
 VAR = "CLAUDE_HEADLESS_BASE_URL"
 RUNS_CAP = 120
 WINDOW_S = 86400
@@ -298,6 +311,9 @@ TASKS = ("Idle", "Checking Inbox", "Waiting for Slot", "Running Session",
 REFUSED_TASK = "Idle"  # a refused start runs nothing; state "refused" says why
 _NOTE_SENDER = re.compile(r"(?:^|[-_])(?i:from)-[A-Z]+-")
 _EPOCH = _dt.datetime(1970, 1, 1, tzinfo=_dt.timezone(_dt.timedelta(0)))
+
+
+SLOT_TIMEOUT_CODE = "slot-timeout"  # v21 KIT-ROLLOUT-DEFER: a governor SlotTimeout
 
 
 class Refused(Exception):
@@ -1689,11 +1705,121 @@ def conformance(root):
 
 # ---------------------------------------------------------------- spawn
 
-def _kill_tree(proc, grace=5.0):
-    """Kill the child and everything it started. Windows: taskkill /T /F.
+# v21 (SC-1231): seconds a timed-out run waits for its killed direct child.
+PIPE_GRACE = 30.0
+_JOB_KILL_ON_CLOSE = 0x2000
+_JOB_BREAKAWAY_OK = 0x0800
+_CREATE_SUSPENDED = 0x00000004
+
+
+class _WinJob:
+    """v21 (SC FIX 2026-10-21-0420): a Windows job object holding the child's
+    whole tree. Membership is inherited at creation and survives the parent's
+    exit, so an orphaned grandchild (re-parented, missed by taskkill /T) is
+    still in the job. Kill-on-close: if this process dies first, the OS ends
+    the tree. A child that asks for breakaway may leave (BREAKAWAY_OK); none is
+    forced out. close(kill=False) clears kill-on-close first, so a run that
+    ended normally leaves its descendants as before. create() returns None
+    when any call fails; the caller then falls back to taskkill only."""
+
+    def __init__(self, k32, handle, info):
+        self._k32, self.handle, self._info = k32, handle, info
+
+    @classmethod
+    def create(cls):
+        if sys.platform != "win32":
+            return None
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class _Basic(ctypes.Structure):
+                _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64),
+                            ("PerJobUserTimeLimit", ctypes.c_int64),
+                            ("LimitFlags", wintypes.DWORD),
+                            ("MinimumWorkingSetSize", ctypes.c_size_t),
+                            ("MaximumWorkingSetSize", ctypes.c_size_t),
+                            ("ActiveProcessLimit", wintypes.DWORD),
+                            ("Affinity", ctypes.c_size_t),
+                            ("PriorityClass", wintypes.DWORD),
+                            ("SchedulingClass", wintypes.DWORD)]
+
+            class _Io(ctypes.Structure):
+                _fields_ = [(n, ctypes.c_uint64) for n in (
+                    "ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
+                    "ReadTransferCount", "WriteTransferCount", "OtherTransferCount")]
+
+            class _Ext(ctypes.Structure):
+                _fields_ = [("BasicLimitInformation", _Basic), ("IoInfo", _Io),
+                            ("ProcessMemoryLimit", ctypes.c_size_t),
+                            ("JobMemoryLimit", ctypes.c_size_t),
+                            ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                            ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+            k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            k32.CreateJobObjectW.restype = wintypes.HANDLE
+            k32.CreateJobObjectW.argtypes = (ctypes.c_void_p, wintypes.LPCWSTR)
+            k32.SetInformationJobObject.argtypes = (wintypes.HANDLE, ctypes.c_int,
+                                                    ctypes.c_void_p, wintypes.DWORD)
+            k32.AssignProcessToJobObject.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
+            k32.TerminateJobObject.argtypes = (wintypes.HANDLE, wintypes.UINT)
+            k32.CloseHandle.argtypes = (wintypes.HANDLE,)
+            handle = k32.CreateJobObjectW(None, None)
+            if not handle:
+                return None
+            job = cls(k32, handle, _Ext())
+            if not job._limits(_JOB_KILL_ON_CLOSE | _JOB_BREAKAWAY_OK):
+                job.close(kill=False)
+                return None
+            return job
+        except (OSError, AttributeError, ValueError):
+            return None
+
+    def _limits(self, flags):
+        import ctypes
+        self._info.BasicLimitInformation.LimitFlags = flags
+        return bool(self._k32.SetInformationJobObject(
+            self.handle, 9, ctypes.byref(self._info), ctypes.sizeof(self._info)))
+
+    def adopt(self, ph):
+        """Assign the SUSPENDED child (its Popen process handle) to the job,
+        then resume it. Returns True when it is in the job. A failed resume
+        raises OSError (the caller kills the child): a child left suspended
+        would hang the run. Never called with a pid: only the handle of the
+        process this _run created, so no other process can enter the job."""
+        import ctypes
+        inside = bool(self._k32.AssignProcessToJobObject(self.handle, int(ph)))
+        nt = ctypes.WinDLL("ntdll")
+        nt.NtResumeProcess.argtypes = (ctypes.c_void_p,)
+        if nt.NtResumeProcess(ctypes.c_void_p(int(ph))) != 0:
+            raise OSError("NtResumeProcess failed")
+        return inside
+
+    def kill(self):
+        with contextlib.suppress(OSError):
+            self._k32.TerminateJobObject(self.handle, 1)
+
+    def close(self, kill):
+        if not self.handle:
+            return
+        with contextlib.suppress(OSError):
+            if kill:
+                self.kill()
+            else:
+                self._limits(_JOB_BREAKAWAY_OK)  # survivors of a normal end stay
+            self._k32.CloseHandle(self.handle)
+        self.handle = None
+
+
+def _kill_tree(proc, grace=5.0, job=None):
+    """Kill the child and everything it started. Windows: v21 (SC-1231) the
+    run's job object first (it reaches an orphaned grandchild that taskkill /T
+    misses), then taskkill /T /F as before.
     POSIX (v10, SA 1915): the child leads its own session (launch() starts it
     with start_new_session=True), so SIGTERM its process group, wait `grace`
     seconds, then SIGKILL the group. proc.kill() stays the last resort."""
+    if job is not None:
+        job.kill()
     if sys.platform == "win32":
         sysroot = os.environ.get("SYSTEMROOT")
         tk = str(Path(sysroot) / "System32" / "taskkill.exe") if sysroot else \
@@ -1717,31 +1843,97 @@ def _kill_tree(proc, grace=5.0):
         proc.kill()
 
 
+def _decode(data, text, encoding, errors):
+    if data is None or not text:
+        return data
+    import locale
+    out = data.decode(encoding or locale.getpreferredencoding(False), errors or "strict")
+    return out.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def _run(argv, input=None, timeout=None, capture_output=False, stdin=None, on_start=None,
          creationflags=_NO_WINDOW, **kw):
     """subprocess.run, except stdin defaults to DEVNULL, no console window opens
     (a literal creationflags= at Popen, v10) and a timeout kills the whole
     process tree (claude's own children included) before re-raising.
-    on_start(pid) is called once the child exists (v6: the governor slot)."""
+    on_start(pid) is called once the child exists (v6: the governor slot).
+    v21 (SC-1231): no pipe is ever held - a PIPE for stdout / stderr and any
+    input go through temp files, read once the child ends - so a descendant
+    that outlives the child cannot block the return; on Windows the child runs
+    in a job object (see _WinJob). A timeout re-raises after at most timeout +
+    the kill + PIPE_GRACE seconds; any other exception also kills the tree
+    before it propagates."""
+    text = bool(kw.pop("text", None)) | bool(kw.pop("universal_newlines", None))
+    encoding, errors = kw.pop("encoding", None), kw.pop("errors", None)
+    text = text or bool(encoding or errors)
     if capture_output:
         kw["stdout"] = kw["stderr"] = subprocess.PIPE
-    if input is not None:
-        stdin = subprocess.PIPE
-    elif stdin is None:
-        stdin = subprocess.DEVNULL
     if sys.platform != "win32":
         kw.setdefault("start_new_session", True)
-    with subprocess.Popen(argv, stdin=stdin, creationflags=creationflags, **kw) as proc:
-        if on_start is not None:
-            with contextlib.suppress(Exception):
-                on_start(proc.pid)
+    with contextlib.ExitStack() as files:
+        spools = {}
+        for name in ("stdout", "stderr"):
+            if kw.get(name) is subprocess.PIPE:
+                kw[name] = spools[name] = files.enter_context(tempfile.TemporaryFile())
+        if input is not None:
+            fin = files.enter_context(tempfile.TemporaryFile())
+            if isinstance(input, str):
+                import locale
+                input = input.encode(encoding or locale.getpreferredencoding(False),
+                                     errors or "strict")
+            fin.write(input)
+            fin.flush()
+            fin.seek(0)
+            stdin = fin
+        elif stdin is None or stdin is subprocess.PIPE:
+            stdin = subprocess.DEVNULL
+        job = _WinJob.create()
+        suspend = _CREATE_SUSPENDED if job is not None else 0
         try:
-            out, err = proc.communicate(input, timeout=timeout)
-        except subprocess.TimeoutExpired:
-            _kill_tree(proc)
-            with contextlib.suppress(subprocess.TimeoutExpired, OSError, ValueError):
-                proc.communicate(timeout=30)
+            proc = subprocess.Popen(argv, stdin=stdin,
+                                    creationflags=creationflags | suspend, **kw)
+        except BaseException:
+            if job is not None:
+                job.close(kill=False)
             raise
+        clean = False
+        ph = getattr(proc, "_handle", None)  # only a real Popen has one
+        if job is not None and ph is None:
+            job.close(kill=False)  # a stand-in Popen (tests): no job, nothing to resume
+            job = None
+        try:
+            if job is not None:
+                try:
+                    job.adopt(ph)
+                except OSError:
+                    _kill_tree(proc, job=job)
+                    raise
+            if on_start is not None:
+                with contextlib.suppress(Exception):
+                    on_start(proc.pid)
+            try:
+                # No pipes are open, so communicate() is wait(); a stand-in
+                # Popen may still hand back its own (out, err).
+                got = proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                _kill_tree(proc, job=job)
+                with contextlib.suppress(subprocess.TimeoutExpired, OSError, ValueError):
+                    proc.communicate(timeout=PIPE_GRACE)
+                raise
+            except BaseException:
+                _kill_tree(proc, job=job)
+                raise
+            clean = True
+        finally:
+            if job is not None:
+                job.close(kill=not clean)
+        out, err = got if isinstance(got, tuple) and len(got) == 2 else (None, None)
+        if "stdout" in spools and out is None:
+            spools["stdout"].seek(0)
+            out = _decode(spools["stdout"].read(), text, encoding, errors)
+        if "stderr" in spools and err is None:
+            spools["stderr"].seek(0)
+            err = _decode(spools["stderr"].read(), text, encoding, errors)
     return subprocess.CompletedProcess(argv, proc.returncode, out, err)
 
 
@@ -1897,9 +2089,9 @@ def spawn(root, code, prompt, note="", writes_code=False, bare=False,
         raise Refused("halt file present")
     try:
         hit = stop_sentinel_hit(root)
-    except Refused:
+    except Refused as sentinel_exc:  # v21 (SC 2356 item 5): its own shape
         _status_quietly(root, code, "halted", "Halted", budget)
-        raise
+        raise Refused(str(sentinel_exc), code="halted") from None
     if hit:
         _status_quietly(root, code, "halted", "Halted", budget)
         raise Refused(f"stop sentinel present: {hit}", code="halted")
@@ -1946,7 +2138,8 @@ def spawn(root, code, prompt, note="", writes_code=False, bare=False,
             slot = slot_stack.enter_context(slot_cm)
         except _lanes().SlotTimeout:
             _status_quietly(root, code, "backoff", "Backing Off", budget)
-            raise Refused(f"no governor slot within {_secs(governor_timeout)}") from None
+            raise Refused(f"no governor slot within {_secs(governor_timeout)}",
+                          code=SLOT_TIMEOUT_CODE) from None
         return _spawn_slotted(root, code, prompt, note, bare, budget, run, url, argv,
                               model, effort, cwd, stdin, timeout, log_path,
                               return_stderr, slot, kind, stdin_data, slot_id,

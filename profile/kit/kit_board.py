@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 the operator - the kit's owner and sole copyright holder. See NOTICE.
-"""Kit v19 - STATUS BOARD (SHARED RULES 18): the per-tree claude.ai board.
+"""Kit v21 - STATUS BOARD (SHARED RULES 18): the per-tree claude.ai board.
 Vendored byte-for-byte at ops/kit/ and pinned by MANIFEST.json. Do NOT
 edit a vendored copy: report the defect to SUPERVISOR.
 
@@ -36,6 +36,21 @@ gone now move to "done", in completion order; a new session number starts a
 fresh done list. `page --title <t>` prints the board's index.html (the one
 page every board uses; ASCII, no names or paths).
 
+v21 KIT-BOARD-ACCT (option 2, the permanent fix): a board belongs to the
+claude.ai account that created it, and a session on the other account gets
+not_found pushing to it. `ops/status_board.json` may now name one board per
+account: {"url", "owner": "A2", "boards": {"A1": <url>, "A2": <url>}} (account
+LABELS only, never an id or email; "url" stays the board the console links,
+and "url" + "owner" count as boards[owner]). The session's account is the
+statusline's label - A<n> from an `acct<n>` CLAUDE_CONFIG_DIR basename, else
+A1. render pushes to boards[<label>] and pins its dataset version per account
+(state.json "versions"); with no board for the label it prints {"push":
+false, "reason": "no board for account A1 ...", "create": {...}} - create
+the board from that session (Dashboard type, `page --title`) and record it
+with `kit_board.py account --url <url>` (that session's label). A config
+with only "url" (no owner, no boards) behaves as before: every session pushes
+to "url".
+
 Standalone: imports nothing from the rest of the kit. ASCII source.
 """
 
@@ -59,9 +74,44 @@ _LINE = re.compile(r"^(?:\u2610|\[ \])\s+\+?([A-Za-z0-9][A-Za-z0-9._-]{0,15}):\s
 _TAIL = re.compile(r"^(.*?)\s+\(([^()]*)\)$")
 _HEAD = re.compile(r"^Session\s+(\d+)\s+checklist")
 # v20 (CHECKLIST-ETA-CLOCK): `38% ~20m of 32m [2:27PM]` is the ETA part too.
-_CLOCK = re.compile(r"^\d{1,3}% ~")
+_CLOCK = re.compile(r"^(?:\d{1,3}% ~|started \d{1,2}:\d{2}[AP]M - )")
 _OPERATOR = re.compile(r"\b(operator|you|waiting)\b", re.I)
 _BLOCKED = re.compile(r"\bblocked\b", re.I)
+
+
+_ACCT = re.compile(r"acct(\d+)", re.I)
+
+
+def account_label(environ=None):
+    """v21: this session's account label, as the status line shows it - A<n>
+    from an `acct<n>` CLAUDE_CONFIG_DIR basename, else A1."""
+    env = os.environ if environ is None else environ
+    cfg = str(env.get("CLAUDE_CONFIG_DIR") or "").rstrip("/\\")
+    m = _ACCT.search(re.split(r"[/\\]", cfg)[-1]) if cfg else None
+    return "A" + (m.group(1) if m else "1")
+
+
+def boards_of(cfg):
+    """{label: url} from a status_board.json doc ("boards" plus url/owner);
+    {} for a legacy config (url only)."""
+    out = {}
+    raw = cfg.get("boards")
+    if isinstance(raw, dict):
+        out.update({str(k): v for k, v in raw.items() if isinstance(v, str) and v})
+    owner = cfg.get("owner")
+    if isinstance(owner, str) and owner and cfg.get("url"):
+        out.setdefault(owner, cfg["url"])
+    return out
+
+
+def board_for(cfg, environ=None):
+    """(label or None, url or None): the board this session pushes to. A
+    legacy config (no owner, no boards) answers (None, url)."""
+    boards = boards_of(cfg)
+    if not boards:
+        return None, cfg.get("url") or None
+    label = account_label(environ)
+    return label, boards.get(label)
 
 
 def is_headless(environ=None):
@@ -271,32 +321,82 @@ def render(root, session, rows, final=False, environ=None, clock=time.time):
         return {"push": False, "reason": "headless"}
     root = main_checkout(root)
     cfg = _load(root / CONFIG_REL, {})
-    if not cfg.get("url"):
+    if not cfg.get("url") and not boards_of(cfg):
         return {"push": False, "reason": f"no url in {CONFIG_REL.as_posix()}"}
+    label, board = board_for(cfg, environ)
+    if not board:
+        return {"push": False,
+                "reason": (f"no board for account {label} in {CONFIG_REL.as_posix()} "
+                           f"(boards.{label}); create it from this session, then "
+                           f"`kit_board.py account --url <url>`"),
+                "create": {"account": label, "title": f"{cfg.get('code') or root.name} status"}}
     sdir = root / STATE_REL
     state = _load(sdir / "state.json", {})
-    if state.get("version") is None:
+    versions = state.get("versions") if isinstance(state.get("versions"), dict) else {}
+    if label is not None:
+        # v21: one dataset version per account board.
+        base = (cfg.get("dataset_versions") or {}).get(label) if isinstance(
+            cfg.get("dataset_versions"), dict) else None
+        if label == cfg.get("owner") and base is None:
+            base = cfg.get("dataset_version")
+        state["version"] = versions.get(label, state.get("version") if label == cfg.get("owner")
+                                        else None)
+        if state["version"] is None:
+            state["version"] = int(base or 1)
+    elif state.get("version") is None:
         state["version"] = int(cfg.get("dataset_version") or 1)
     prog = running_progress(root, clock=clock)
     out, new_state = build(int(session), rows, state, final=final, progress=prog)
     pin = int(new_state["version"])
     new_state["version"] = pin + 1
+    if label is not None:
+        new_state["versions"] = dict(versions, **{label: pin + 1})
     _write(sdir / "status.json", dumps_rows(out))
     _write(sdir / "state.json", json.dumps(new_state, indent=1, sort_keys=True) + "\n")
     at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(clock()))
-    return {"push": True, "file": str(sdir / "status.json"), "board": cfg["url"],
+    plan = {"push": True, "file": str(sdir / "status.json"), "board": board,
             "if_version": pin, "rows": len(out),
             "data": dataset_update(cfg.get("code") or root.name, session, at)}
+    if label is not None:
+        plan["account"] = label
+    return plan
 
 
-def pushed(root, version):
-    """Record the server's current datasets/board version after a mismatch."""
+def pushed(root, version, environ=None):
+    """Record the server's current datasets/board version after a mismatch
+    (v21: for this session's account board when the config names boards)."""
     root = main_checkout(root)
     path = root / STATE_REL / "state.json"
     state = _load(path, {})
     state["version"] = int(version)
+    label, _board = board_for(_load(root / CONFIG_REL, {}), environ)
+    if label is not None:
+        versions = state.get("versions") if isinstance(state.get("versions"), dict) else {}
+        state["versions"] = dict(versions, **{label: int(version)})
     _write(path, json.dumps(state, indent=1, sort_keys=True) + "\n")
     return state["version"]
+
+
+def set_account_board(root, url, environ=None, label=None):
+    """v21: record <url> as this session's account board (boards.<label>) in
+    ops/status_board.json; in a config with no url it also becomes "url" +
+    "owner". A legacy url's owner is not guessed: set "owner" by hand (or
+    pass label to record the other account's board). Returns the label."""
+    root = main_checkout(root)
+    path = root / CONFIG_REL
+    cfg = _load(path, {})
+    label = label or account_label(environ)
+    if not re.match(r"^A\d+$", label):
+        raise ValueError(f"account label {label!r} must be A<n>")
+    if not str(url).startswith("https://claude.ai/"):
+        raise ValueError("board url must be a claude.ai artifact link")
+    boards = cfg.get("boards") if isinstance(cfg.get("boards"), dict) else {}
+    cfg["boards"] = dict(boards, **{label: str(url)})
+    if not cfg.get("url"):
+        cfg["url"] = str(url)
+        cfg["owner"] = label
+    _write(path, json.dumps(cfg, indent=1, sort_keys=True) + "\n")
+    return label
 
 
 def tool_calls(plan):
@@ -445,6 +545,10 @@ def main(argv=None):
     p = sub.add_parser("pushed", help="record the server's datasets/board version")
     p.add_argument("--root", default=".")
     p.add_argument("--version", type=int, required=True)
+    ac = sub.add_parser("account", help="record this session's account board url (v21)")
+    ac.add_argument("--root", default=".")
+    ac.add_argument("--url", required=True)
+    ac.add_argument("--label", help="A<n>; default this session's account")
     g = sub.add_parser("page", help="print the board index.html")
     g.add_argument("--title", required=True)
     a = ap.parse_args(argv)
@@ -453,6 +557,9 @@ def main(argv=None):
         return 0
     if a.cmd == "pushed":
         print(json.dumps({"version": pushed(a.root, a.version)}))
+        return 0
+    if a.cmd == "account":
+        print(json.dumps({"account": set_account_board(a.root, a.url, label=a.label)}))
         return 0
     if a.progress:
         d = _load(a.progress, {})

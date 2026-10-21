@@ -19,23 +19,23 @@ columns: **Default** is the state the module turns the item to; **Risk** is `low
 | `recommended` | `floors`, `core-rules`, `session`, `output`, `attribution`, `tdd-agents`, `docs-memory`, `console`, `ci-gates`, `recall`, `lessons`, `permissions-context` |
 | `minimal` | `floors`, `core-rules`, `session`, `attribution`, `lessons` |
 | `full` | all modules |
-| `remus3` | the author's exact current settings, item by item (`profile/presets/remus3.json`) |
+| `remus3` | the author's current settings, item by item: what the author's own setup runs, plus every item the author ships on by default (`profile/presets/remus3.json`; each item records its rule) |
 
 ## Modules at a glance
 
 | # | Module | Default | Items on by default |
 |---|---|---|---|
 | 1 | [Safety floors](#1-floors) | always on | 9 of 9 |
-| 2 | [Core rules](#2-core-rules) | on | 13 of 18 |
+| 2 | [Core rules](#2-core-rules) | on | 14 of 24 |
 | 3 | [Session shape](#3-session) | on | 11 of 11 |
-| 4 | [Quiet output](#4-output) | on | 10 of 12 |
+| 4 | [Quiet output](#4-output) | on | 10 of 13 |
 | 5 | [Sub-agent first](#5-subagent-first) | off | 6 of 6 |
 | 6 | [Race guards](#6-race-guards) | off | 4 of 4 |
 | 7 | [Commit attribution](#7-attribution) | on | 3 of 4 |
 | 8 | [Test-first and the agent roster](#8-tdd-agents) | on | 19 of 26 |
 | 9 | [Docs, memory and size budgets](#9-docs-memory) | on | 14 of 22 |
 | 10 | [Several repositories](#10-fleet) | off | 9 of 11 |
-| 11 | [Background runs on a second account](#11-headless) | off | 0 of 12 |
+| 11 | [Background runs on a second account](#11-headless) | off | 0 of 13 |
 | 12 | [Scheduled machine maintenance](#12-maintenance) | off | 1 of 11 |
 | 13 | [Insights and the atlas](#13-insights) | off | 0 of 8 |
 | 14 | [Status board](#14-board) | off | 0 of 2 |
@@ -74,7 +74,7 @@ columns: **Default** is the state the module turns the item to; **Risk** is `low
 **Core rules.** The CLAUDE.md skeleton and the working rules every session follows: act on recommendations, keep chat quiet, commit coherently, ASCII and LF.
 
 - Why: Claude reads CLAUDE.md at the start of every session, so its rules shape every turn. A fixed, short layout keeps that start-up cost low and lets a test pin the shared part.
-- Default: on; 13 of 18 items on when the module is on.
+- Default: on; 14 of 24 items on when the module is on.
 - Pairings: needs items of `attribution`; usually on with `output`, `subagent-first`, `tdd-agents`, `docs-memory`.
 - Enable later because: Leave single rules off if they clash with how you already work, for example quiet chat when you like long explanations; turn them on once you want Claude to follow them in every session.
 
@@ -98,6 +98,12 @@ columns: **Default** is the state the module turns the item to; **Risk** is `low
 | `set-workflows` Workflow tool | Sets enableWorkflows to true so multi-step workflow scripts can run. | off | low | any |
 | `set-agent-push` Phone notification when agents finish | Sets agentPushNotifEnabled to true so a finished agent sends a push notification. | off | low | any |
 | `conv-gitattributes-lf` Line endings pinned in .gitattributes | Creates a .gitattributes that stores text with LF endings and marks images and archives as binary. | on | low | any |
+| `set-skip-danger-prompt` No start-up warning for prompt-free mode | Sets skipDangerousModePermissionPrompt so Claude does not ask again at every start once you chose to run tools without prompts. | off | high | any |
+| `set-allow-maintenance` Allow the maintenance commands | Adds the task kill and scheduled-task commands to the permission allow list, so sessions that do ask for permission can still run maintenance. | off | medium | any |
+| `set-workflow-warning` No workflow usage warning | Sets skipWorkflowUsageWarning so starting a workflow does not stop at a usage warning first. | off | low | any |
+| `set-model-effort` Per-model reasoning effort | Sets modelSettings so the largest model runs at medium effort while the default effort stays as you set it. | off | low | any |
+| `set-model-switch` Switch models on a flag | Sets switchModelsOnFlag so Claude moves to another model when the current one is flagged instead of stopping. | off | low | any |
+| `set-auto-updates` Automatic Claude updates | Sets autoUpdates to true so Claude Code keeps itself up to date. | on | low | any |
 
 ## 3 session
 
@@ -127,7 +133,7 @@ columns: **Default** is the state the module turns the item to; **Risk** is `low
 **Quiet output.** Compressed chat, a calm terminal and a fixed-slot status line: nothing moves unless something needs your attention.
 
 - Why: Verbose chat costs tokens twice, once to write and once to read, and buries the result. A display without motion makes any change stand out.
-- Default: on; 10 of 12 items on when the module is on.
+- Default: on; 10 of 13 items on when the module is on.
 - Pairings: usually on with `core-rules`, `subagent-first`, `attribution`.
 - Enable later because: Turn items off if you prefer Claude's default, more talkative style; turn the status line on once several sessions run at once and you want them readable at a glance.
 
@@ -145,6 +151,7 @@ columns: **Default** is the state the module turns the item to; **Risk** is `low
 | `kit-tokens` Shared state vocabulary and colours | Copies tokens.json and tokens.css: the light and dark colours and the state words, glyphs and rows every surface uses. | on | low | any |
 | `kit-cli-display` Display keys at account level | Keeps every display key in your account settings and none in a repository, so a project cannot override the calm display by accident. | on | low | any |
 | `rule-hook-output` Silent hooks | Adds the hook output rules: exit 0 and stay silent by default; when there is something to say, one short line, no colour codes, never blocking Stop. | on | low | any |
+| `set-statusline-user` Status lines for every repository | Copies the fixed-slot status line and the agent row script into your Claude config folder and points your account settings at them, so they show in every repository. | off | low | any |
 
 ## 5 subagent-first
 
@@ -220,9 +227,9 @@ columns: **Default** is the state the module turns the item to; **Risk** is `low
 | `cmd-orchestrated-run` /orchestrated-run | Installs a command that runs recall, plan, parallel builders, the verifier gate and the merge as one entry point. | on | low | any |
 | `cmd-root-cause-fix` /root-cause-fix | Installs a command for bugs: reproduction test first, every sibling occurrence of the cause, the minimal fix, and a backfill of data the bug already damaged. | on | low | any |
 | `cmd-diagnose` /diagnose | Installs a five-step debugging command: reproduce, minimise, hypothesise, fix one thing, verify. | on | low | any |
-| `plugin-superpowers` superpowers plugin (listed only) | Names the superpowers plugin from the official marketplace: skills for test-driven work, planning, worktrees, verification and review. | off | low | any |
-| `plugin-playwright` Playwright plugin (listed only) | Names the Playwright plugin, which drives a browser for interface checks and end-to-end tests. | off | low | any |
-| `plugin-chrome-devtools` Chrome DevTools plugin (listed only) | Names the Chrome DevTools plugin for accessibility, performance and network audits. | off | low | any |
+| `plugin-superpowers` superpowers plugin | Turns on the superpowers plugin from the official marketplace in your Claude settings: skills for test-driven work, planning, worktrees, verification and review. | off | low | any |
+| `plugin-playwright` Playwright plugin | Turns on the Playwright plugin in your Claude settings; it drives a browser for interface checks and end-to-end tests. | off | low | any |
+| `plugin-chrome-devtools` Chrome DevTools plugin | Turns on the Chrome DevTools plugin in your Claude settings, for accessibility, performance and network audits. | off | low | any |
 | `conv-worktree-branches` Same-day work on worktree branches | Adds the rule that versions and multi-step builds live on a worktree branch and reach main only by a fast-forward once verified. | on | low | any |
 | `ag-session-default-file` Shared rule file for every agent | Creates .claude/session-default.md with the shape, hard rules, progress contract and verdict lines, which every agent definition reads first. | on | low | any |
 | `ag-agent-file-cap` Size cap per agent file | Adds the rule that each agent definition stays under the agent file budget, which the budget checker enforces. | on | low | any |
@@ -296,13 +303,13 @@ columns: **Default** is the state the module turns the item to; **Risk** is `low
 **Background runs on a second account.** A separate account for background work, a fail-closed route to it, the spawn helper, lanes, a driver lane and an inbox responder.
 
 - Why: Background runs can spend a whole subscription overnight. Routing them through one guarded helper on their own account keeps that spend visible, bounded and away from the account you type into.
-- Default: off; 0 of 12 items on when the module is on.
+- Default: off; 0 of 13 items on when the module is on.
 - Pairings: needs items of `floors`, `fleet`; usually on with `sidecar`.
 - Enable later because: Off by default because it needs a second Claude account and a route you set up yourself. Turn it on once you want Claude to work unattended, for example at night, without spending your main account.
 
 | Item | What it does | Default | Risk | Where |
 |---|---|---|---|---|
-| `hl-second-account` Second account for background runs | Adds the rule that background runs use their own Claude config dir and subscription; the wizard creates the dir and opens a pane where you log in yourself. | off | high | any |
+| `hl-second-account` Second account for background runs | Adds the rule that background runs use their own Claude config dir and subscription; the wizard's account step flags a missing dir and opens a pane where you log in yourself. | off | high | any |
 | `hl-proxy` Loopback route contract | Adds the split-mode contract: background runs reach the second account through a proxy you run on a loopback address, checked before every run. | off | high | any |
 | `hl-env-base-url` Kill-switch user variable | Sets the user environment variable CLAUDE_HEADLESS_BASE_URL to your pinned proxy address; deleting it stops every next background run on the machine. | off | high | Windows only |
 | `hl-route-file` Route file: split or single | Adds the rule that a route file chooses split or single mode and is read fresh before every run; the wizard's headless step writes it. | off | high | any |
@@ -314,6 +321,7 @@ columns: **Default** is the state the module turns the item to; **Risk** is `low
 | `hl-halt-files` Halt files pause loops | Adds the halt-file rule and the /done step that pauses the responder for the whole ritual. | off | low | any |
 | `cmd-headless-family` Background run contract | Installs /headless-run: the fixed prompt contract for one long background unit, with a merger, worktree agents, a verifier and its own /done fold. | off | high | any |
 | `hl-fallback-armed` Armed fallback after a weekly limit | Adds the armed-fallback rule: only when you arm it, a confirmed 7-day limit on one account moves the next runs to the other, one hop, logged. | off | high | any |
+| `hl-account-quiet` Quiet keys for the background account | Sets feedbackDrafts to quiet and turns off auto mode during planning in your Claude settings. | off | low | any |
 
 ## 12 maintenance
 

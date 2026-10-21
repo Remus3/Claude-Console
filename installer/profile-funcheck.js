@@ -12,7 +12,8 @@
 // Run dirs are derived scratch (replaceable) and are cleared here, inside runs/ only.
 const fs = require('fs');
 const path = require('path');
-const { spawn, spawnSync } = require('child_process');
+const { spawn } = require('child_process');
+const safekill = require('./safekill'); // CON-TASKKILL
 
 const DEFAULT_TIMEOUT = { test: 300000, build: 300000, start: 20000 };
 // The spec reporter marks a failed test with U+2716 (built from its code: ASCII source).
@@ -97,10 +98,11 @@ function editChecks(checks, edits) {
 
 // ------------------------------------------------------------------ run
 
-function killTree(pid) {
+// CON-TASKKILL: never `taskkill /T` (it follows reused parent pids into unrelated
+// processes); only the verified descendants of the child we spawned at sinceMs end.
+function killTree(pid, sinceMs) {
   if (!pid) return;
-  if (process.platform === 'win32') spawnSync('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true });
-  else { try { process.kill(-pid, 'SIGKILL'); } catch (e) { try { process.kill(pid, 'SIGKILL'); } catch (x) { /* gone */ } } }
+  safekill.killTreeSync(pid, sinceMs);
 }
 
 // The default runner: the command through the shell in cwd, node_modules/.bin on PATH,
@@ -124,11 +126,11 @@ function defaultRun(check, cwd) {
     const onData = (b) => {
       out += b.toString('utf8');
       if (out.length > 400000) out = out.slice(-400000);
-      if (ready && ready.test(out)) { killTree(child.pid); finish({ code: 0, ready: true, timedOut: false }); }
+      if (ready && ready.test(out)) { killTree(child.pid, t0); finish({ code: 0, ready: true, timedOut: false }); }
     };
     child.stdout.on('data', onData);
     child.stderr.on('data', onData);
-    const timer = setTimeout(() => { killTree(child.pid); finish({ code: null, timedOut: true, ready: false }); }, check.timeoutMs || 60000);
+    const timer = setTimeout(() => { killTree(child.pid, t0); finish({ code: null, timedOut: true, ready: false }); }, check.timeoutMs || 60000);
     child.on('error', (e) => finish({ code: 127, out: out + '\n' + e.message, timedOut: false, ready: false }));
     child.on('close', (code) => finish({ code, timedOut: false, ready: false }));
   });

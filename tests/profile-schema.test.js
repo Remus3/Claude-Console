@@ -176,6 +176,9 @@ test('module.json: contributions - closed kind list and per-kind fields', () => 
     [(m) => { c(m).push({ kind: 'git', key: 'nodot', value: 'x' }); }, /contributes\[2\]\.key: /],
     [(m) => { c(m).push({ kind: 'kit', files: [] }); }, /contributes\[2\]\.files: /],
     [(m) => { c(m).push({ kind: 'kit', files: ['../x.py'] }); }, /contributes\[2\]\.files\[0\]: /],
+    // CON-FB-2ND: account is main | second, and only on a user: target
+    [(m) => { c(m).push({ kind: 'json-merge', target: 'user:settings.json', value: {}, account: 'third' }); }, /contributes\[2\]\.account: must be main or second/],
+    [(m) => { c(m)[0].account = 'second'; }, /contributes\[0\]\.account: only on a user: target/],
   ];
   for (const [mut, re] of cases) { const m = session(); mut(m); rejects(vm(m), re, re.source); }
 });

@@ -95,6 +95,7 @@ Keys: `id`, `order`, `title`, `does`, `why`, `risk`, `default`, `platform`, `dep
 | `file` | `target`, `template`, `mode` | `mode` is `create-only`, `managed` or `replace-ask` |
 | `block` | `target`, `block`, `template`, `slot` | `block` is a lower-case id; `slot` an integer >= 0 |
 | `json-merge` | `target`, `template` or `value`, `mode` | target is `repo:.claude/settings.json`, `repo:.claude/settings.local.json` or `user:settings.json`; exactly one of `template`, `value` (an object); `mode` is `add` or `replace-ask` |
+| (`file`, `block`, `json-merge`) | optional `account` | only on a `user:` target: `main` = the default account's config dir only, `second` = only the other configured accounts' dirs (skipped, with a reason, on the other side's plan); absent = every account dir |
 | `env` | `name`, `value` or `secret`, `scope` | upper-case name; exactly one of `value`, `secret` (a reference name); a value that looks like a key is refused; `scope` is `user` |
 | `task` | `name`, `template` | name starts `ClaudeProfile-`; the template is the task XML |
 | `git` | `key`, `value`, `scope` | `section.name` key; `scope` is `local` |

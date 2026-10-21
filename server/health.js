@@ -191,10 +191,11 @@ function listProcesses() {
   });
 }
 
-function killTree(pid) {
-  return new Promise((resolve) => {
-    execFile('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, timeout: 15000 }, (err) => resolve(!err));
-  });
+// CON-TASKKILL: an orphan root and its VERIFIED descendants only (never taskkill /T,
+// which follows reused parent pids into unrelated processes).
+async function killTree(pid, created) {
+  const ended = await require('../installer/safekill').killTree(pid, created || 0); // SEC-6: the recorded creation time guards pid reuse
+  return ended.includes(pid);
 }
 
 // Orphans: live processes whose parent is a pane process that has ended (recorded in
@@ -252,12 +253,12 @@ function coreRunners(deps) {
       let ended = 0;
       let endedProcs = 0;
       let failed = 0;
-      // Roots first (taskkill /T takes their descendants with them).
+      // Roots first (killTree ends their verified descendants with them, CON-TASKKILL).
       const ids = new Set(orphans.map((o) => o.pid));
       const treeSize = (root) => { let n = 0; const seen = new Set([root]); let grew = true; while (grew) { grew = false; for (const o of orphans) if (!seen.has(o.pid) && seen.has(o.ppid)) { seen.add(o.pid); grew = true; } } n = seen.size; return n; };
       for (const o of orphans) {
         if (ids.has(o.ppid)) continue;
-        if (await kill(o.pid)) { ended++; endedProcs += treeSize(o.pid); } else failed++;
+        if (await kill(o.pid, o.created)) { ended++; endedProcs += treeSize(o.pid); } else failed++;
       }
       const names = {};
       for (const o of orphans) names[o.name] = (names[o.name] || 0) + 1;
