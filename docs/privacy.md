@@ -9,10 +9,11 @@ never will be: "no telemetry" is one of the setup profile's locked safety floors
 
 The console makes exactly two kinds of network call, plus one you can turn on:
 
-1. **The update check and download.** Once a day it asks this project's GitHub
-   releases whether a newer version exists. The request carries nothing about you. When
-   you update, it downloads the release from GitHub. You can turn the check off with
-   `"updates": {"check": false}` in `data\console.local.json`.
+1. **The update check and download.** When you press Check now, run the update command, or
+   set up the optional auto-update task, it asks this project's GitHub releases whether a
+   newer version exists. The request carries nothing about you. When you update, it
+   downloads the release from GitHub. `"updates": {"check": false}` in
+   `data\console.local.json` turns the check off.
 2. **Actions you start yourself.** For example an install step that fetches Node.js or
    Git, or a button that opens a GitHub issue page or claude.ai. Those pages open in
    your browser after your click; the console process itself does not contact them.
@@ -48,12 +49,12 @@ The list lives in `installer/egress.json`.
   `egress.json` with its file, host and reason. A new hit or a new host fails the
   build.
 - A runtime test replaces every network function with a recorder that refuses, then
-  drives the server, a profile apply, an adoption scan and the setup wizard. Every
+  drives the server, a profile apply, an adoption scan and the setup. Every
   recorded attempt must be to 127.0.0.1, apart from one update check when updates are
   on. With an Admin key set and the API spend box off, it records no outside attempt;
   with the box on, the only outside host is api.anthropic.com.
 - The release is also tested in Windows Sandbox with networking turned off: setup,
-  adoption and the wizard all complete, and the only thing that reports a problem is the
+  adoption and the setup all complete, and the only thing that reports a problem is the
   update check, which says `offline`.
 - The build fails if an analytics or crash-upload library appears among the
   dependencies.
@@ -78,7 +79,9 @@ Everything the console stores is in its own folders on your computer:
   backups and undo journals;
 - `data\profile\secrets\`: keys you entered, protected with Windows DPAPI for your user
   only and never written in plain text;
-- `data\machine\`, only if you turn on the machine profile: the local scan and advice.
-  You can view and delete it from the console, and it is never exported or reported.
+- `data\machine\`, only after you press Read machine or turn on the machine profile: the
+  local scan and advice. Claude panes are told where the file is, so what they read goes to
+  Anthropic like any other context. You can view and delete it in the Machine advisor, and
+  it is never in a crash report.
 
 `claude-console uninstall --purge` moves the data folder to the Recycle Bin.

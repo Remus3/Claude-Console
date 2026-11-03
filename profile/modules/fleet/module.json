@@ -335,7 +335,7 @@
       "id": "sched-kit-rollout",
       "order": 1011,
       "title": "Nightly note delivery and drift record",
-      "does": "Registers a nightly task (04:00, 55-minute limit) that delivers queued notes to every repository and records each one's profile drift; it applies nothing.",
+      "does": "Each night at 04:00, passes notes between your projects and records which ones differ from your setup. It changes nothing else in them.",
       "why": "Delivering kit notes during the day made repositories stop mid-session to adopt; once a night they do it while idle.",
       "risk": "high",
       "default": "off",
@@ -359,7 +359,8 @@
         {
           "kind": "task",
           "name": "ClaudeProfile-KitRollout",
-          "template": "templates/tasks/kit-rollout.xml"
+          "template": "templates/tasks/kit-rollout.xml",
+          "deletes": "nothing"
         }
       ],
       "verify": [

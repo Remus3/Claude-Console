@@ -12,7 +12,7 @@
 //   POST /api/profile/check                 {text} live template validation
 //   POST /api/profile/edit                  {id, template?, text | reset} override only
 //   POST /api/profile/plan                  {target, draft?, values?, only?} dry run -> planId, rows, diff
-//   POST /api/profile/apply                 {planId, confirm, acks?, groupedConsent?}
+//   POST /api/profile/apply                 {planId, confirm, acks?, typed?, groupedConsent?}
 //   GET  /api/profile/tx                    transactions
 //   POST /api/profile/revert                {tx, confirm?} dry run unless confirm
 //   POST /api/profile/wizard                {op: preset|custom|back|skip|inputs, ...} pure helpers, nothing saved
@@ -34,6 +34,7 @@ const path = require('path');
 const crypto = require('crypto');
 const P = require('../installer/profile');
 const TX = require('../installer/profile-tx');
+const PL = require('../installer/profile-plan');
 const CR = require('../installer/crashreport');
 const REC = require('../installer/recover');
 
@@ -65,13 +66,13 @@ function defaultReadBody(req, limit) {
 
 const REVIEW_FALLBACK = {
   title: 'Before you enable anything',
-  lead: "Before you enable modules, read what each one does and review the .md files it adds. You're in control and can turn anything off later.",
+  lead: "Before you enable modules, read what each one does and review the files it adds under Full diff on the next step. You're in control and can turn anything off later.",
   licence: "The console and its setup are provided as-is under the Apache-2.0 licence. The author isn't liable for what they do on your machine.",
   safeguards_heading: 'Already in place',
   safeguards: [
     { glyph: '[+]', word: 'Dry run', text: 'Nothing is written until the final Apply step; every change is shown first.' },
     { glyph: '[+]', word: 'Copy first', text: 'Adopting an existing project works on a copy; your original stays untouched until you promote it.' },
-    { glyph: '[+]', word: 'Your choice', text: 'Every module and every change has its own yes or no.' },
+    { glyph: '[+]', word: 'Your choice', text: "Custom setup gives every module and change its own yes or no. The author's settings ask once." },
     { glyph: '[+]', word: 'Backups', text: 'Each apply saves what it replaces, and revert puts it back byte for byte.' },
     { glyph: '[+]', word: 'Recycle Bin', text: 'Files the profile created go to the Recycle Bin when removed, never straight to deletion.' },
     { glyph: '[+]', word: 'No telemetry', text: 'Nothing about you or your work is sent anywhere.' },
@@ -126,6 +127,7 @@ function createProfileRoutes(o) {
   }
 
   // ---- machine profile (L9)
+  let machineReading = null; // CON-MACHINE-READ: one Read machine at a time
   function machineMod() {
     if (pr.machine) return pr.machine;
     const MA = require('../installer/machine-advisors');
@@ -138,6 +140,10 @@ function createProfileRoutes(o) {
       revert: real ? (txDir, a) => MA.revertAdvice(txDir, a) : refuse('reverting machine changes'),
       deleteData: real ? () => MS.deleteMachineData(dataDir) : refuse('deleting machine data'),
       readData: () => ({ spec: MS.readMachineJson(dataDir, 'spec.json'), inventory: MS.readMachineJson(dataDir, 'inventory.json') }),
+      // CON-MACHINE-READ: Settings > Machine > Read machine (read-only CIM / registry
+      // queries; the result replaces <dataDir>/machine/spec.json, nothing else is written)
+      read: real ? () => MS.firstRun(dataDir, { rescan: true }) : refuse('reading the machine'),
+      summary: (spec) => MS.summaryLine(spec),
     };
   }
 
@@ -170,14 +176,9 @@ function createProfileRoutes(o) {
   function varsPublic(eng, sel) {
     const decl = (eng.model.profile && eng.model.profile.variables) || {};
     return Object.entries(decl).filter(([, d]) => d.type !== 'derived').map(([name, d]) => ({
-      name, type: d.type, why: d.why || null, ask: d.ask || null, optional: d.optional === true, pattern: d.pattern || null,
+      name, type: d.type, label: d.label || null, why: d.why || null, ask: d.ask || null, optional: d.optional === true, pattern: d.pattern || null,
       secret: d.secret === true, value: d.secret === true ? null : (sel && sel.variables && sel.variables[name] !== undefined ? sel.variables[name] : null),
     }));
-  }
-
-  function statusLine(eng, st) {
-    const last = st.lastTx && st.lastTx.at ? ' - last applied ' + String(st.lastTx.at).slice(0, 10) : ' - never applied';
-    return 'profile ' + (st.profile || '?') + ' - ' + st.on + ' of ' + st.total + ' items on' + last;
   }
 
   function state() {
@@ -187,6 +188,7 @@ function createProfileRoutes(o) {
     const sel = eng.selection();
     const list = eng.list(sel);
     const st = eng.status();
+    const firstRun = !fs.existsSync(P.selectionFile(dataDir));
     return {
       available: true,
       profile: { name: eng.model.profile.profile, version: eng.model.profile.version },
@@ -198,8 +200,8 @@ function createProfileRoutes(o) {
       presetTitles: Object.fromEntries(Object.entries(eng.model.presets).map(([k, v]) => [k, (v && typeof v.title === 'string' && v.title) || k.charAt(0).toUpperCase() + k.slice(1)])),
       variables: varsPublic(eng, sel),
       selection: { path: sel.path || null, preset: sel.preset || null, review_ack: sel.review_ack || null, needs_off: sel.needs_off || [] },
-      status: { line: statusLine(eng, st), on: st.on, total: st.total, pending: st.pending.length, pendingIds: st.pending, lastTx: st.lastTx, drift: st.drift.length },
-      firstRun: !fs.existsSync(P.selectionFile(dataDir)),
+      status: { line: P.statusLine(st), on: st.on, total: st.total, pending: st.pending.length, pendingIds: st.pending, lastTx: st.lastTx, drift: st.drift.length },
+      firstRun,
       offer: offerKind(eng),
       review: reviewStep(),
       capabilities: { adopt: !!adoptModule(), machine: true, crash: true, recover: true },
@@ -212,6 +214,7 @@ function createProfileRoutes(o) {
   const RULE_WHY = {
     'author-off': 'the author does not run it',
     'fleet-below-4': 'the author runs it in only a few of their projects',
+    'user-arms': 'off here: you arm it yourself, with a typed acknowledgement',
   };
   function presetOff(model, name) {
     const pre = model.presets[name];
@@ -271,13 +274,15 @@ function createProfileRoutes(o) {
     const rows = p.rows.map((r) => ({ item: r.item, kind: r.kind, target: r.target, status: r.status, reason: r.reason || null }));
     const diff = eng.diff(p);
     const digest = sha(JSON.stringify({ rows, diff, counts: p.counts, hr: p.highRisk, ack: p.needsAck })).slice(0, 16);
+    const vd = eng.verdict(p);
+    const decl = (eng.model.profile && eng.model.profile.variables) || {};
     return {
       p, sel, digest,
       pub: {
-        planId: digest, rows, counts: p.counts, diff, lines: eng.planLines(p), verdict: eng.verdict(p),
+        planId: digest, rows, counts: p.counts, diff, lines: eng.planLines(p), verdict: { code: vd.code, line: vd.line }, // vd.cli (the --var form) stays in the terminal
         highRisk: titled(eng, p.highRisk), needsAck: p.needsAck, depsAdded: titled(eng, p.depsAdded),
         tasks: (typeof TX.tasksNeedingConsent === 'function' ? TX.tasksNeedingConsent(p) : []),
-        missing: p.missing.map((m) => ({ name: m.name, items: m.items, ask: m.ask || null })),
+        missing: p.missing.map((m) => { const d = decl[m.name] || {}; return { name: m.name, items: m.items, ask: m.ask || null, label: d.label || null, why: d.why || null, type: d.type || null, pattern: d.pattern || null, optional: d.optional === true }; }),
         varErrors: p.varErrors.map((e) => ({ name: e.name, msg: e.msg })),
         conflicts: p.conflictsPairs,
         machine: p.machine.map((m) => ({ kind: m.kind, item: m.item, name: m.name || null, key: m.key || null, op: m.op, status: m.status })),
@@ -295,27 +300,9 @@ function createProfileRoutes(o) {
     const model = eng.model;
     sel = P.normaliseSelection(JSON.parse(JSON.stringify(sel || {})), model);
     const skip = new Set(skipped || []);
-    const offNeeds = [];
-    if (!skip.size) return { selection: sel, offNeeds };
-    const on = P.onIds(model, sel);
-    // An item needs an input when a variable / secret it renders was skipped, or when
-    // the user said no to its env variable (env:NAME) or its scheduled task (task:NAME).
-    const needsOf = (id) => {
-      const out = PU.inputsOf(model, id).filter((n) => skip.has(n));
-      for (const c of model.items.get(id).item.contributes || []) {
-        if (c.kind === 'env' && skip.has('env:' + c.name)) out.push('env:' + c.name);
-        if (c.kind === 'task' && skip.has('task:' + c.name)) out.push('task:' + c.name);
-      }
-      return out;
-    };
-    const direct = on.filter((id) => !model.items.get(id).module.locked && needsOf(id).length);
-    const all = direct.concat(P.dependants(model, direct).filter((id) => on.includes(id) && !direct.includes(id)));
-    for (const id of all) {
-      if (model.items.get(id).module.locked) continue;
-      sel.items[id] = 'off';
-      const needs = needsOf(id);
-      offNeeds.push({ item: id, title: model.items.get(id).item.title, needs: needs.length ? needs : ['(depends on ' + direct.filter((d) => P.dependencyClosure(model, [id]).includes(d)).join(', ') + ')'] });
-    }
+    if (!skip.size) return { selection: sel, offNeeds: [] };
+    const offNeeds = PU.offBySkips(model, P.onIds(model, sel), skip).map((x) => Object.assign(x, { title: model.items.get(x.item).item.title }));
+    for (const x of offNeeds) sel.items[x.item] = 'off';
     sel.needs_off = [...new Set((sel.needs_off || []).concat(offNeeds.map((x) => x.item)))];
     return { selection: sel, offNeeds };
   }
@@ -330,8 +317,10 @@ function createProfileRoutes(o) {
     return { trigger: trig, limitMinutes: sum ? sum.limitMinutes : null, hidden: sum ? sum.hidden : null, deletes: typeof c.deletes === 'string' && c.deletes.trim() ? c.deletes.trim() : null };
   }
 
-  // What the on items of a selection need from the user.
-  function inputs(eng, sel) {
+  // What the on items of a selection need from the user. target (a resolved target,
+  // optional): only what has a write there, so a user target is not asked for a project's
+  // values or shown tasks the plan would skip (R1-6, R3-8).
+  function inputs(eng, sel, target) {
     const PU = require('../installer/profile-update');
     let ENV = null;
     try { ENV = require('../installer/profile-env'); } catch (e) { ENV = null; }
@@ -346,6 +335,7 @@ function createProfileRoutes(o) {
     const tasks = new Map();
     for (const id of on) {
       const { item, module: m } = model.items.get(id);
+      const applies = target ? (c) => PL.contributionApplies(model, m.id, c, target, dataDir) : null;
       for (const c of item.contributes || []) {
         if (c.kind === 'env') {
           const e = env.get(c.name) || { name: c.name, items: [], secret: c.secret || null, proposed: null };
@@ -357,17 +347,18 @@ function createProfileRoutes(o) {
           env.set(c.name, e);
           if (c.secret) { const s = sec.get(c.secret) || { name: c.secret, items: [], for: c.name }; s.items.push(id); sec.set(c.secret, s); }
         }
-        if (c.kind === 'task') {
+        if (c.kind === 'task' && (!applies || applies(c))) {
           const t = tasks.get(c.name) || Object.assign({ name: c.name, items: [], does: item.does, why: item.why, risk: item.risk }, taskSummary(eng, m.id, c, vr.vars));
           t.items.push(id);
           tasks.set(c.name, t);
         }
       }
-      for (const n of PU.inputsOf(model, id)) {
+      for (const n of PU.inputsOf(model, id, applies)) {
         if (n.startsWith('secret:')) continue;
         const d = decl[n];
         if (!d || !d.ask) continue;
-        const v = vars.get(n) || { name: n, type: d.type, why: d.why || null, ask: d.ask, optional: d.optional === true, pattern: d.pattern || null, items: [], value: sel.variables[n] !== undefined && d.secret !== true ? sel.variables[n] : null };
+        // a whole-number default is shown and editable (R1-4); start_skipped: hardware most people lack (R1-6)
+        const v = vars.get(n) || { name: n, type: d.type, label: d.label || null, why: d.why && d.why !== d.label ? d.why : null, ask: d.ask, optional: d.optional === true, startSkipped: d.start_skipped === true, pattern: d.pattern || null, items: [], value: sel.variables[n] !== undefined && d.secret !== true ? sel.variables[n] : d.type === 'int' && d.default !== undefined ? d.default : null };
         v.items.push(id);
         vars.set(n, v);
       }
@@ -433,7 +424,7 @@ function createProfileRoutes(o) {
       const eng = engine();
       let profileState = 'not set up';
       let lastTx = null;
-      if (eng && eng.model.ok) { const st = eng.status(); profileState = statusLine(eng, st); if (st.lastTx) lastTx = { id: st.lastTx.id, status: st.lastTx.ok ? (st.lastTx.reverted ? 'reverted' : 'applied') : 'failed' }; }
+      if (eng && eng.model.ok) { const st = eng.status(); profileState = P.statusLine(st); if (st.lastTx) lastTx = { id: st.lastTx.id, status: st.lastTx.ok ? (st.lastTx.reverted ? 'reverted' : 'applied') : 'failed' }; }
       const step = isObj(body.step) ? { id: String(body.step.id || '').slice(0, 80) || null, exit: Number.isInteger(body.step.exit) ? body.step.exit : null, reason: typeof body.step.reason === 'string' ? body.step.reason.slice(0, 300) : null } : {};
       const rep = CR.buildReport({ version: pr.version, channel: pr.channel, step, runDir, dataDir, home: pr.home, profileState, lastTx, username: pr.username, hostname: pr.hostname, token: pr.token, git: pr.git });
       if (!rep.ok) return send(res, 200, { ok: false, refused: true, reason: rep.reason });
@@ -524,7 +515,12 @@ function createProfileRoutes(o) {
         // live in the DPAPI store and are only referenced)
         const hasVals = inp.values && Object.keys(inp.values).length > 0;
         const sel = inp.draft || hasVals ? Object.assign({}, r0.sel, { variables: Object.assign({}, r0.sel.variables, inp.values || {}) }) : null;
-        const r = await eng.apply(r0.p, { confirm: true, acks: Array.isArray(body.acks) ? body.acks.map(String) : [], groupedConsent: body.groupedConsent === true, taskConsent: taskConsentOf(body.taskConsent), selection: sel || undefined });
+        // A needsAck id counts only with its typed phrase in this POST, so a client that
+        // lists ids it never asked about cannot pass profile-tx's gate (R1-3). The terminal's
+        // --ack is typed by the person and goes straight to the engine.
+        const said = isObj(body.typed) ? body.typed : {};
+        const acks = (Array.isArray(body.acks) ? body.acks.map(String) : []).filter((id) => !r0.p.needsAck.includes(id) || String(said[id] === undefined ? '' : said[id]).trim() === 'apply ' + id);
+        const r = await eng.apply(r0.p, { confirm: true, acks, groupedConsent: body.groupedConsent === true, taskConsent: taskConsentOf(body.taskConsent), selection: sel || undefined });
         log('profile apply ' + (r.ok ? r.line : 'refused: ' + r.line));
         let verify = [];
         if (r.ok) {
@@ -581,7 +577,11 @@ function createProfileRoutes(o) {
         if (body.ask === true && also.length) return send(res, 200, { ok: false, needsConfirm: true, also: titled(eng, also), line: (body.on === true ? 'Turning this on also turns on: ' : 'Turning this off also turns off: ') + titled(eng, also).map((x) => x.title).join(', '), selection: sel });
         return send(res, 200, withStates({ ok: true, selection: r.selection, also: titled(eng, also) }));
       }
-      if (op === 'inputs') return send(res, 200, inputs(eng, isObj(body.selection) ? body.selection : eng.selection()));
+      if (op === 'inputs') {
+        const target = isObj(body.target) ? resolveTarget(body.target) : null;
+        if (target && target.error) return send(res, 400, { error: target.error });
+        return send(res, 200, inputs(eng, isObj(body.selection) ? body.selection : eng.selection(), target));
+      }
       if (op === 'state') {
         const sel = P.normaliseSelection(isObj(body.selection) ? body.selection : {}, model);
         const st = P.effectiveState(model, sel);
@@ -648,6 +648,11 @@ function createProfileRoutes(o) {
     return { dataDir, runDir, configDir, home: pr.home, version: pr.version, problems: Array.isArray(body.problems) ? body.problems.map((x) => String(x).slice(0, 300)).slice(0, 20) : [], username: pr.username, hostname: pr.hostname, token: pr.token };
   }
 
+  function machineReadView(M, spec) {
+    const summary = spec && M.summary ? M.summary(spec) : null;
+    return { scanned: spec && spec.scanned ? spec.scanned : null, line: summary, file: path.join(dataDir, 'machine', 'spec.json') };
+  }
+
   async function machineRoute(res, p, m, body) {
     const M = machineMod();
     if (p === '/api/machine' && m === 'GET') {
@@ -657,6 +662,15 @@ function createProfileRoutes(o) {
       return send(res, 200, { available: true, data: has, advice: last });
     }
     if (p === '/api/machine/data' && m === 'GET') return send(res, 200, M.readData ? M.readData() : { spec: null, inventory: null });
+    // CON-MACHINE-READ: the saved read (summary + date + file) and the manual re-read
+    if (p === '/api/machine/read' && m === 'GET') return send(res, 200, machineReadView(M, (M.readData ? M.readData() : {}).spec || null));
+    if (p === '/api/machine/read' && m === 'POST') {
+      if (typeof M.read !== 'function') return send(res, 200, { ok: false, error: 'Read machine is not available in this build' });
+      if (!machineReading) machineReading = Promise.resolve().then(() => M.read()).finally(() => { machineReading = null; });
+      const r = await machineReading;
+      log('machine read: ' + (r && r.spec && r.spec.scanned ? r.spec.scanned : 'no result'));
+      return send(res, 200, Object.assign({ ok: !!(r && r.spec) }, machineReadView(M, r ? r.spec : null)));
+    }
     if (p === '/api/machine/advise' && m === 'POST') {
       const adv = M.advise({});
       for (const x of adv.proposals || []) x.default = 'off'; // every change is opt-in

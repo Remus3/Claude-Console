@@ -78,6 +78,9 @@ function verifyItems(o) {
           add(id, 'env ' + val, !!g.present, 'not set');
         } else if (kind === 'task-readback') {
           if (!deps.tasks) { add(id, 'task ' + val, null, 'task adapter not installed'); continue; }
+          // the plan skipped this task (no project target): nothing was registered to read back
+          const tc = (it.contributes || []).find((c) => c.kind === 'task' && c.name === val);
+          if (tc && !PL.contributionApplies(model, model.items.get(id).module.id, tc, target, o.dataDir)) { add(id, 'task ' + val, null, PL.TASK_NEEDS_PROJECT); continue; }
           const g = deps.tasks.get(val) || {};
           add(id, 'task ' + val, !!g.present, 'not registered');
         } else if (kind === 'hook-smoke') {

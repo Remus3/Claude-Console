@@ -34,6 +34,8 @@ test('listDir: subfolders only, sorted, parent, no file names', () => {
   assert.deepStrictEqual(r.dirs.map((d) => d.name), ['Alpha', 'beta', 'gamma dir']);
   assert.ok(!JSON.stringify(r).includes('file.txt') && !JSON.stringify(r).includes('secret'));
   assert.deepStrictEqual(listDir(path.join(root, 'beta', '..', 'beta')).dirs.map((d) => d.name), ['inner']);
+  fs.mkdirSync(path.join(root, '.git'));
+  assert.ok(!listDir(root).dirs.some((d) => d.name === '.git'), 'R2-12: .git is not offered');
   const drive = listDir(r.path.slice(0, 3));
   assert.strictEqual(drive.parent, null);
   assert.ok(drive.dirs.length > 0);

@@ -248,6 +248,32 @@ function removeHook(obj, h) {
   if (!Object.keys(obj.hooks).length) delete obj.hooks;
 }
 
+// ------------------------------------------------------------------ target applicability
+// (0.1.5, R3-6 / R3-8) A target with no repo cannot hold a repo: file, a per-project memory
+// folder (user:projects/{project_slug}/...: any value typed there would only create a junk
+// folder) or a task whose command runs a file inside the repo.
+
+const NEEDS_PROJECT = 'needs a project target';
+const TASK_NEEDS_PROJECT = 'its script needs a project target';
+
+function taskNeedsRepo(model, moduleId, c, dataDir) {
+  try { return /\{repo_root\}/.test(P.readTemplate(model, moduleId, c.template, dataDir).text); } catch (e) { return false; }
+}
+
+// Would this contribution write anything on this target? Read-only; used by the wizard's
+// input list and the task read-back, so they agree with the plan's skipped rows.
+function contributionApplies(model, moduleId, c, target, dataDir) {
+  target = target || {};
+  if (target.configFilesOnly && !(typeof c.target === 'string' && c.target.startsWith('user:'))) return false;
+  if (c.kind === 'task') return !!target.repo || !taskNeedsRepo(model, moduleId, c, dataDir);
+  if (c.kind === 'git') return !!target.repo;
+  const t = c.kind === 'kit' ? (c.target || 'repo:') : c.target;
+  if (typeof t !== 'string') return true; // env, app-config: machine-wide
+  if (t.startsWith('repo:')) return !!target.repo;
+  if (t.startsWith('user:')) return !!target.configDir && (!!target.repo || !/\{project_slug\}/.test(t));
+  return true;
+}
+
 // ------------------------------------------------------------------ planner
 
 const STATUS_RANK = { conflict: 6, unreadable: 5, new: 4, differs: 3, removed: 3, same: 1, skipped: 0 };
@@ -322,6 +348,7 @@ function plan(o) {
     // must not refuse over {repo_code}).
     const root = sideRoot(m[1]);
     if (!root) return { noTarget: m[1] };
+    if (!target.repo && /\{project_slug\}/.test(m[2])) return { bad: NEEDS_PROJECT };
     const r = P.renderText(m[2], vars);
     if (r.missing.length) { needVar(r.missing, item); return { missing: r.missing }; }
     const rel = r.text.replace(/\\/g, '/');
@@ -428,6 +455,7 @@ function plan(o) {
       return planMachine(id, item, { kind: 'git', key: c.key, value: r.text });
     }
     if (c.kind === 'task') {
+      if (!target.repo && taskNeedsRepo(model, mod.id, c, dataDir)) return row(id, 'task', c.name, 'skipped', TASK_NEEDS_PROJECT);
       const tpl = readTpl(model, mod.id, c.template, dataDir, vars, id, needVar);
       if (tpl === null) return row(id, 'task', c.name, 'skipped', 'needs a variable');
       return planMachine(id, item, { kind: 'task', name: c.name, xml: tpl });
@@ -878,7 +906,8 @@ function countRows(rows) {
 }
 
 // Exit code of a plan: 2 = conflicts need a decision (or two on items conflict), 1 = refused
-// (unreadable, missing variable, variable error), 0 = ok.
+// (unreadable, missing variable, variable error), 0 = ok. `line` is what the wizard may
+// show; `cli`, when present, is the terminal's form of it (it names the --var flag).
 function planVerdict(p) {
   if (p.conflictsPairs.length) return { code: 2, line: 'items conflict: ' + p.conflictsPairs.map((x) => x.join(' vs ')).join('; ') + ' - turn one off' };
   const conf = p.rows.find((r) => r.status === 'conflict');
@@ -886,7 +915,7 @@ function planVerdict(p) {
   const un = p.rows.find((r) => r.status === 'unreadable');
   if (un) return { code: 1, line: 'refused: ' + un.item + ' at ' + un.target + ' - ' + un.reason };
   if (p.varErrors.length) return { code: 1, line: 'refused: variable ' + p.varErrors[0].name + ' ' + p.varErrors[0].msg };
-  if (p.missing.length) { const m = p.missing[0]; return { code: 1, line: 'refused: ' + m.items[0] + ' needs {' + m.name + '}' + (m.ask ? ' (asked at ' + m.ask + ')' : '') + '; set it with --var ' + m.name + '=...' }; }
+  if (p.missing.length) { const m = p.missing[0]; return { code: 1, line: 'Needs a value: ' + m.name + '. Fill it in above and press Preview again.', cli: 'refused: ' + m.items[0] + ' needs {' + m.name + '}' + (m.ask ? ' (asked at ' + m.ask + ')' : '') + '; set it with --var ' + m.name + '=...' }; }
   return { code: 0, line: null };
 }
 
@@ -923,5 +952,5 @@ function planLines(p) {
 module.exports = {
   plan, planVerdict, planLines, diffText, udiff, markersFor, findBlock, setBlock, removeBlock, mergeUnits,
   readLock, emptyLock, repoLockFile, userLockFile, readPre, LOCK_REL, sha, canon, countRows,
-  lcsDiff, splitLines, taskSemantics, taskSame, secretSame, secretFileSha,
+  lcsDiff, splitLines, taskSemantics, taskSame, secretSame, secretFileSha, contributionApplies, TASK_NEEDS_PROJECT,
 };

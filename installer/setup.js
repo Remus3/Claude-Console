@@ -1,8 +1,9 @@
 'use strict';
 // CON-SHIP-SETUP: the Claude Code commands and settings the console relies on ship in
 // console/claude/ (listed in claude/setup.json). Setup runs from the installer
-// (`claude-console install --setup` shows the plan), the CLI (`claude-console setup`),
-// or a Claude-guided first run (claude/first-run.md). It NEVER edits ~/.claude* silently:
+// (`claude-console install --setup` shows the plan) or the CLI (`claude-console setup`).
+// With a shipped profile the route further down replaces all of this (CON-SETUP-ROUTE).
+// It NEVER edits ~/.claude* silently:
 //   - planSetup() is read-only and says, per item, new / same / differs / conflict /
 //     unreadable / runtime, the target path and the exact settings keys;
 //   - applySetup() writes only with confirm === true, only the selected items, never
@@ -142,6 +143,15 @@ function statuslineFor(L, consoleRoot) {
 // --yes gate, journaled and revertable). The old setup.json ids map onto the profile items.
 const LEGACY_IDS = { 'cmd-done': 'console-done-chip', statusline: 'console-statusline-basic', 'pane-hooks': 'console-pane-hooks' };
 
+// CON-SETUP-ROUTE: on the shipped profile that route has nothing to write on a user target
+// (the items live in a project or inside the console, every row skips). The command says
+// so and names the wizard, and --apply records nothing: an apply here used to report
+// "2 write(s)", which were its own lock and selection, and that lock then stopped uninstall.
+const NOTHING_TO_SET_UP = [
+  'Nothing to set up: claude-console setup writes nothing here. It does not install /done or a status line; these items live in a project or inside the console.',
+  'To set Claude Code up the way the author works, open the console: the ... menu, Run setup. To add /done to a project or a status line outside the console, see "Setting up Claude Code for the console" in docs/capabilities.md.',
+];
+
 function profileRoute(consoleRoot, deps) {
   if (deps.legacySetup) return null;
   const dir = deps.profileDir || path.join(consoleRoot, 'profile');
@@ -158,12 +168,30 @@ function profileArgs(a, only) {
   return args;
 }
 
+// True when the routed plan has only skipped rows, read through the dry run's own --json.
+async function routeWritesNothing(routed, ids, a, L, deps) {
+  const lines = [];
+  try {
+    const code = await require('./profile-cli').cliProfile(profileArgs({ 'config-dir': a['config-dir'], json: true }, ids), L, Object.assign({}, deps, { out: (s) => lines.push(s), profileDir: routed }));
+    const c = JSON.parse(lines[lines.length - 1]).counts;
+    return code === 0 && !(c.new || c.same || c.differs || c.removed || c.conflict || c.unreadable);
+  } catch (e) { return false; } // a refusal is not JSON: the normal path prints it
+}
+
 async function cliSetup(a, L, deps, emit, out) {
   const consoleRoot = deps.consoleRoot || path.resolve(__dirname, '..');
   const routed = profileRoute(consoleRoot, deps);
   if (routed) {
     const ids = typeof a.only === 'string' ? a.only.split(',').map((s) => s.trim()).filter(Boolean).map((id) => LEGACY_IDS[id] || id) : ['console'];
-    return require('./profile-cli').cliProfile(profileArgs(a, ids), L, Object.assign({}, deps, { out, profileDir: routed }));
+    const profile = (o) => require('./profile-cli').cliProfile(profileArgs(a, ids), L, Object.assign({}, deps, { out: o, profileDir: routed }));
+    if (!await routeWritesNothing(routed, ids, a, L, deps)) return profile(out);
+    if (a.json) {
+      if (a.apply) { out(JSON.stringify({ applied: false, written: [], note: NOTHING_TO_SET_UP.join(' ') })); return 0; }
+      return profile(out);
+    }
+    if (!a.apply) await profile((s) => { if (!/^apply with: /.test(s)) out(s); }); // that line would apply the whole selection
+    NOTHING_TO_SET_UP.forEach((s) => out(s));
+    return 0;
   }
   const configDir = a['config-dir'] && a['config-dir'] !== true ? path.resolve(a['config-dir']) : configDirFor(process.env);
   const only = typeof a.only === 'string' ? a.only.split(',').map((s) => s.trim()).filter(Boolean) : null;
@@ -181,4 +209,4 @@ async function cliSetup(a, L, deps, emit, out) {
   return 0;
 }
 
-module.exports = { loadSpec, configDirFor, planSetup, applySetup, planLines, cliSetup, statuslineFor, LEGACY_IDS, profileRoute };
+module.exports = { loadSpec, configDirFor, planSetup, applySetup, planLines, cliSetup, statuslineFor, LEGACY_IDS, profileRoute, routeWritesNothing, NOTHING_TO_SET_UP };

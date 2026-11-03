@@ -175,7 +175,7 @@
       "id": "sc-runtime-ignored-reaped",
       "order": 2010,
       "title": "In-repo runtime dir gitignored and reaped",
-      "does": "Gitignores a .runtime folder and log files and adds tools/reap_runtime.py, which removes regenerable runtime files past a measured age and keeps the folder under a 100 MB cap.",
+      "does": "Gitignores a .runtime folder and log files and adds tools/reap_runtime.py, which removes regenerable runtime files past a set age (30 days unless you change it) and keeps the folder under a 100 MB cap.",
       "why": "Spawn logs, run journals and runtime folders grew without limit into gigabytes; every file that only grows needs a reaper from the day it is created.",
       "risk": "low",
       "default": "on",

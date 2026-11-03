@@ -225,14 +225,14 @@ async function cliProfile(argv, L, deps) {
     const taskNames = TX.tasksNeedingConsent(plan).map((t) => t.name);
     if (sub === 'diff') {
       if (a.json) json({ rows: plan.rows, counts: plan.counts, diff: eng.diff(plan), verdict: v });
-      else { const d = eng.diff(plan); out(d ? d.replace(/\n$/, '') : 'no changes'); if (v.line) out(v.line); }
+      else { const d = eng.diff(plan); out(d ? d.replace(/\n$/, '') : 'no changes'); if (v.line) out(v.cli || v.line); }
       return v.code;
     }
     if (!(a.apply === true)) {
       if (a.json) json({ rows: plan.rows, counts: plan.counts, highRisk: plan.highRisk, needsAck: plan.needsAck, missing: plan.missing, verdict: v });
       else {
         eng.planLines(plan).forEach(out);
-        if (v.line) out(v.line);
+        if (v.line) out(v.cli || v.line);
         const acks = plan.highRisk.concat(plan.needsAck).map((x) => ' --ack ' + x).join('');
         // Scheduled tasks: one consent per task (custom) or one grouped yes / no (preset).
         if (taskNames.length) out(grouped ? 'scheduled tasks (one grouped consent): ' + taskNames.join(', ') : 'scheduled tasks need consent: ' + taskNames.join(', ') + ' (one --consent-task per task)');
@@ -242,6 +242,7 @@ async function cliProfile(argv, L, deps) {
       return v.code;
     }
     if (a.yes !== true) { out(sub + ' --apply writes files; add --yes after reviewing the plan'); return 1; }
+    if (v.cli && !a.json) { out(v.cli); return v.code; }
     const nextSel = P.normaliseSelection(JSON.parse(JSON.stringify(sel)), model);
     nextSel.variables = Object.assign({}, sel.variables, parseVars(a.var));
     if (removeIds) for (const id of plan.removing) nextSel.items[id] = 'off';
@@ -283,7 +284,7 @@ async function cliRecover(cmd, argv, L, deps) {
 
   if (cmd === 'stop-all') {
     const r = await R.stopAll({ dataDir: ctx.dataDir, runDir: L.run, configDir: ctx.configDir, confirm: a.yes === true, deps: rdeps });
-    if (a.json) out(JSON.stringify(r)); else out(r.line);
+    if (a.json) out(JSON.stringify(r)); else { out(r.line); if (r.dryRun && !r.nothing) out('go ahead with: claude-console stop-all --yes'); }
     return r.ok ? 0 : 1;
   }
   if (cmd === 'resume') {
@@ -310,7 +311,7 @@ async function cliRecover(cmd, argv, L, deps) {
     if (exists(path.join(ctx.profileDir, 'profile.json'))) {
       const eng = P.openEngine({ profileDir: ctx.profileDir, dataDir: ctx.dataDir, configDir: ctx.configDir, deps: ctx.adapters });
       const s = eng.status({});
-      profileState = 'profile ' + s.profile + ' - ' + s.on + ' of ' + s.total + ' items on' + (s.lastTx ? ' - last applied ' + String(s.lastTx.at || s.lastTx.id).slice(0, 10) : '');
+      profileState = P.statusLine(s);
       if (s.lastTx) lastTx = { id: s.lastTx.id, status: s.lastTx.reverted ? 'reverted' : s.lastTx.ok ? 'applied' : 'failed' };
     }
   } catch (e) { profileState = 'unreadable'; }

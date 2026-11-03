@@ -41,12 +41,29 @@ const PS_SPEC = [
   '$disks = @(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | ForEach-Object { [ordered]@{ id = [string]$_.DeviceID; size = [int64]$_.Size; free = [int64]$_.FreeSpace } })',
   '$phys = @(Get-PhysicalDisk | ForEach-Object { [string]$_.MediaType })',
   '$plan = (Get-CimInstance -Namespace root\\cimv2\\power -ClassName Win32_PowerPlan | Where-Object { $_.IsActive } | Select-Object -First 1).ElementName',
-  '$o = [ordered]@{ model = "$($cs.Manufacturer) $($cs.Model)"; cpu = [ordered]@{ name = [string]$cpu.Name; cores = [int]$cpu.NumberOfCores; threads = [int]$cpu.NumberOfLogicalProcessors }; ram = [ordered]@{ total_bytes = [int64]$cs.TotalPhysicalMemory; modules = $mem }; gpus = $gpus; displays = $disp; disks = $disks; media = $phys; os = [ordered]@{ caption = [string]$os.Caption; build = [string]$os.BuildNumber }; power_plan = [string]$plan }',
+  // CON-MACHINE-READ: board, firmware, OS release, physical disks and physical network
+  // adapters (name and link speed only: no MAC, no address, no serial number).
+  '$bb = Get-CimInstance Win32_BaseBoard | Select-Object -First 1',
+  '$bios = Get-CimInstance Win32_BIOS | Select-Object -First 1',
+  '$cv = Get-ItemProperty "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion"',
+  '$pd = @(Get-PhysicalDisk | ForEach-Object { [ordered]@{ model = [string]$_.FriendlyName; media = [string]$_.MediaType; bus = [string]$_.BusType; size = [int64]$_.Size } })',
+  '$nics = @(Get-CimInstance Win32_NetworkAdapter -Filter "PhysicalAdapter=True" | ForEach-Object { [ordered]@{ name = [string]$_.Name; speed = [int64]$_.Speed; up = [bool]$_.NetEnabled } })',
+  '$o = [ordered]@{ model = "$($cs.Manufacturer) $($cs.Model)"; board = "$($bb.Manufacturer) $($bb.Product)"; bios = [ordered]@{ version = [string]$bios.SMBIOSBIOSVersion; date = [string]($bios.ReleaseDate | ForEach-Object { $_.ToString("yyyy-MM-dd") }) }; cpu = [ordered]@{ name = [string]$cpu.Name; cores = [int]$cpu.NumberOfCores; threads = [int]$cpu.NumberOfLogicalProcessors; max_mhz = [int]$cpu.MaxClockSpeed }; ram = [ordered]@{ total_bytes = [int64]$cs.TotalPhysicalMemory; modules = $mem }; gpus = $gpus; displays = $disp; disks = $disks; media = $phys; physical_disks = $pd; nics = $nics; os = [ordered]@{ caption = [string]$os.Caption; build = [string]$os.BuildNumber; version = [string]$os.Version; release = [string]$cv.DisplayVersion; ubr = [int]$cv.UBR; arch = [string]$os.OSArchitecture }; power_plan = [string]$plan }',
   '$o | ConvertTo-Json -Depth 5 -Compress',
 ].join('\n');
 
 const VIRTUAL_GPU = /virtual|duet|remote|basic display|indirect display|parsec|spacedesk|meta virtual/i;
+const VIRTUAL_NIC = /virtual|hyper-v|vpn|tap-|wan miniport|loopback|vmware|virtualbox|wireguard|tailscale|zerotier|personal area network/i;
 const GB = 1024 ** 3;
+
+// CIM dates come as /Date(ms)/ (ConvertTo-Json) or a DMTF yyyymmdd... string; keep yyyy-mm-dd.
+function biosDate(v) {
+  const t = String(v || '');
+  let m = /\/Date\((-?\d+)\)\//.exec(t);
+  if (m) return new Date(Number(m[1])).toISOString().slice(0, 10);
+  m = /^(\d{4})-?(\d{2})-?(\d{2})/.exec(t);
+  return m ? m[1] + '-' + m[2] + '-' + m[3] : '';
+}
 
 function iso(ms) {
   return new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
@@ -115,8 +132,14 @@ function parseSpec(raw, opts) {
     displays,
     primary_display: displays.find((d) => d.primary) || displays[0] || null,
     disks,
-    os: { caption: str((m.os || {}).caption), build: str((m.os || {}).build) },
+    os: { caption: str((m.os || {}).caption), build: str((m.os || {}).build), version: str((m.os || {}).version), release: str((m.os || {}).release), ubr: num((m.os || {}).ubr), arch: str((m.os || {}).arch) },
     power_plan: str(m.power_plan),
+    // CON-MACHINE-READ additions (a spec file from before 2026-10-25 lacks them)
+    board: str(m.board),
+    bios: { version: str((m.bios || {}).version), date: biosDate((m.bios || {}).date) },
+    cpu_max_mhz: num(cpu.max_mhz),
+    physical_disks: (Array.isArray(m.physical_disks) ? m.physical_disks : []).filter((d) => d && str(d.model) && !/virtual/i.test(String(d.bus || '') + ' ' + String(d.model))).map((d) => ({ model: str(d.model), media: str(d.media), bus: str(d.bus), size_gb: round1(num(d.size) / GB) })),
+    nics: (Array.isArray(m.nics) ? m.nics : []).filter((n) => n && str(n.name) && !VIRTUAL_NIC.test(n.name)).map((n) => ({ name: str(n.name), mbps: Math.round(num(n.speed) / 1e6), up: !!n.up })),
   };
 }
 
@@ -213,7 +236,7 @@ function needles(o) {
   leaves(spec, set, skip);
   leaves(inventory, set, skip);
   // Generic words that are not identifying.
-  for (const w of ['Balanced', 'High performance', 'Power saver', 'SSD', 'HDD', 'Unspecified']) set.delete(w);
+  for (const w of ['Balanced', 'High performance', 'Power saver', 'SSD', 'HDD', 'Unspecified', 'NVMe', 'SATA', 'RAID', 'SCSI', '64-bit', '32-bit']) set.delete(w);
   return [...set].sort((a, b) => b.length - a.length);
 }
 
@@ -247,7 +270,24 @@ function crashReportSafe(text, o) {
   return true;
 }
 
+// CON-MACHINE-READ: the one-line summary Settings > Machine shows (local UI only).
+function summaryLine(spec) {
+  if (!spec || typeof spec !== 'object') return null;
+  const parts = [];
+  if (spec.model) parts.push(spec.model);
+  const c = spec.cpu || {};
+  if (c.name) parts.push(c.name + (c.cores ? ' (' + c.cores + 'C/' + (c.threads || c.cores) + 'T)' : ''));
+  if (spec.ram && spec.ram.total_gb) parts.push(spec.ram.total_gb + ' GB RAM' + (spec.ram.configured_mts ? ' @ ' + spec.ram.configured_mts + ' MT/s' : ''));
+  if (spec.gpu && spec.gpu.name) parts.push(spec.gpu.name + (spec.gpu.vram_gb ? ' ' + Math.round(spec.gpu.vram_gb) + ' GB' : ''));
+  const disks = Array.isArray(spec.disks) ? spec.disks : [];
+  if (disks.length) parts.push(disks.length + ' volume' + (disks.length === 1 ? '' : 's') + ' ' + Math.round(disks.reduce((a, d) => a + (d.size_gb || 0), 0)) + ' GB');
+  const o = spec.os || {};
+  if (o.caption) parts.push(o.caption + (o.release ? ' ' + o.release : '') + (o.build ? ' build ' + o.build + (o.ubr ? '.' + o.ubr : '') : ''));
+  return parts.join(' - ') || null;
+}
+
 module.exports = {
+  summaryLine,
   PRIVACY, PS_SPEC, parseSpec, scanSpec, firstRun, loadSpec, machineDir, isMachinePath,
   writeMachineJson, readMachineJson, deleteMachineData, scrubMachine, crashReportSafe, defaultRunner,
 };

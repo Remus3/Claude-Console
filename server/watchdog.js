@@ -15,9 +15,6 @@
 // <dataDir>/watchdog/<yyyy-mm-dd>/samples.jsonl; day folders past retainDays go to the
 // Recycle Bin (drops.pruneDrops), never a direct delete.
 //
-// Seed cases (ROADMAP S47): DIALVOL-LEAK (DialVolume.ps1 powershell, 795 MB private after
-// 5.8 days, ~5.7 MB/h) and BT-LEAK (MTKBTSVC, 7.0 M handles after 5.8 days, ~40k/h). They
-// mark the known-bad end of the scale; the normal-process baseline is what is missing.
 const fs = require('fs');
 const path = require('path');
 const drops = require('./drops');
@@ -39,10 +36,7 @@ const PS_COLLECT = "$ErrorActionPreference = 'SilentlyContinue'; "
   + "app = $(if ($_.Id -ne 1001 -and $_.Properties.Count -gt 0) { [string]$_.Properties[0].Value } else { '' }) } }); "
   + 'ConvertTo-Json -InputObject ([pscustomobject]@{ procs = $p; mem = $m; events = $ev }) -Depth 4 -Compress';
 
-const DEFAULT_SEEDS = Object.freeze([
-  Object.freeze({ id: 'DIALVOL-LEAK', name: 'powershell.exe', cmd: 'DialVolume.ps1', known: 'about 5.7 MB/h private bytes (795 MB after 5.8 days)' }),
-  Object.freeze({ id: 'BT-LEAK', name: 'MTKBTSVC.exe', cmd: null, known: 'about 40k handles/h (7.0 M after 5.8 days)' }),
-]);
+const DEFAULT_SEEDS = Object.freeze([]);
 
 const THRESHOLD_KEYS = Object.freeze(['privMBh', 'handlesH', 'r2', 'minSpanH', 'pagesPerSec', 'crashesPerApp']);
 
@@ -189,7 +183,7 @@ function analyze(samples, thresholds, opts) {
   // what still has to be measured before a threshold is chosen
   const want = 72;
   out.measuring.push('private-bytes slope baseline of normal processes: needs >= ' + want + ' h of samples (have ' + out.spanH + ' h)');
-  out.measuring.push('handle-count slope baseline over the same window; the seeds mark the known-bad end (' + (opts.seeds || []).map((s) => s.id).join(', ') + ')');
+  out.measuring.push('handle-count slope baseline over the same window');
   out.measuring.push('paging baseline: pages/sec median and p95 over a normal working week (have ' + out.paging.n + ' samples)');
   out.measuring.push('crash / hang rate per app over 7 days (have ' + out.crashes.total + ' events)');
   const unset = THRESHOLD_KEYS.filter((k) => th[k] === null || th[k] === undefined);

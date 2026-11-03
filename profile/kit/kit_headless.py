@@ -11,8 +11,10 @@ What it enforces (SHARED RULES item 10):
   (registry first, so deleting the variable stops even a long-lived process),
 - fail closed: unset / non-loopback / unpinned / unreachable -> Refused, never a
   fallback; any --fallback-model or auto-fallback flag is refused at the door,
-- at most RUNS_CAP runs started per rolling WINDOW_S, counted under a lock; an
-  unreadable budget file refuses (fail closed) and is never reset,
+- at most RUNS_CAP runs started per rolling WINDOW_S per tree (v26: a higher
+  cap, at most RUNS_CAP_MAX, only from the machine config), counted under a
+  lock; an unreadable budget file refuses (fail closed) and is never reset
+  except by the recorded, interactive `budget reset`,
 - never spawn on this repo's own notes, or on notes marked TERMINAL / no-reply
   (marker LINES and whole name tokens only; ORDER / FIX / RULING never damped),
 - lean flags (strict MCP + project settings, or --bare - refused when the caller
@@ -246,6 +248,84 @@ escaped descendant can never block the return; a timeout returns after at
 most timeout + kill + PIPE_GRACE seconds. spawn's two bare Refused re-raise
 sites are distinct (SC 2356 item 5).
 
+v22 (daily kit train, a recorded ruling;
+cumulative: a tree on v20.1 adopts v21 and v22 at once):
+- KIT-V22-SIDECAR: child_env(code=) sets CLAUDE_CODE_TMPDIR to
+  <sidecar root>/<CODE>/Temp/claude when that sidecar exists (the usage
+  line records it as "tmpdir") (kit_lanes v22 default
+  root SIDECAR_DEFAULT when KIT_SIDECAR_ROOT is named nowhere); a parent value
+  wins; missing sidecar = unchanged.
+- KIT-V22-BARE: a bare spawn on the single route is no longer refused
+  ("route-bare"): it runs the lean non-bare form (strict MCP + project
+  settings, the rules file appended), usage line "bare": false plus
+  "bare_degraded": true. Split is unchanged.
+- KIT-V22-REAP: kit_done.py reap (see that file).
+- SC-1345: kit_identity pre-push excludes already-published commits from an
+  existing-branch range too.
+
+v23 (daily kit train; cumulative: a tree on v20.1 adopts v21, v22 and v23
+at once): KIT-V23-BOARD-LOCAL (author's rule 2026-10-25): the status board
+is local only - kit_board.py renders status.json and board.html under
+ops/loop/control/board/ and prints no Artifact / ArtifactData call;
+SHARED RULES 18 rewritten; kit_test_guard IGNORE adds board.html.
+
+v24 (daily kit train; cumulative: a tree on v20.1 adopts v21-v24 at once):
+- KIT-LANES-RACE: _lanes() loads kit_lanes under a module lock and
+  publishes it in sys.modules only after exec_module finished, so a
+  concurrent caller never reads a half-loaded module.
+- KIT-SIDECAR-PATH: kit_lanes.SIDECAR_DEFAULT holds no built-in root in
+  this packaged kit.
+- KIT-CLAIMS-CWD: kit_claims resolves a shell command's relative targets
+  against its effective cwd (a leading cd segment), never the project root.
+- KIT-SI-CHART: tokens.json chart slot 9 = SI.
+- SHARED RULES 19: no width-dependent layout in chat.
+
+v25 LANE-CAP: machine lane config ~/.kit/lanes.json (kit_lanes.py).
+
+v26 (daily kit train; cumulative: a tree on v24 or v25 adopts v26 at once):
+- KIT-SI-RUNCAP (ruling 2026-10-31): the run cap is per tree - 120 per rolling
+  24 h unless SUPERVISOR set `runs_cap` {CODE: 1..500} in ~/.kit/lanes.json
+  (kit_lanes.runs_cap; a bad value = 120, logged). A cap hit refuses
+  (status refused, reason "run cap", next free time) and writes one
+  `cap-hit` line to the machine ledger beside the route file. `budget reset
+  --code C --reason "<operator words>"` is the recorded reset: interactive
+  only (refused when the child markers child_env sets are present:
+  KIT_SUBAGENT_FIRST=off or background tasks off), archives the in-window starts to
+  headless_budget.reset-<date>.json and writes a `cap-reset` ledger line.
+  Never automatic. `budget show --code C` prints count / cap / next free.
+- RM-798: the usage line and the run budget live in the main checkout even
+  for a spawn from a linked worktree (main_checkout(root)).
+- KIT-ROUTE-ACCOUNTS (ruling 2026-10-31; the first-account item closed): the route
+  is an ordered list of 1 to ACCOUNTS_MAX (3) accounts. Route file version 2
+  {"version": 2, "accounts": [entry, ...], "fallback": {"armed": bool}},
+  entry = {"via": "proxy"} (the variable as set) | {"via": "proxy", "pin":
+  <uuid>} (the variable's origin + /tc-acct/<uuid>) | {"via": "config",
+  "config_dir": <abs dir>}. A v1 file reads as a list (split = proxy, single =
+  config, a v1 fallback block = entry 2). Runs use entry 1; armed, a parsed
+  7-day limit marks the entry in use exhausted and the next spawns use the
+  next listed entry not exhausted, back to an entry only at its reset, halting
+  ("fallback-halted") when all are exhausted; never on a proxy, auth or
+  network failure, a 5-hour limit or a percentage. Any bad entry (used or
+  not) refuses; the variable is required for every route. `route set
+  --account proxy[:<uuid>] [--account config:<dir>] ... [--fallback |
+  --no-fallback]` writes version 1 whenever v1 can say it. Usage line adds
+  "entry" and "pinned"; `route show` names positions and via only (and
+  "bare": "degraded" when entry 1 is config). No pin or dir is ever printed.
+- Progress checklist ids up to 48 chars (SI FIX 0612; = kit_checklist).
+- New kit file kit_hook.sh (ruling SC-815): the deny hooks run through a
+  nonce-checking launcher and fail closed on a stub or missing interpreter.
+
+v27 (daily kit train 2026-11-01; cumulative: a tree on v24-v26 adopts v27 at once):
+- KIT-HEADLESS-STDERR: a run that ends rc != 0 logs error = the last 20
+  non-empty lines of its stderr (at most 4000 chars), else "rc N"; a timeout
+  stays "timeout"; limit classification is unchanged.
+- KIT-USAGE-UNPRICED: every usage line carries "priced" (cost_usd is a
+  number); a timed-out run logs cost_usd null, priced false.
+- KIT-USAGE-SESSIONID: the usage line carries the child's session_id.
+- Kit file changes elsewhere: kit_lanes daily_usd_ceiling, kit_inbox
+  pending-ORDER marker, kit_suite_gate tree_median_hold, kit_rewrite
+  --range, kit_hook.sh fast path, kit_claims lazy subprocess import.
+
 Pure stdlib. No machine path, account id or repo name appears in this file.
 """
 
@@ -259,14 +339,17 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
-KIT_VERSION = 21
+KIT_VERSION = 28
 KIT_PATCH = 0
+TMPDIR_ENV = "CLAUDE_CODE_TMPDIR"  # v22: headless child temp root (sidecar)
 VAR = "CLAUDE_HEADLESS_BASE_URL"
 RUNS_CAP = 120
+RUNS_CAP_MAX = 500  # v26: ceiling of a machine-config runs_cap entry
 WINDOW_S = 86400
 STATUS_REL = Path("ops/loop/control/inbox_status.json")
 BUDGET_REL = Path("ops/loop/control/headless_budget.json")
@@ -297,7 +380,7 @@ _MARKER_LINE = re.compile(r"^(?:CLASS\s+)?" + _MARK + r"(?:\s*[-.,:;/]?\s*" + _M
 _MODEL = re.compile(r"^(?:opus|sonnet|haiku|claude-[a-z0-9][a-z0-9.-]*)(?:\[1m\])?$")
 _TOKEN_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 _TASK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
-_CHECK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,15}$")
+_CHECK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$")  # v26: 48 = kit_checklist.ID_MAX
 CHECKLIST_MAX = 20
 ABANDON_S = 7200  # v16: a running row silent this long is abandoned
 OWNER_ENV = "KIT_PROGRESS_OWNER"
@@ -382,6 +465,16 @@ def _parse_pin(pin):
     return host, port
 
 
+def entry_url(entry, url, host, port):
+    """v26: the base URL a proxy entry runs on - the variable exactly as set
+    for an unpinned entry, else http://<host>:<port>/tc-acct/<uuid> from the
+    variable's (already checked) origin."""
+    if entry and entry.get("pin"):
+        h = f"[{host}]" if ":" in host else host
+        return f"http://{h}:{port}{PIN_PATH}{entry['pin']}"
+    return url
+
+
 def check_url(url, pin=None):
     """Raise Refused unless url is plain http to a loopback host:port - and,
     when pin ("host:port" or (host, port)) is given, to exactly that one."""
@@ -413,11 +506,15 @@ def probe(host, port, timeout=2.0, connect=socket.create_connection):
                       code="proxy-unreachable") from None
 
 
-def child_env(url, bare=False, parent=None, route=None):
+def child_env(url, bare=False, parent=None, route=None, code=None):
     """The child's environment: provider switches and credentials removed, the
     proxy URL set. CLAUDE_CODE_USE_POWERSHELL_TOOL is a tool switch, not a
     provider switch, and is kept. --bare reads no OAuth, so it gets a
-    placeholder key that the proxy replaces with the pinned account."""
+    placeholder key that the proxy replaces with the pinned account.
+    v22 (KIT-V22-SIDECAR): with code given and no CLAUDE_CODE_TMPDIR in the
+    parent, the child's temp root is <sidecar root>/<CODE>/Temp/claude when
+    <sidecar root>/<CODE> exists (kit_lanes.sidecar_dir); otherwise nothing
+    is set (the v21 behaviour, never a failure)."""
     env = dict(os.environ if parent is None else parent)
     for k in list(env):
         if k in KEEP_EXACT:
@@ -439,6 +536,15 @@ def child_env(url, bare=False, parent=None, route=None):
     env[BG_OFF_ENV] = "1"
     if bare:
         env["ANTHROPIC_API_KEY"] = PLACEHOLDER_KEY
+    if code and not env.get(TMPDIR_ENV):
+        tmp = None
+        with contextlib.suppress(Exception):  # a sidecar problem never blocks a run
+            tmp = _lanes().sidecar_dir(code, "Temp")
+            if tmp is not None:
+                tmp = tmp / "claude"
+                tmp.mkdir(parents=True, exist_ok=True)
+        if tmp is not None and tmp.is_dir():
+            env[TMPDIR_ENV] = str(tmp)
     return env
 
 
@@ -448,6 +554,11 @@ def child_env(url, bare=False, parent=None, route=None):
 # default, no fallback, no automatic mode change. The kit is its only writer.
 
 ROUTE_VERSION = 1
+ROUTE_VERSIONS = (1, 2)  # v26 KIT-ROUTE-ACCOUNTS: 2 = an ordered accounts list
+ACCOUNTS_MAX = 3  # ruling 2026-10-31 decision 2: a ruled number, never a config value
+_PIN_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}"
+                     r"-[0-9a-fA-F]{12}$")
+PIN_PATH = "/tc-acct/"
 ROUTE_MODES = ("split", "single")
 ROUTE_CREDENTIALS = ".credentials.json"
 _ROUTE_KEYS = {"split": {"version", "mode"}, "single": {"version", "mode", "config_dir"}}
@@ -473,33 +584,100 @@ def _route_invalid(why):
 
 
 def check_route(doc):
-    """A parsed route document -> {"mode", ["config_dir"]}, else Refused
-    route-invalid. The config dir is checked statically (absolute, ASCII, an
-    existing directory holding the account credentials file); no secret is read
-    and no message names the path."""
+    """v26 (ruling 2026-10-31 KIT-ROUTE-ACCOUNTS): a parsed route document ->
+    {"version", "accounts": [entry, ...], "armed", "mode", ["config_dir"]},
+    else Refused route-invalid. entry = {"via": "proxy"} | {"via": "proxy",
+    "pin": <uuid>} | {"via": "config", "config_dir": <abs dir>}. A v1 file is
+    read as a list: split = one proxy entry, single = one config entry, a v1
+    fallback block = a second entry, armed as written. "mode" / "config_dir"
+    describe entry 1 (v19.1 readers). Every entry is validated, used or not;
+    no message names a pin or a path."""
     if not isinstance(doc, dict):
         raise _route_invalid("not an object")
     v = doc.get("version")
-    if type(v) is not int or v != ROUTE_VERSION:
-        raise _route_invalid(f"version must be {ROUTE_VERSION}")
+    if type(v) is not int or v not in ROUTE_VERSIONS:
+        raise _route_invalid("version must be 1 or 2")
+    if v == 1:
+        accounts, armed = _v1_accounts(doc)
+    else:
+        if set(doc) - {"fallback"} != {"version", "accounts"}:
+            raise _route_invalid("keys must be exactly accounts, version (+ optional fallback)")
+        armed = False
+        if "fallback" in doc:
+            fb = doc["fallback"]
+            if not isinstance(fb, dict) or set(fb) != {"armed"} or \
+                    type(fb.get("armed")) is not bool:
+                raise _route_invalid('fallback must be exactly {"armed": true|false}')
+            armed = fb["armed"]
+        raw = doc["accounts"]
+        if not isinstance(raw, list) or not 1 <= len(raw) <= ACCOUNTS_MAX:
+            raise _route_invalid(f"accounts must list 1 to {ACCOUNTS_MAX} entries")
+        accounts = [_check_entry(e, i) for i, e in enumerate(raw, 1)]
+    seen = set()
+    for e in accounts:
+        key = ("proxy", e.get("pin")) if e["via"] == "proxy" else (
+            "config", os.path.normcase(os.path.normpath(e["config_dir"])))
+        if key in seen:
+            raise _route_invalid("two entries name the same account")
+        seen.add(key)
+    return _route_doc(v, accounts, armed)
+
+
+def _route_doc(version, accounts, armed):
+    first = accounts[0]
+    out = {"version": version, "accounts": accounts, "armed": bool(armed),
+           "mode": _mode_of(first)}
+    if first["via"] == "config":
+        out["config_dir"] = first["config_dir"]
+    return out
+
+
+def _mode_of(entry):
+    return "split" if entry["via"] == "proxy" else "single"
+
+
+def _v1_accounts(doc):
     mode = doc.get("mode")
     if mode not in ROUTE_MODES:
         raise _route_invalid("mode must be split or single")
     if set(doc) - {"fallback"} != _ROUTE_KEYS[mode]:
         raise _route_invalid("keys must be exactly " + ", ".join(sorted(_ROUTE_KEYS[mode]))
                              + " (+ optional fallback)")
-    fb = _check_fallback(doc["fallback"], mode) if "fallback" in doc else None
-    out = _check_primary(doc, mode)
-    if fb is not None:
-        out["fallback"] = fb
-    return out
+    accounts = [_check_primary(doc, mode)]
+    armed = False
+    if "fallback" in doc:
+        fb = _check_fallback(doc["fallback"], mode)
+        accounts.append(fb)
+        armed = doc["fallback"]["armed"]
+    return accounts, armed
+
+
+def _check_entry(e, i):
+    if not isinstance(e, dict):
+        raise _route_invalid(f"entry {i} is not an object")
+    via = e.get("via")
+    if via == "proxy":
+        if set(e) == {"via"}:
+            return {"via": "proxy"}
+        if set(e) != {"via", "pin"}:
+            raise _route_invalid(f"entry {i} keys must be via (+ pin)")
+        if not isinstance(e["pin"], str) or not _PIN_RE.match(e["pin"]):
+            raise _route_invalid(f"entry {i} pin must be an account uuid")
+        return {"via": "proxy", "pin": e["pin"].lower()}
+    if via == "config":
+        if set(e) != {"via", "config_dir"}:
+            raise _route_invalid(f"entry {i} keys must be exactly config_dir, via")
+        try:
+            got = _check_primary({"config_dir": e["config_dir"]}, "single")
+        except Refused as exc:
+            raise _route_invalid(f"entry {i} " + str(exc).split(": ", 1)[-1]) from None
+        return {"via": "config", "config_dir": got["config_dir"]}
+    raise _route_invalid(f"entry {i} via must be proxy or config")
 
 
 def _check_fallback(fb, primary_mode):
-    """v20 ACCT-FALLBACK condition 1: the block is validated in full whether
-    armed or not; an invalid block refuses the whole route, never ignored.
-    Armed -> {"mode", ["config_dir"]}, validated exactly like a primary of that
-    mode; disarmed -> None."""
+    """The v1 fallback block, validated in full whether armed or not; an
+    invalid block refuses the whole route. -> the second entry."""
     if not isinstance(fb, dict):
         raise _route_invalid("fallback must be an object")
     if type(fb.get("armed")) is not bool:
@@ -512,18 +690,18 @@ def _check_fallback(fb, primary_mode):
     want = {"armed"} | (_ROUTE_KEYS[m] - {"version"})
     if set(fb) != want:
         raise _route_invalid("fallback keys must be exactly " + ", ".join(sorted(want)))
-    target = dict(fb, version=ROUTE_VERSION)
+    target = dict(fb, version=1)
     del target["armed"]
     try:
-        checked = _check_primary(target, m)
+        return _check_primary(target, m)
     except Refused as exc:
         raise _route_invalid("fallback " + str(exc).split(": ", 1)[-1]) from None
-    return checked if fb["armed"] else None
 
 
 def _check_primary(doc, mode):
+    """One v1 mode as an entry (static checks only; nothing secret is read)."""
     if mode == "split":
-        return {"mode": "split"}
+        return {"via": "proxy"}
     cd = doc.get("config_dir")
     if not isinstance(cd, str) or not cd or any(ord(c) > 127 or ord(c) < 32 for c in cd):
         raise _route_invalid("config_dir must be a non-empty ASCII path")
@@ -533,7 +711,7 @@ def _check_primary(doc, mode):
         raise _route_invalid("config_dir is not an existing directory")
     if not (Path(cd) / ROUTE_CREDENTIALS).is_file():
         raise _route_invalid("config_dir holds no account credentials file")
-    return {"mode": "single", "config_dir": cd}
+    return {"via": "config", "config_dir": cd}
 
 
 def read_route(path=None):
@@ -556,25 +734,47 @@ def read_route(path=None):
     return check_route(doc)
 
 
-def write_route(mode, config_dir=None, path=None, fallback=None, fallback_config_dir=None):
-    """`route set`: validate FIRST, then an atomic ASCII + LF write. An invalid
-    request raises Refused and leaves the existing file untouched. v20:
-    fallback= arms a fallback to the other route (fallback_config_dir names
-    its account dir when it is single); none = no block (--no-fallback). Any
-    route set ends an active fallback at once (ruling condition 5)."""
-    doc = {"version": ROUTE_VERSION, "mode": mode}
-    if mode == "single":
-        doc["config_dir"] = config_dir
-    elif config_dir is not None:
-        raise _route_invalid("split takes no config_dir")
-    if fallback is not None:
-        doc["fallback"] = {"armed": True, "mode": fallback}
-        if fallback == "single":
-            doc["fallback"]["config_dir"] = fallback_config_dir
-        elif fallback_config_dir is not None:
-            raise _route_invalid("a split fallback takes no config_dir")
-    elif fallback_config_dir is not None:
-        raise _route_invalid("fallback config_dir without a fallback")
+def parse_account(spec):
+    """`--account` value -> entry: proxy | proxy:<uuid> | config:<abs dir>."""
+    s = str(spec or "")
+    if s == "proxy":
+        return {"via": "proxy"}
+    if s.startswith("proxy:"):
+        return {"via": "proxy", "pin": s[len("proxy:"):]}
+    if s.startswith("config:"):
+        return {"via": "config", "config_dir": s[len("config:"):]}
+    raise _route_invalid("--account must be proxy, proxy:<uuid> or config:<dir>")
+
+
+def route_doc_for(accounts, armed):
+    """The file document for a list: VERSION 1 whenever v1 can say it (one
+    entry, or two of different via with no pin), else version 2 (ruling 7b)."""
+    accounts = list(accounts)
+    pins = any(e.get("pin") for e in accounts)
+    if not pins and len(accounts) == 1:
+        e = accounts[0]
+        doc = {"version": 1, "mode": _mode_of(e)}
+        if e["via"] == "config":
+            doc["config_dir"] = e["config_dir"]
+        return doc
+    if not pins and len(accounts) == 2 and accounts[0]["via"] != accounts[1]["via"]:
+        doc = route_doc_for(accounts[:1], False)
+        fb = {"armed": bool(armed), "mode": _mode_of(accounts[1])}
+        if accounts[1]["via"] == "config":
+            fb["config_dir"] = accounts[1]["config_dir"]
+        doc["fallback"] = fb
+        return doc
+    doc = {"version": 2, "accounts": [dict(e) for e in accounts]}
+    if armed:
+        doc["fallback"] = {"armed": True}
+    return doc
+
+
+def write_accounts(accounts, armed=False, path=None):
+    """v26 `route set --account ...`: validate FIRST, then an atomic ASCII + LF
+    write (v1 when expressible). An invalid request raises Refused and leaves
+    the file untouched. Any route set ends an active fallback at once."""
+    doc = route_doc_for(accounts, armed)
     check_route(doc)
     p = route_path() if path is None else Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -584,35 +784,80 @@ def write_route(mode, config_dir=None, path=None, fallback=None, fallback_config
     return read_route(p)
 
 
+def write_route(mode, config_dir=None, path=None, fallback=None, fallback_config_dir=None):
+    """v19.1 / v20 `route set split|single`: the same validated v1 write."""
+    if mode not in ROUTE_MODES:
+        raise _route_invalid("mode must be split or single")
+    if mode == "split" and config_dir is not None:
+        raise _route_invalid("split takes no config_dir")
+    accounts = [{"via": "proxy"} if mode == "split"
+                else {"via": "config", "config_dir": config_dir}]
+    if fallback is not None:
+        if fallback not in ROUTE_MODES:
+            raise _route_invalid("fallback.mode must be split or single")
+        if fallback == mode:
+            raise _route_invalid("fallback.mode must be the other route")
+        if fallback == "split" and fallback_config_dir is not None:
+            raise _route_invalid("a split fallback takes no config_dir")
+        accounts.append({"via": "proxy"} if fallback == "split"
+                        else {"via": "config", "config_dir": fallback_config_dir})
+    elif fallback_config_dir is not None:
+        raise _route_invalid("fallback config_dir without a fallback")
+    for e in accounts:
+        if e["via"] == "config" and not isinstance(e["config_dir"], str):
+            raise _route_invalid("config_dir must be a non-empty ASCII path")
+    return write_accounts(accounts, armed=fallback is not None, path=path)
+
+
+def describe_accounts(accounts):
+    """`1 proxy, 2 config` - positions and via only, never a pin or a dir."""
+    return ", ".join(f"{i} {e['via']}" for i, e in enumerate(accounts, 1))
+
+
 def route_show(path=None):
-    """{"mode", "valid", "reason"} - the mode only, never the path. v20: an
-    armed route adds "fallback" (its mode), "fallback_active" and
-    "fallback_until"; a route without an armed block reads exactly as v19.1."""
+    """{"mode", "valid", "reason", ...} - positions and via only, never a pin
+    or a path. v26: "version", "accounts" (`1 proxy, 2 config`), "armed",
+    "entry" (the one the next spawn uses), "exhausted" [{entry, until}];
+    "bare": "degraded" when entry 1 is a config entry. The v20 keys stay:
+    "fallback" (entry 2's mode), "fallback_active", "fallback_until"."""
     try:
         r = read_route(path)
     except Refused as exc:
         return {"mode": None, "valid": False, "reason": str(exc)[:200], "code": exc.code}
     doc = {"mode": r["mode"], "valid": True, "reason": None}
-    if r.get("fallback"):
-        doc["fallback"] = r["fallback"]["mode"]
+    if r["mode"] == "single":
+        doc["bare"] = "degraded"
+    if r["version"] == 2 or len(r["accounts"]) > 1:
+        doc["version"] = r["version"]
+        doc["accounts"] = describe_accounts(r["accounts"])
+        doc["armed"] = r["armed"]
+    if r["armed"] and len(r["accounts"]) > 1:
+        doc["fallback"] = _mode_of(r["accounts"][1])
         doc["fallback_active"], doc["fallback_until"] = False, None
         try:
             st = _read_fallback_state(fallback_state_path(path))
         except Refused:
             st = None
-        if st and (st["from"], st["to"]) == (r["mode"], r["fallback"]["mode"]) \
-                and _now() < st["until"]:
-            doc["fallback_active"], doc["fallback_until"] = True, _iso(st["until"])
+        now = _now()
+        live = [x for x in (st or []) if x["until"] > now and x["entry"] <= len(r["accounts"])]
+        doc["exhausted"] = [{"entry": x["entry"], "until": _iso(x["until"])} for x in live]
+        used = _first_free(len(r["accounts"]), live)
+        doc["entry"] = used
+        if used != 1 and live:
+            doc["fallback_active"] = True
+            doc["fallback_until"] = _iso(min(x["until"] for x in live if x["entry"] < (used or 99)))
     return doc
 
 
-# ---------------------------------------------------------------- fallback (v20)
-# a recorded ruling. ARMED only by the route
-# file's block; the ONE trigger is a confirmed 7-day usage-limit refusal of the
-# primary route with a parsed reset; the run that hit it ends ("limit", no in-run
-# retry) and the NEXT spawns use the other route until that reset; a limit on the
-# fallback halts until the earlier reset; never a third route. No usage
-# percentage is read anywhere. Every start, halt and end writes one ledger line.
+# ---------------------------------------------------------------- fallback (v20, v26)
+# Rulings a recorded ruling and (v26, along the
+# list) 2026-10-31-kit-route-accounts.md. ARMED only by the route file; the ONE
+# trigger is a confirmed 7-day usage-limit refusal of the entry in use with a
+# parsed reset; the run that hit it ends ("limit", no in-run retry) and the
+# NEXT spawns use the next listed entry not exhausted; an entry is returned to
+# only at its own reset; all exhausted = halt until the earliest reset; never
+# past the end of the list. No usage percentage is read anywhere. Every
+# exhaust, return, halt and end writes one ledger line (positions only).
 
 FALLBACK_STATE = "headless_fallback.json"
 FALLBACK_LEDGER = "headless_fallback.jsonl"
@@ -666,32 +911,47 @@ def _epoch_of(value):
 
 
 def _read_fallback_state(path=None):
-    """The state with epoch times, None when absent; an unreadable or malformed
-    file refuses (route-invalid, fail closed)."""
+    """v26: the exhausted entries [{"entry", "since", "until"}] (epoch times),
+    None when absent; an unreadable or malformed file refuses (route-invalid,
+    fail closed). A v20 file {"from", "to", "since", "until"[, "halt_until"]}
+    is read as entry 1 exhausted until "until" (and entry 2 until
+    "halt_until")."""
     p = fallback_state_path() if path is None else Path(path)
     if not os.path.lexists(p):
         return None
     try:
         doc = json.loads(p.read_text(encoding="ascii"))
-        if not isinstance(doc, dict) or not (
-                _STATE_KEYS <= set(doc) <= _STATE_KEYS | {"halt_until"}):
+        if not isinstance(doc, dict):
+            raise ValueError("doc")
+        if set(doc) == {"exhausted"}:
+            rows = doc["exhausted"]
+            if not isinstance(rows, list):
+                raise ValueError("rows")
+            out = []
+            for x in rows:
+                if not isinstance(x, dict) or set(x) != {"entry", "since", "until"} or \
+                        type(x["entry"]) is not int or not 1 <= x["entry"] <= ACCOUNTS_MAX:
+                    raise ValueError("row")
+                out.append({"entry": x["entry"], "since": _epoch_of(x["since"]),
+                            "until": _epoch_of(x["until"])})
+            return out
+        if not _STATE_KEYS <= set(doc) <= _STATE_KEYS | {"halt_until"}:
             raise ValueError("keys")
         if doc["from"] not in ROUTE_MODES or doc["to"] not in ROUTE_MODES:
             raise ValueError("modes")
-        out = {"from": doc["from"], "to": doc["to"], "since": _epoch_of(doc["since"]),
-               "until": _epoch_of(doc["until"])}
+        since = _epoch_of(doc["since"])
+        out = [{"entry": 1, "since": since, "until": _epoch_of(doc["until"])}]
         if "halt_until" in doc:
-            out["halt_until"] = _epoch_of(doc["halt_until"])
+            out.append({"entry": 2, "since": since, "until": _epoch_of(doc["halt_until"])})
         return out
     except (OSError, ValueError, TypeError, KeyError, UnicodeError):
         raise _route_invalid("fallback state unreadable - `route set` or delete it") from None
 
 
-def _write_fallback_state(st, route_file=None):
-    doc = {"since": _iso(st["since"]), "until": _iso(st["until"]),
-           "from": st["from"], "to": st["to"]}
-    if st.get("halt_until"):
-        doc["halt_until"] = _iso(st["halt_until"])
+def _write_fallback_state(rows, route_file=None):
+    rows = sorted(rows, key=lambda r: r["entry"])
+    doc = {"exhausted": [{"entry": x["entry"], "since": _iso(x["since"]),
+                          "until": _iso(x["until"])} for x in rows]}
     _atomic_write(fallback_state_path(route_file), json.dumps(doc, sort_keys=True) + "\n",
                   verify=True)
 
@@ -699,47 +959,98 @@ def _write_fallback_state(st, route_file=None):
 def _end_fallback(reason, route_file=None):
     p = fallback_state_path(route_file)
     with contextlib.suppress(OSError, Refused):
-        st = _read_fallback_state(p)
-        if st:
-            _ledger("end", route_file, reason=reason, **{"from": st["from"], "to": st["to"]})
+        if _read_fallback_state(p) is not None:
+            _ledger("end", route_file, reason=reason)
     with contextlib.suppress(FileNotFoundError):
         p.unlink()
 
 
+def _first_free(n, rows):
+    """The first entry position 1..n not exhausted in rows, else None."""
+    gone = {x["entry"] for x in rows or ()}
+    return next((i for i in range(1, n + 1) if i not in gone), None)
+
+
+def entry_view(route, index):
+    """The run-time view of one entry: {"mode", "via", "entry", ["pin"],
+    ["config_dir"]} - "mode" split for proxy, single for config."""
+    e = route["accounts"][index - 1]
+    out = {"mode": _mode_of(e), "via": e["via"], "entry": index}
+    if e.get("pin"):
+        out["pin"] = e["pin"]
+    if e["via"] == "config":
+        out["config_dir"] = e["config_dir"]
+    return out
+
+
+def exhaust_entry(route, index, until, route_file=None):
+    """Mark entry `index` exhausted until `until` (epoch): one `exhaust`
+    ledger line, and one `halt` line when no entry is left."""
+    rows = [x for x in (_read_fallback_state(fallback_state_path(route_file)) or [])
+            if x["entry"] != index]
+    rows.append({"entry": index, "since": _now(), "until": float(until)})
+    _write_fallback_state(rows, route_file)
+    _ledger("exhaust", route_file, entry=index, until=_iso(until))
+    if _first_free(len(route["accounts"]), rows) is None:
+        _ledger("halt", route_file, until=_iso(min(x["until"] for x in rows)))
+    return rows
+
+
 def start_fallback(route, until, route_file=None):
-    """Move the NEXT spawns to the armed fallback until `until` (epoch)."""
-    fb = route.get("fallback")
-    if not fb:
+    """v20 name: entry 1 exhausted until `until` - the next spawns move on."""
+    if not route.get("armed") or len(route.get("accounts") or ()) < 2:
         raise Refused("no armed fallback in the route", code="route-invalid")
-    st = {"since": _now(), "until": float(until), "from": route["mode"], "to": fb["mode"]}
-    _write_fallback_state(st, route_file)
-    _ledger("start", route_file, until=_iso(until), **{"from": st["from"], "to": st["to"]})
-    return st
+    return exhaust_entry(route, 1, until, route_file)
+
+
+def as_accounts(route):
+    """A route dict in the v26 shape. A v19.1/v20-shaped dict ({"mode",
+    ["config_dir"], ["fallback": {"mode", ...}]}, e.g. from a test or an older
+    caller's route_source) is mapped the same way a v1 file is read."""
+    if "accounts" in route:
+        return route
+    acc = [{"via": "proxy"} if route["mode"] == "split"
+           else {"via": "config", "config_dir": route["config_dir"]}]
+    fb = route.get("fallback")
+    if fb:
+        acc.append({"via": "proxy"} if fb["mode"] == "split"
+                   else {"via": "config", "config_dir": fb["config_dir"]})
+    return _route_doc(1, acc, bool(fb))
 
 
 def effective_route(route, route_file=None):
-    """(route to run on, falling_back), the state read fresh. Ends a fallback
-    whose reset passed or that no longer matches the route; refuses
-    "fallback-halted" while a limit on the fallback route holds."""
+    """(entry view to run on, falling_back), the state read fresh. Disarmed:
+    always entry 1 (a leftover state ends). Armed: the first entry, in list
+    order, not exhausted; an entry whose reset passed is returned to (one
+    `return` line); every entry exhausted refuses "fallback-halted" until the
+    earliest reset. Never past the end of the list."""
+    route = as_accounts(route)
     p = fallback_state_path(route_file)
+    n = len(route["accounts"])
     if not os.path.lexists(p):
-        return route, False
-    fb = route.get("fallback")
-    if fb is None:
+        return entry_view(route, 1), False
+    if not route.get("armed") or n < 2:
         _end_fallback("disarmed", route_file)
-        return route, False
-    st = _read_fallback_state(p)
-    if (st["from"], st["to"]) != (route["mode"], fb["mode"]):
+        return entry_view(route, 1), False
+    rows = _read_fallback_state(p)
+    if any(x["entry"] > n for x in rows):
         _end_fallback("route changed", route_file)
-        return route, False
+        return entry_view(route, 1), False
     now = _now()
-    if now >= st["until"]:
+    live = [x for x in rows if x["until"] > now]
+    for x in rows:
+        if x not in live:
+            _ledger("return", route_file, entry=x["entry"])
+    if not live:
         _end_fallback("reset", route_file)
-        return route, False
-    if st.get("halt_until") and now < st["halt_until"]:
-        raise Refused("usage limit on the fallback route too - halted until "
-                      + str(_iso(st["halt_until"])), code="fallback-halted")
-    return dict(fb), True
+        return entry_view(route, 1), False
+    if len(live) != len(rows):
+        _write_fallback_state(live, route_file)
+    use = _first_free(n, live)
+    if use is None:
+        raise Refused("usage limit on every listed account - halted until "
+                      + str(_iso(min(x["until"] for x in live))), code="fallback-halted")
+    return entry_view(route, use), use != 1
 
 
 def _zone(name):
@@ -824,23 +1135,16 @@ def classify_limit(text, now=None):
     return found
 
 
-def _limit_after_run(route, falling_back, cls, route_file=None):
-    """After a run whose own message classify_limit() read as a limit: on the
-    fallback route, halt until the earlier reset; on the primary, start the
-    fallback only for an armed route, a 7-day window and a parsed reset."""
-    if falling_back:
-        st = _read_fallback_state(fallback_state_path(route_file))
-        if not st:
-            return
-        halt = st["until"]
-        if cls.get("until") and cls["until"] < halt:
-            halt = cls["until"]
-        st["halt_until"] = halt
-        _write_fallback_state(st, route_file)
-        _ledger("halt", route_file, until=_iso(halt), window=cls["window"] or "unknown",
-                **{"from": st["from"], "to": st["to"]})
-    elif route and route.get("fallback") and cls["window"] == "7d" and cls.get("until"):
-        start_fallback(route, cls["until"], route_file)
+def _limit_after_run(route, falling_back, cls, route_file=None, entry=None):
+    """After a run whose own message classify_limit() read as a limit: only an
+    ARMED route with more than one entry, a 7-day window and a parsed reset
+    marks the entry in use exhausted until that reset (v26: along the list;
+    the next spawn moves to the next listed entry, or halts at the end). A
+    5-hour, unknown-window or reset-less limit keeps the entry."""
+    if not route or not route.get("armed") or len(route.get("accounts") or ()) < 2:
+        return
+    if cls.get("window") == "7d" and cls.get("until"):
+        exhaust_entry(route, entry or (2 if falling_back else 1), cls["until"], route_file)
 
 
 # ---------------------------------------------------------------- note rules
@@ -1215,7 +1519,8 @@ def _iso(epoch):
 
 
 def write_status(root, code, state, task, task_started, budget, task_eta_s=None,
-                 next_tick=None, clock=time.time, reason=None, route=None, fallback=False):
+                 next_tick=None, clock=time.time, reason=None, route=None, fallback=False,
+                 entry=None):
     """Schema 1 of ops/loop/control/inbox_status.json (SUPERVISOR 0915 section 1).
     state is one of STATES. v14: an optional "reason" (one line, at most 80
     chars) says why a run is blocked or refused; absent otherwise."""
@@ -1233,15 +1538,17 @@ def write_status(root, code, state, task, task_started, budget, task_eta_s=None,
         doc["route"] = route
     if fallback:  # v20: the ACCT-FALLBACK marker, only while falling back
         doc["fallback"] = True
+    if type(entry) is int and 1 <= entry <= ACCOUNTS_MAX:  # v26: position only
+        doc["entry"] = entry
     _atomic_write(Path(root) / STATUS_REL, json.dumps(doc, indent=1))
     return doc
 
 
 def _status_quietly(root, code, state, task, budget, started=None, reason=None, route=None,
-                    fallback=False):
+                    fallback=False, entry=None):
     with contextlib.suppress(OSError):
         write_status(root, code, state, task, started, budget, reason=reason, route=route,
-                     fallback=fallback)
+                     fallback=fallback, entry=entry)
 
 
 def _refused_status(root, code, budget, exc):
@@ -1587,6 +1894,29 @@ def run_kind(note, kind=None, head=""):
     return "inbox" if _NOTE_SENDER.search(base) else "build"
 
 
+def _cost(r):
+    """v27: the result's total_cost_usd as a number, else None."""
+    c = r.get("total_cost_usd")
+    return c if isinstance(c, (int, float)) and not isinstance(c, bool) else None
+
+
+STDERR_TAIL_LINES = 20  # v27 KIT-HEADLESS-STDERR
+STDERR_TAIL_CHARS = 4000
+
+
+def stderr_tail(text, lines=STDERR_TAIL_LINES, cap=STDERR_TAIL_CHARS):
+    """v27 KIT-HEADLESS-STDERR: the last `lines` non-empty lines of a failed
+    child's stderr, ASCII-escaped by the ledger's JSON, at most `cap` chars
+    (the end kept). None when there is nothing."""
+    if isinstance(text, bytes):
+        text = text.decode("utf-8", "replace")
+    if not isinstance(text, str):
+        return None
+    rows = [x.rstrip() for x in text.splitlines() if x.strip()]
+    tail = "\n".join(rows[-lines:])
+    return tail[-cap:] or None
+
+
 def usage_line(result, code, note, model, effort, bare, rc, duration_s, error=None,
                kind=None, slot=None, route=None, fallback=False, unit=None):
     r = result if isinstance(result, dict) else {}
@@ -1599,7 +1929,12 @@ def usage_line(result, code, note, model, effort, bare, rc, duration_s, error=No
         "cache_creation": u.get("cache_creation_input_tokens"),
         "cache_read": u.get("cache_read_input_tokens"),
         "output_tokens": u.get("output_tokens"),
-        "cost_usd": r.get("total_cost_usd"),
+        # v27 KIT-USAGE-UNPRICED: a timed-out run has no price (null, priced false).
+        "cost_usd": None if error == "timeout" else _cost(r),
+        "priced": error != "timeout" and _cost(r) is not None,
+        # v27 KIT-USAGE-SESSIONID: the child's session id from its result.
+        "session_id": (r.get("session_id")[:64] if isinstance(r.get("session_id"), str)
+                       and r.get("session_id") else None),
         "num_turns": r.get("num_turns"),
         "is_error": r.get("is_error") if isinstance(r.get("is_error"), bool) else None,
         "subtype": r.get("subtype") if isinstance(r.get("subtype"), str) else None,
@@ -1720,7 +2055,7 @@ class _WinJob:
     the tree. A child that asks for breakaway may leave (BREAKAWAY_OK); none is
     forced out. close(kill=False) clears kill-on-close first, so a run that
     ended normally leaves its descendants as before. create() returns None
-    when any call fails; the caller then falls back to taskkill only."""
+    when any call fails; the caller then ends the child alone."""
 
     def __init__(self, k32, handle, info):
         self._k32, self.handle, self._info = k32, handle, info
@@ -1813,8 +2148,9 @@ class _WinJob:
 
 def _kill_tree(proc, grace=5.0, job=None):
     """Kill the child and everything it started. Windows: v21 (SC-1231) the
-    run's job object first (it reaches an orphaned grandchild that taskkill /T
-    misses), then taskkill /T /F as before.
+    run's job object first (it holds the whole tree, an orphaned grandchild
+    included), then taskkill /F on the child alone, never a /T walk: that
+    follows reused parent pids into unrelated processes.
     POSIX (v10, SA 1915): the child leads its own session (launch() starts it
     with start_new_session=True), so SIGTERM its process group, wait `grace`
     seconds, then SIGKILL the group. proc.kill() stays the last resort."""
@@ -1826,7 +2162,7 @@ def _kill_tree(proc, grace=5.0, job=None):
             _find_on_path("taskkill")
         if tk:
             with contextlib.suppress(OSError, subprocess.SubprocessError):
-                subprocess.run([tk, "/T", "/F", "/PID", str(proc.pid)], capture_output=True,
+                subprocess.run([tk, "/F", "/PID", str(proc.pid)], capture_output=True,
                                timeout=30, creationflags=_NO_WINDOW)
     else:
         import signal
@@ -1968,18 +2304,31 @@ def _result_from_log(log_path):
     return found
 
 
+_LANES_LOCK = threading.Lock()
+
+
 def _lanes():
     """The sibling kit module kit_lanes.py, loaded by path (ops/kit is
     not a package in every tree)."""
     name = f"kit_mod_lanes_v{KIT_VERSION}"
-    if name in sys.modules:
-        return sys.modules[name]
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name("kit_lanes.py"))
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[name] = mod
-    spec.loader.exec_module(mod)
-    return mod
+    mod = sys.modules.get(name)
+    if mod is not None:
+        return mod
+    # v24 (KIT-LANES-RACE): one loader at a time, and the module is published
+    # in sys.modules only AFTER exec_module finished, so a concurrent caller
+    # (kit_rollout's per-tree threads) never sees a half-loaded module; a
+    # failed load publishes nothing.
+    with _LANES_LOCK:
+        mod = sys.modules.get(name)
+        if mod is not None:
+            return mod
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            name, Path(__file__).with_name("kit_lanes.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        sys.modules[name] = mod
+        return mod
 
 
 def _governor(root, code, governor, governor_timeout, governor_root, budget, note,
@@ -1996,8 +2345,75 @@ def _governor(root, code, governor, governor_timeout, governor_root, budget, not
         on_wait=lambda: _status_quietly(root, code, "backoff", "Waiting for Slot", budget))
 
 
+def _ledger_root(root):
+    with contextlib.suppress(OSError, ValueError):
+        return main_checkout(root)
+    return Path(root)
+
+
+def tree_budget(root, code):
+    """v26: the tree's RunBudget - in the main checkout (RM-798, a worktree
+    spawn counts against its tree) with the tree's cap from the machine config
+    (kit_lanes.runs_cap: 120 unless SUPERVISOR set 1..500 for this code)."""
+    cap = RUNS_CAP
+    with contextlib.suppress(Exception):  # a config problem keeps the default
+        cap = int(_lanes().runs_cap(code))
+    if not 1 <= cap <= RUNS_CAP_MAX:
+        cap = RUNS_CAP
+    return RunBudget(_ledger_root(root) / BUDGET_REL, cap=cap)
+
+
+def cap_hit(code, budget, route_file=None):
+    """v26: one `cap-hit` line on the machine ledger (beside the route file):
+    tree, count, cap, window start, next free time. Returns the next free time."""
+    try:
+        starts = budget._load()
+    except (BudgetUnreadable, OSError):
+        starts = []
+    nxt = _iso(starts[0] + budget.window) if starts else None
+    _ledger("cap-hit", route_file, tree=str(code), count=len(starts), cap=budget.cap,
+            window_start=_iso(budget.clock() - budget.window), next_free=nxt)
+    return nxt
+
+
+def budget_reset(root, code, reason, environ=None, route_file=None):
+    """v26 `budget reset`: the recorded reset of a tree's run window, on the
+    operator's word only. Refuses inside a headless child and on an empty
+    reason. Under the budget lock: archives the in-window starts to
+    headless_budget.reset-<date>.json beside the budget file, writes a
+    `cap-reset` ledger line (count before, window start, reason) and empties
+    the window. headless_usage.jsonl is never touched. Returns the record."""
+    env = os.environ if environ is None else environ
+    # the child markers child_env() sets (kit_board.is_headless reads the same)
+    if env.get(BG_OFF_ENV) == "1" or env.get("KIT_SUBAGENT_FIRST") == "off":
+        raise Refused("budget reset is interactive only - a headless run never resets "
+                      "its own cap", code="reset-headless")
+    why = " ".join(str(reason or "").split())
+    if not why:
+        raise Refused("budget reset needs --reason (the operator's words)",
+                      code="reset-no-reason")
+    budget = tree_budget(root, code)
+    with budget._lock():
+        starts = budget._load()  # an unreadable file refuses (BudgetUnreadable)
+        now = budget.clock()
+        day = time.strftime("%Y-%m-%d", time.localtime(now))
+        arc = budget.path.with_name(f"headless_budget.reset-{day}.json")
+        prior = []
+        with contextlib.suppress(OSError, ValueError, KeyError, TypeError):
+            prior = json.loads(arc.read_text(encoding="ascii"))["resets"]
+        rec = {"ts": _iso(now), "tree": str(code), "count": len(starts), "cap": budget.cap,
+               "window_start": _iso(now - budget.window), "reason": why[:200],
+               "starts": starts}
+        _atomic_write(arc, json.dumps({"resets": [*prior, rec]}, indent=1) + "\n")
+        _atomic_write(budget.path, json.dumps({"starts": []}))
+    _ledger("cap-reset", route_file, tree=str(code), count=len(starts), cap=budget.cap,
+            window_start=rec["window_start"], reason=why[:200])
+    return {k: v for k, v in rec.items() if k != "starts"}
+
+
 def _finish(root, code, budget, line, limit=False):
-    log = Path(root) / USAGE_REL
+    # v26 RM-798: the main checkout's ledger, also for a spawn from a worktree.
+    log = _ledger_root(root) / USAGE_REL
     with contextlib.suppress(OSError):
         log.parent.mkdir(parents=True, exist_ok=True)
         with log.open("a", encoding="ascii", newline="\n") as fh:
@@ -2082,7 +2498,7 @@ def spawn(root, code, prompt, note="", writes_code=False, bare=False,
     the resumable unit the run works on; the usage line records it as "unit"."""
     root = Path(root)
     route_source = read_route if route_source is None else route_source
-    budget = RunBudget(root / BUDGET_REL)
+    budget = tree_budget(root, code)
     run = _run if run is None else run
     if halt_file and os.path.lexists(halt_file):  # any entry halts, dangling links too
         _status_quietly(root, code, "halted", "Halted", budget)
@@ -2099,6 +2515,7 @@ def spawn(root, code, prompt, note="", writes_code=False, bare=False,
         primary = route_source()
         # v20 ACCT-FALLBACK: the state is read fresh too; an armed fallback whose
         # 7-day trigger fired moves this spawn to the other route until the reset.
+        primary = as_accounts(primary)
         route, falling_back = effective_route(primary)
         if not str(note or "").strip():
             raise Refused("empty note label - every run names its note or task",
@@ -2115,12 +2532,22 @@ def spawn(root, code, prompt, note="", writes_code=False, bare=False,
             raise Refused(f"prompt over {ARGV_PROMPT_MAX} chars in argv - pass stdin=True")
         url = url_source()
         host, port = check_url(url, pin)  # both routes: the variable is the kill switch
+        degraded = False
         if route["mode"] == "single":
             if bare:
-                raise Refused("--bare refused on the single route (it reads no OAuth)",
-                              code="route-bare")
+                # v22 (KIT-V22-BARE): --bare reads no OAuth and the single route
+                # has no proxy to swap in the pinned key, so a bare child could
+                # not authenticate. It is DEGRADED to the other lean form of
+                # SHARED RULES 10 (strict MCP + project settings), which loads
+                # the tree's hooks too - never fewer floors than --bare. The
+                # rules file still reaches the child; the usage line says so.
+                bare, degraded = False, True
+                if rules_file:
+                    extra = [*extra, "--append-system-prompt-file", str(rules_file)]
         else:
             probe(host, port, connect=connect)
+            # v26: a pinned proxy entry = the variable's origin + /tc-acct/<uuid>
+            url = entry_url(route, url, host, port)
         argv = build_argv(exe_source(), prompt, model, effort, bare, rules_file, extra,
                           stdin=stdin, persist=persist, setting_sources=setting_sources,
                           output_format="stream-json" if log_path else "json",
@@ -2143,13 +2570,14 @@ def spawn(root, code, prompt, note="", writes_code=False, bare=False,
         return _spawn_slotted(root, code, prompt, note, bare, budget, run, url, argv,
                               model, effort, cwd, stdin, timeout, log_path,
                               return_stderr, slot, kind, stdin_data, slot_id,
-                              progress_task, route, (primary, falling_back), unit_id)
+                              progress_task, route, (primary, falling_back, route), unit_id,
+                              degraded)
 
 
 def _spawn_slotted(root, code, prompt, note, bare, budget, run, url, argv, model,
                    effort, cwd, stdin, timeout, log_path, return_stderr, slot,
                    kind=None, stdin_data=None, slot_id=None, progress_task=None,
-                   route=None, fb=(None, False), unit_id=None):
+                   route=None, fb=(None, False), unit_id=None, degraded=False):
     """The v5 run body, entered only once a governor slot (if any) is held."""
     try:
         counted = budget.start()
@@ -2161,14 +2589,20 @@ def _spawn_slotted(root, code, prompt, note, bare, budget, run, url, argv, model
         raise Refused(f"budget write failed: {exc.__class__.__name__}",
                       code="budget-write-failed") from None
     if not counted:
-        _status_quietly(root, code, "limit", "Turn Limit Reached", budget)
+        # v26 KIT-SI-RUNCAP: a cap hit refuses, one cap-hit line on the machine
+        # ledger, status refused "run cap" with the next free time.
+        nxt = cap_hit(code, budget)
+        _status_quietly(root, code, "refused", REFUSED_TASK, budget,
+                        reason=f"run cap {budget.used()}/{budget.cap}, next free {nxt or '?'}")
         raise Refused(f"run budget exhausted ({budget.used()}/{budget.cap})",
                       code="budget-spent")
     started = time.time()
     mode = route["mode"] if route else None
     _status_quietly(root, code, "running", "Running Session", budget, started, route=mode,
+                    entry=route.get("entry") if route else None,
                     fallback=fb[1])
-    kw = {"cwd": str(Path(cwd) if cwd else root), "env": child_env(url, bare, route=route),
+    kw = {"cwd": str(Path(cwd) if cwd else root),
+          "env": child_env(url, bare, route=route, code=code),
           "text": True, "encoding": "utf-8", "errors": "replace", "timeout": timeout,
           "creationflags": _NO_WINDOW}
     if stdin:
@@ -2191,7 +2625,7 @@ def _spawn_slotted(root, code, prompt, note, bare, budget, run, url, argv, model
     try:
         return _spawn_body(root, code, note, bare, budget, run, argv, model, effort,
                            log_path, return_stderr, slot, kind, slot_name, kw, marked,
-                           started, mode, fb, unit_id)
+                           started, mode, fb, unit_id, degraded)
     finally:
         _close_child_rows(root, cwd, child["pid"], progress_task)
 
@@ -2214,9 +2648,17 @@ def _close_child_rows(root, cwd, pid, progress_task):
             close_progress(tops[-1] if cwd else tops[0], progress_task)
 
 
+def _entry_fields(line, fb):
+    """v26: usage line "entry" (1-based position) and "pinned" - never the pin."""
+    ent = fb[2] if len(fb) > 2 else None
+    line["entry"] = ent.get("entry") if isinstance(ent, dict) else None
+    line["pinned"] = bool(ent.get("pin")) if isinstance(ent, dict) else False
+    return line
+
+
 def _spawn_body(root, code, note, bare, budget, run, argv, model, effort, log_path,
                 return_stderr, slot, kind, slot_name, kw, marked, started, route=None,
-                fb=(None, False), unit_id=None):
+                fb=(None, False), unit_id=None, degraded=False):
     proc, error = None, None
     try:
         with contextlib.ExitStack() as stack:
@@ -2231,21 +2673,30 @@ def _spawn_body(root, code, note, bare, budget, run, argv, model, effort, log_pa
     except subprocess.TimeoutExpired:
         error = "timeout"
     except BaseException as exc:
-        _finish(root, code, budget, usage_line(None, code, note, model, effort, bare, None,
-                                               time.time() - started, type(exc).__name__,
-                                               kind, slot_name, route, fb[1], unit_id))
+        _finish(root, code, budget, _entry_fields(
+            usage_line(None, code, note, model, effort, bare, None, time.time() - started,
+                       type(exc).__name__, kind, slot_name, route, fb[1], unit_id), fb))
         raise
     if log_path:
         result = _result_from_log(log_path)
     else:
         result = _json_or_none(getattr(proc, "stdout", None))
     rc = getattr(proc, "returncode", None) if proc is not None else None
+    run_error = error  # None, or the run never finished ("timeout")
+    if run_error is None and rc not in (0, None):
+        # v27 KIT-HEADLESS-STDERR: a failed run's row names why (stderr tail).
+        error = stderr_tail(getattr(proc, "stderr", None)) or f"rc {rc}"
     line = usage_line(result, code, note, model, effort, bare, rc,
                       time.time() - started, error, kind, slot_name, route, fb[1], unit_id)
     line["governor_slot"] = Path(slot).name if slot else None
+    _entry_fields(line, fb)
+    if degraded:
+        line["bare_degraded"] = True  # v22: asked --bare, ran lean on single
+    if kw.get("env", {}).get(TMPDIR_ENV):
+        line["tmpdir"] = kw["env"][TMPDIR_ENV]  # v22: the child's temp root
     line["child_marked"] = marked["ok"]
     cls = None
-    if error is None and proc is not None and (rc not in (0, None) or line["is_error"]):
+    if run_error is None and proc is not None and (rc not in (0, None) or line["is_error"]):
         # v20: the child's OWN limit message (result text, then stderr) - only of
         # a failed run; a timeout or a successful run's text is never read.
         res = result.get("result") if isinstance(result, dict) else None
@@ -2254,7 +2705,8 @@ def _spawn_body(root, code, note, bare, budget, run, argv, model, effort, log_pa
     if cls:
         line["limit"] = cls["window"] or "unknown"
         with contextlib.suppress(OSError, Refused):
-            _limit_after_run(fb[0], fb[1], cls)
+            _limit_after_run(fb[0], fb[1], cls,
+                             entry=(fb[2] or {}).get("entry") if len(fb) > 2 else None)
     _finish(root, code, budget, line, limit=bool(cls))
     line["result"] = result.get("result") if isinstance(result, dict) else None
     line["receipt"] = result if isinstance(result, dict) else None
@@ -2266,6 +2718,7 @@ def _spawn_body(root, code, note, bare, budget, run, argv, model, effort, log_pa
 # ---------------------------------------------------------------- CLI (v10)
 
 CLI_OK, CLI_USAGE, CLI_REFUSED, CLI_TIMEOUT = 0, 2, 3, 4
+_ARM = "<arm>"  # v26: the bare --fallback switch (never a valid mode)
 PERMISSION_MODES = ("acceptEdits", "bypassPermissions", "default", "dontAsk", "plan")
 
 
@@ -2299,10 +2752,22 @@ def main(argv=None, spawn_fn=None, stdin=None, stdout=None):
     rsub = rp.add_subparsers(dest="rcmd", required=True)
     rsub.add_parser("show")
     rs = rsub.add_parser("set")
-    rs.add_argument("mode", choices=ROUTE_MODES)
+    rs.add_argument("mode", nargs="?")
     rs.add_argument("--config-dir")
-    rs.add_argument("--fallback", choices=ROUTE_MODES)
+    # v26: with --account, --fallback is a bare switch; with a mode, the v20 value
+    rs.add_argument("--fallback", nargs="?", const=_ARM)
     rs.add_argument("--no-fallback", action="store_true")
+    rs.add_argument("--account", action="append", default=[],
+                    help="proxy | proxy:<uuid> | config:<dir>, in list order (1-3)")
+    bp = sub.add_parser("budget")
+    bsub = bp.add_subparsers(dest="bcmd", required=True)
+    bs = bsub.add_parser("show")
+    bs.add_argument("--root", default=".")
+    bs.add_argument("--code", required=True)
+    br = bsub.add_parser("reset")
+    br.add_argument("--root", default=".")
+    br.add_argument("--code", required=True)
+    br.add_argument("--reason", required=True)
     pp = sub.add_parser("progress")
     pp.add_argument("--root", required=True)
     pp.add_argument("--task", required=True)
@@ -2323,12 +2788,26 @@ def main(argv=None, spawn_fn=None, stdin=None, stdout=None):
             try:
                 if args.fallback and args.no_fallback:
                     raise _route_invalid("--fallback and --no-fallback together")
-                # v20: --config-dir names the account dir of whichever route is
-                # single (the primary, else an armed single fallback).
-                single_fb = args.fallback == "single" and args.mode == "split"
-                write_route(args.mode, None if single_fb else args.config_dir,
-                            fallback=args.fallback,
-                            fallback_config_dir=args.config_dir if single_fb else None)
+                if args.account:
+                    # v26 KIT-ROUTE-ACCOUNTS: an ordered list, v1 written when it fits
+                    if args.mode is not None or args.config_dir is not None:
+                        raise _route_invalid("--account takes no mode or --config-dir")
+                    if args.fallback not in (None, _ARM):
+                        raise _route_invalid("with --account, --fallback takes no value")
+                    write_accounts([parse_account(a) for a in args.account],
+                                   armed=args.fallback == _ARM)
+                else:
+                    if args.mode not in ROUTE_MODES:
+                        raise _route_invalid("route set takes split, single or --account")
+                    if args.fallback == _ARM or (
+                            args.fallback is not None and args.fallback not in ROUTE_MODES):
+                        raise _route_invalid("--fallback must name split or single")
+                    # v20: --config-dir names the account dir of whichever route is
+                    # single (the primary, else an armed single fallback).
+                    single_fb = args.fallback == "single" and args.mode == "split"
+                    write_route(args.mode, None if single_fb else args.config_dir,
+                                fallback=args.fallback,
+                                fallback_config_dir=args.config_dir if single_fb else None)
             except Refused as exc:
                 print(json.dumps({"error": str(exc)[:200], "code": exc.code}), file=out)
                 return CLI_USAGE
@@ -2339,6 +2818,22 @@ def main(argv=None, spawn_fn=None, stdin=None, stdout=None):
         doc = route_show()
         print(json.dumps(doc), file=out)
         return CLI_OK if doc["valid"] else 1
+    if args.cmd == "budget":
+        try:
+            if args.bcmd == "reset":
+                doc = budget_reset(args.root, args.code, args.reason)
+            else:
+                b = tree_budget(args.root, args.code)
+                doc = {"tree": args.code, "count": b.used(), "cap": b.cap,
+                       "next_free": _iso(b.frees_at())}
+        except Refused as exc:
+            print(json.dumps({"refused": str(exc)[:200], "code": exc.code}), file=out)
+            return CLI_REFUSED
+        except OSError as exc:
+            print(json.dumps({"error": exc.__class__.__name__}), file=out)
+            return CLI_USAGE
+        print(json.dumps(doc), file=out)
+        return CLI_OK
     if args.cmd == "progress":
         try:
             doc = write_progress(args.root, args.task, args.pct, args.step, args.eta_s,

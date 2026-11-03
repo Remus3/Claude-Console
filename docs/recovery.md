@@ -2,8 +2,8 @@
 
 This guide is for the bad day: the console misbehaves, Claude acts strangely after a
 setup-profile change, or nothing starts at all. It goes from the easiest fix to the
-manual one. Every step is safe to repeat, none of them needs the network, and none of
-them needs Claude to be working.
+manual one. Every step is safe to repeat, only the browser help in section 4 needs the
+network, and none of them needs Claude to be working.
 
 Paths below use the default install folder,
 `%LOCALAPPDATA%\Programs\claude-console`. If you installed elsewhere (or set
@@ -22,8 +22,9 @@ it, and "the profile folder" means `data\profile\`.
 
 ## 2. Stop everything from the console
 
-Open the `...` menu and choose **Stop everything...**, then confirm. From a terminal the
-same thing is `claude-console stop-all --yes`. It:
+Open the `...` menu and choose **Stop everything...**. The dialog says what it would do;
+press **Stop everything**, then **Yes, stop everything now**. The console window stays open
+(**Quit** closes it). From a terminal the same thing is `claude-console stop-all --yes`. It:
 
 1. ends the processes the console started (its panes and their child processes, and
    background Claude runs), matched by the process id and start time it recorded when
@@ -37,10 +38,11 @@ same thing is `claude-console stop-all --yes`. It:
 4. unsets the background-run kill-switch variable, so no new background run can start.
    Its value is kept, protected for your Windows user only, so it can be restored.
 
-Each stop writes a record in `data\profile\stop-all\`. `claude-console resume --yes`
-(or **Resume** in the console) replays the newest record in reverse and reads every
-step back. Stopped panes are not restarted; open them again. Nothing the console did
-not start is ever touched.
+Each stop writes a record in `data\profile\stop-all\`, and it stays stopped until you
+resume, also after a restart. **Resume**, in the same dialog, undoes every open stop, newest
+first, and reads every step back; `claude-console resume --yes` undoes the newest one, so
+repeat it if you stopped more than once. Stopped panes are not restarted; open them again.
+Nothing the console did not start is ever touched.
 
 ## 3. The recovery script
 
@@ -103,8 +105,8 @@ Scheduler and the Windows environment variable editor; nothing else.
 
 Open Task Manager, Details tab. End `node.exe` processes whose command line contains
 `claude-console`, and the `claude.exe` processes the console started. If you are unsure
-which `claude.exe` belongs to the console, sign out of Windows and back in instead:
-that ends every console process and nothing else is lost.
+which `claude.exe` belongs to the console, save your work in other programs, then sign
+out of Windows and back in: that ends every console process, and every other program.
 
 ### 5.2 Turn the profile's hooks off
 
@@ -169,7 +171,8 @@ edited after the profile wrote it is kept, flagged, and a `<file>.profile-remove
 with the profile's version is put beside it so you can compare.
 
 To remove the profile entirely, `claude-console profile uninstall --all` shows the
-plan and `--apply --yes` carries it out. Files the profile created go to the Recycle
+plan and `--apply --yes` carries it out. Add `--target repo:<folder>` for a project and
+`--config-dir <folder>` for another account. Files the profile created go to the Recycle
 Bin, never straight to deletion.
 
 ## 7. After recovery

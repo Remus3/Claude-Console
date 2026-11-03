@@ -152,7 +152,9 @@ test('variables: derived, defaults, builtins; a missing one refuses with its wiz
   const p = planOf(e, { values: { python: 'py' } });
   const v = PL.planVerdict(p);
   assert.strictEqual(v.code, 1);
-  assert.match(v.line, /needs \{repo_code\} \(asked at wizard\.step\.repo\)/);
+  // the wizard's line names no flag and no item; the terminal's form keeps them
+  assert.strictEqual(v.line, 'Needs a value: repo_code. Fill it in above and press Preview again.');
+  assert.match(v.cli, /needs \{repo_code\} \(asked at wizard\.step\.repo\); set it with --var repo_code=/);
 });
 
 // ------------------------------------------------------------------ plan
@@ -429,6 +431,9 @@ test('cli profile: list, view, enable, diff (dry run), apply, status, verify, re
   x = await e.run(['apply', '--target', repo, '--var', 'python=py']);
   assert.strictEqual(x.code, 1);
   assert.match(x.text, /conv-handoff-file needs \{repo_code\} \(asked at wizard\.step\.repo\); set it with --var repo_code=/);
+  x = await e.run(['apply', '--target', repo, '--var', 'python=py', '--apply', '--yes']);
+  assert.strictEqual(x.code, 1);
+  assert.match(x.text, /set it with --var repo_code=/);
   x = await e.run(['apply', '--target', repo, '--var', 'repo_code=AB', '--var', 'python=py']);
   assert.strictEqual(x.code, 0);
   assert.match(x.text, /dry run; nothing written/);

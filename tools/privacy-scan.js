@@ -37,8 +37,6 @@ const ALLOW = [
     ['0b5c2a3e', '1f2d', '4c3b', '9a8e', '7d6c5b4a3f21'], ['0f0e0d0c', '0b0a', '4908', '8706', '050403020100'],
     ['99999999', '2222', '3333', '4444', '555555555555'], ['123e4567', 'e89b', '12d3', 'a456', '426614174000'],
   ].map((p) => p.join('-')).join('|'), 'i'), 'made-up or RFC-example UUID fixture'],
-  ['artifact-url', /^tests\/boards\.test\.js$/, null, 'made-up board ids for the board-link validator'],
-  ['artifact-url', /^server\/boards\.js$/, null, 'the accepted URL shape (comment), no id'],
   ['token', /^tests\/installer\.test\.js$/, new RegExp('sk-ant-' + 'abcdefghijklmnop'), 'fake token proving the contribute scrubber removes it'],
   ['token', /^installer\/contribute\.js$/, null, 'the scrubber\'s own token pattern'],
   ['user-path', /^tests\//, /Users[\\/]+(x|u|test|someone|me)\b/i, 'made-up user name in a path test'],

@@ -72,6 +72,7 @@ function listDir(p, opts) {
   for (const e of entries) {
     const link = e.isSymbolicLink();
     if (!link && !e.isDirectory()) continue;
+    if (e.name.toLowerCase() === '.git') continue; // R2-12: nobody opens a pane in there
     res.dirs.push({ name: e.name, link });
   }
   res.dirs.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));

@@ -70,9 +70,9 @@ test('Sched.row: state word and class follow the benign-result facts', () => {
 });
 
 test('Sched.row: one line plus hover detail; boot flag; never the task author', () => {
-  const r = Sc.row(task({ name: 'Sample-DialVolume', path: '\\', full: '\\Sample-DialVolume', triggers: [{ kind: 'logon', delay: 'PT5S', enabled: true }], notes: ['runs at boot/logon: adds work to every boot (delay it or keep it short)'], nextRun: '2026-10-19T07:00:00', lastRun: '2026-10-18T07:00:00' }));
-  assert.strictEqual(r.key, '\\Sample-DialVolume');
-  assert.strictEqual(r.name, 'Sample-DialVolume');
+  const r = Sc.row(task({ name: 'Sample-Logon', path: '\\', full: '\\Sample-Logon', triggers: [{ kind: 'logon', delay: 'PT5S', enabled: true }], notes: ['runs at boot/logon: adds work to every boot (delay it or keep it short)'], nextRun: '2026-10-19T07:00:00', lastRun: '2026-10-18T07:00:00' }));
+  assert.strictEqual(r.key, '\\Sample-Logon');
+  assert.strictEqual(r.name, 'Sample-Logon');
   assert.strictEqual(r.trigger, 'logon +5s');
   assert.strictEqual(r.boot, true);
   assert.match(r.title, /last 2026-10-18 07:00/);
@@ -88,7 +88,7 @@ test('Sched.groups: console first, then repos by label, then unmapped; filter by
   const projects = [{ id: 'zeta', name: 'Zeta' }, { id: 'alpha', name: 'Alpha' }, { id: 'none', name: 'Unused' }];
   const g = Sc.groups(list, projects);
   assert.deepStrictEqual(g.map((x) => x.id), ['console', 'alpha', 'zeta', '']);
-  assert.deepStrictEqual(g.map((x) => x.label), ['Console', 'Alpha', 'Zeta', 'Not in a repo']);
+  assert.deepStrictEqual(g.map((x) => x.label), ['Console', 'Alpha', 'Zeta', 'Other tasks on this PC (not from the console or your projects)']);
   assert.deepStrictEqual(g[1].rows.map((r) => r.name), ['D', 'E']);
   assert.deepStrictEqual(Sc.groups(list, projects, 'alpha').map((x) => x.id), ['alpha']);
   assert.deepStrictEqual(Sc.groups(list, projects, '').length, 4, 'empty filter = all');
@@ -156,9 +156,9 @@ const snap = () => ({
   thresholds: { privMBh: 5, handlesH: null, r2: null, minSpanH: null, pagesPerSec: null, crashesPerApp: null },
   analysis: {
     samples: 12, spanH: 2, processes: 140,
-    privGrowth: [{ name: 'powershell.exe', pid: 4242, owner: 'main', seed: 'DIALVOL-LEAK', n: 12, spanH: 2, privMB: 795, mbPerH: 5.7, r2: 0.98, handles: 900, perH: 3, r2h: 0.2 }],
-    handleGrowth: [{ name: 'MTKBTSVC.exe', pid: 77, owner: null, seed: 'BT-LEAK', n: 12, spanH: 2, privMB: 20, mbPerH: 0, r2: 0, handles: 7000000, perH: 40000, r2h: 0.99 }],
-    seeds: [{ id: 'DIALVOL-LEAK', seen: true, name: 'powershell.exe', n: 12, spanH: 2, privMB: 795, mbPerH: 5.7, handles: 900, handlesPerH: 3, known: 'about 5.7 MB/h' }, { id: 'BT-LEAK', seen: false, known: 'about 40k handles/h' }],
+    privGrowth: [{ name: 'powershell.exe', pid: 4242, owner: 'main', seed: 'SEED-A', n: 12, spanH: 2, privMB: 795, mbPerH: 5.7, r2: 0.98, handles: 900, perH: 3, r2h: 0.2 }],
+    handleGrowth: [{ name: 'leakysvc.exe', pid: 77, owner: null, seed: 'SEED-B', n: 12, spanH: 2, privMB: 20, mbPerH: 0, r2: 0, handles: 7000000, perH: 40000, r2h: 0.99 }],
+    seeds: [{ id: 'SEED-A', seen: true, name: 'powershell.exe', n: 12, spanH: 2, privMB: 795, mbPerH: 5.7, handles: 900, handlesPerH: 3, known: 'about 5.7 MB/h' }, { id: 'SEED-B', seen: false, known: 'about 40k handles/h' }],
     paging: { n: 12, pagesPerSec: { median: 10, p95: 300, max: 900 }, pageReadsPerSec: { median: 1, p95: 5, max: 9 }, availMB: { median: 9000, p95: 12000, max: 13000 }, commitPct: { median: 40, p95: 55, max: 60 } },
     crashes: { total: 3, wer: 2, byApp: [{ app: 'foo.exe', crashes: 2, hangs: 1 }] },
     wouldReport: [{ kind: 'private-bytes', name: 'powershell.exe', pid: 4242, owner: 'main', to: 'HOME', value: 5.7, unit: 'MB/h', threshold: 5, spanH: 2 }],
@@ -183,7 +183,7 @@ test('Watch.sections: readings for growth, seeds, paging, crashes, measuring', (
   assert.strictEqual(priv.label, 'powershell.exe');
   assert.match(priv.value, /\+5\.7 MB\/h/);
   assert.match(priv.title, /795 MB now/);
-  assert.match(priv.title, /seed DIALVOL-LEAK/);
+  assert.match(priv.title, /seed SEED-A/);
   assert.match(priv.title, /tree main/);
   assert.match(s[1].rows[0].value, /\+40000 handles\/h/);
   assert.match(s[2].rows[1].value, /not seen/);
@@ -194,6 +194,8 @@ test('Watch.sections: readings for growth, seeds, paging, crashes, measuring', (
   assert.strictEqual(s[5].rows.length, 1);
   const empty = W.sections({ analysis: { samples: 0, spanH: 0, privGrowth: [], handleGrowth: [], seeds: [], paging: { n: 0 }, crashes: { total: 0, wer: 0, byApp: [] }, measuring: [] } });
   assert.ok(empty.every((x) => typeof x.empty === 'string'));
+  // R3-11: no known cases (the public build): the section goes, it does not read "none configured"
+  assert.deepStrictEqual(empty.map((x) => x.id), ['priv', 'handles', 'paging', 'crashes', 'measuring']);
 });
 
 test('Watch: observe only - candidates and thresholds are never shown as alerts', () => {

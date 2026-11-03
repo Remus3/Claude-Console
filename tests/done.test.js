@@ -39,6 +39,16 @@ function mark(dir, over) {
   return doc;
 }
 
+test('R2-15: the shipped /done prints the exact line the receipt matches', () => {
+  const root = path.join(__dirname, '..');
+  const md = fs.readFileSync(path.join(root, 'claude', 'commands', 'done.md'), 'utf8');
+  const m = /const DONE_TEXT = '([^']+)'/.exec(fs.readFileSync(path.join(root, 'public', 'app.js'), 'utf8'));
+  assert.ok(m, 'DONE_TEXT in app.js');
+  assert.ok(md.includes('Print exactly one line: `' + m[1] + '`.'), 'step 4');
+  assert.match(md.split('\n')[1], new RegExp('"' + m[1] + '"'), 'description');
+  assert.ok(!md.includes('Done, safe to clear'), 'the old text is gone');
+});
+
 test('readHead: loose ref and packed ref match git rev-parse', () => {
   const dir = tree();
   assert.strictEqual(S.readHead(dir), git(dir, 'rev-parse', 'HEAD'));

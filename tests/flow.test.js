@@ -75,3 +75,50 @@ test('cells are ASCII', () => {
   F.update(f, [item({})]);
   for (const c of F.cells(f.rows[0])) assert.ok(/^[\x20-\x7e]*$/.test(c));
 });
+
+// PANE-CHECKLIST: the kit v23 session checklist (board status.json remaining rows).
+const brd = (rows, updated) => ({ updated: updated === undefined ? T0 - 500 : updated, rows });
+const B1 = { id: 'C1', group: 'next', task: 'test it', state: 'queued', detail: '' };
+const B2 = { id: 'C2', group: 'operator', task: 'plug in', state: 'waiting', detail: 'operator' };
+const B3 = { id: 'run-x', group: 'running', task: 'step text', state: 'running', detail: '40 percent' };
+
+test('an idle strip shows the session checklist rows, one per remaining task', () => {
+  const f = F.create(T0);
+  F.update(f, [], undefined, brd([B2, B1]));
+  assert.deepStrictEqual(f.rows.map((r) => [r.label, r.state, r.step]), [['C2 plug in', 'pending', 'waiting on you: operator'], ['C1 test it', 'pending', '']]);
+  assert.strictEqual(f.height, 2);
+  F.update(f, [], F.DEFAULT_OPTS, brd([B1]));
+  assert.deepStrictEqual(f.rows.map((r) => r.state), ['done', 'pending'], 'a task that left the list turns done');
+  assert.strictEqual(f.height, 1, 'done rows hidden by default: no blank slot');
+  F.update(f, [], F.DEFAULT_OPTS, brd([]));
+  assert.strictEqual(f.height, 0, 'nothing remaining: no rows');
+  const g = F.create(T0);
+  F.update(g, [], F.DEFAULT_OPTS, null);
+  assert.strictEqual(g.height, 0, 'no status.json (tree before v23): nothing from the board');
+});
+
+test('a running progress row wins over the board row of the same task (no duplicate)', () => {
+  const f = F.create(T0);
+  F.update(f, [], undefined, brd([B3, B1]));
+  assert.strictEqual(f.rows.length, 2);
+  F.update(f, [item({ file: 'run-x.json', task: 'run-x' })], undefined, brd([B3, B1]));
+  assert.deepStrictEqual(f.rows.map((r) => r.label), ['C1 test it', 'run-x']);
+  // a progress checklist id matches a board id too
+  const g = F.create(T0);
+  F.update(g, [item({ checklist: [{ id: 'C1', task: 'test it', state: 'builder running', eta_s: 30 }] })], undefined, brd([B1, B2]));
+  assert.deepStrictEqual(g.rows.map((r) => [r.label, r.state]), [['C2 plug in', 'pending'], ['C1 test it', 'running']]);
+});
+
+test('board rows after /clear or DONE join only when status.json is newer than the strip', () => {
+  const f = F.create(T0, { strict: true });
+  F.update(f, [], undefined, brd([B1], T0 - 1));
+  assert.strictEqual(f.rows.length, 0);
+  F.update(f, [], undefined, brd([B1], T0 + 1));
+  assert.strictEqual(f.rows.length, 1);
+  const d = F.create(T0, { boardAfter: true });
+  F.update(d, [], undefined, brd([B1], T0 - 1));
+  assert.strictEqual(d.rows.length, 0);
+  const n = F.create(T0);
+  F.update(n, [], undefined, brd([B1], 1));
+  assert.strictEqual(n.rows.length, 1, 'a fresh strip shows an older checklist');
+});

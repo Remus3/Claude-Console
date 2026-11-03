@@ -54,12 +54,14 @@
   },
   "variables": {
     "repo_code": {
+      "label": "Short project code",
       "type": "code",
       "pattern": "^[A-Z][A-Z0-9]{1,5}$",
       "ask": "wizard.step.repo",
       "why": "Short code used in the hand-off file name, the status line and channel notes."
     },
     "repo_root": {
+      "label": "Folder that holds the scripts these tasks run",
       "type": "path",
       "scope": "target"
     },
@@ -88,6 +90,7 @@
       "value": "{repo_code}-NEXT-SESSION.txt"
     },
     "python": {
+      "label": "Full path to python.exe",
       "type": "exe",
       "detect": "python",
       "why": "Runs the kit hooks and tools."
@@ -118,6 +121,7 @@
       "ask": "wizard.step.headless"
     },
     "operator_ident": {
+      "label": "Your name and email for commits",
       "type": "git-ident",
       "secret": false,
       "store": "git-config-local",
@@ -175,6 +179,8 @@
       "max": 64
     },
     "effort_level": {
+      "label": "How hard Claude thinks by default",
+      "why": "How hard Claude thinks by default",
       "type": "string",
       "pattern": "^(low|medium|high|xhigh|max)$",
       "optional": true,
@@ -193,23 +199,32 @@
       "max": 500
     },
     "backup_target": {
+      "label": "Backup computer (ssh address)",
+      "why": "Machine that receives the daily git backup (ssh host)",
+      "start_skipped": true,
       "type": "ssh-alias",
       "optional": true,
       "ask": "wizard.step.tasks"
     },
     "wol_mac": {
+      "label": "Network address (MAC) of the computer to wake",
+      "why": "Network address (MAC) of the machine to wake",
+      "start_skipped": true,
       "type": "string",
       "pattern": "^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$",
       "optional": true,
       "ask": "wizard.step.tasks"
     },
     "board_url": {
+      "label": "Status board address",
+      "why": "Address of your status board",
       "type": "url",
       "pattern": "^https://claude\\.ai/",
       "optional": true,
       "ask": "wizard.step.accounts"
     },
     "sidecar_root": {
+      "label": "Folder for scratch files outside your projects",
       "type": "path",
       "default": "{data_dir}/sidecars",
       "ask": "wizard.step.sidecar",
@@ -222,9 +237,12 @@
       "measure": "sidecar-age-histogram"
     },
     "runtime_retention_days": {
+      "label": "Days to keep runtime files",
       "type": "int",
-      "default": null,
-      "measure": "runtime-age-histogram"
+      "default": 30,
+      "min": 1,
+      "ask": "wizard.step.sidecar",
+      "why": "Days a regenerable file in the project's .runtime folder is kept before it is removed."
     }
   }
 }

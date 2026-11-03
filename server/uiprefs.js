@@ -5,9 +5,11 @@
 // defaults; tests/typescale.test.js pins the two together.
 const { TRACKER_IDS, sanitizeTrackers } = require('./trackers'); // CON-GATE-PANEL toggles
 
-// CON-UX-TYPESCALE: one base size (px) plus a per-level offset (px, half-pixel steps).
+// CON-UX-TYPESCALE / CON-SET-PX: six absolute sizes in px (half-pixel steps, 8..32). A
+// legacy saved scale (base px + per-level offsets) converts to the same rendered px.
 const TYPE_LEVELS = ['header', 'sub', 'body', 'secondary', 'mono', 'badge'];
-const TYPE_DEFAULTS = { base: 15, header: 1, sub: 0, body: 0, secondary: -2, mono: -3, badge: -3.5 };
+const TYPE_DEFAULTS = { header: 16, sub: 15, body: 15, secondary: 13, mono: 12, badge: 11.5 };
+const TYPE_LEGACY = { base: 15, header: 1, sub: 0, body: 0, secondary: -2, mono: -3, badge: -3.5 };
 
 // CON-UX-PANEROWS: pane / card workflow rows - row count (0 hides) and shown states.
 const FLOW_STATES = ['running', 'stale', 'failed', 'pending', 'idle', 'done'];
@@ -17,6 +19,8 @@ const FLOW_STATES_DEFAULT = { running: true, stale: true, failed: true, pending:
 // CON-UX-KEYS: one show flag per pane key-strip button (ids as in app.js CCKeys.KEYS),
 // and the quick chips as a list of { text, on } (was a comma-split string list).
 const KEY_IDS = ['esc', 'ctrlc', 'enter', 'ctrlx', 'stab', 'up', 'down', 'left', 'right'];
+// R2-6: on by default only these; Settings offers the rest, phone width shows them all.
+const KEY_DEFAULTS = Object.fromEntries(KEY_IDS.map((k) => [k, k === 'esc' || k === 'stab']));
 const CHIPS_DEFAULT = [{ text: 'continue', on: true }, { text: '/done', on: true }, { text: '/clear', on: true }];
 
 // CON-CLEAR-MODE: what a /clear in a claude pane does - 'refresh' (its rows restart, the
@@ -31,17 +35,18 @@ const UI_DEFAULTS = {
   typeScale: TYPE_DEFAULTS,
   flowRows: FLOW_ROWS_DEFAULT,
   flowStates: FLOW_STATES_DEFAULT,
-  keyStrip: Object.fromEntries(KEY_IDS.map((k) => [k, true])),
+  keyStrip: KEY_DEFAULTS,
   quickChips: CHIPS_DEFAULT,
   clearMode: CLEAR_MODE_DEFAULT,
   // CON-GATE-PANEL: one show flag per status-panel tracker (server/trackers.js ids)
-  trackers: Object.fromEntries(TRACKER_IDS.map((k) => [k, true])),
+  // R2-29: Machine repeats the top bar, so it starts off (Settings can turn it on)
+  trackers: Object.fromEntries(TRACKER_IDS.map((k) => [k, k !== 'machine'])),
 };
 
 function sanitizeKeyStrip(v) {
   const s = v && typeof v === 'object' ? v : {};
   const out = {};
-  for (const k of KEY_IDS) out[k] = typeof s[k] === 'boolean' ? s[k] : true;
+  for (const k of KEY_IDS) out[k] = typeof s[k] === 'boolean' ? s[k] : KEY_DEFAULTS[k];
   return out;
 }
 function sanitizeChips(v) {
@@ -77,14 +82,24 @@ function half(v) {
   return Math.round(v * 2) / 2;
 }
 
+function typePx(v) {
+  return Math.max(8, Math.min(32, half(v)));
+}
 function sanitizeTypeScale(v) {
   const s = v && typeof v === 'object' ? v : {};
   const out = {};
-  const b = num(s.base);
-  out.base = b === null ? TYPE_DEFAULTS.base : Math.max(10, Math.min(24, half(b)));
+  const b0 = num(s.base);
+  if (b0 !== null) {
+    const b = Math.max(10, Math.min(24, half(b0)));
+    for (const lv of TYPE_LEVELS) {
+      const o = num(s[lv]);
+      out[lv] = typePx(Math.max(8, b + (o === null ? TYPE_LEGACY[lv] : Math.max(-8, Math.min(8, half(o))))));
+    }
+    return out;
+  }
   for (const lv of TYPE_LEVELS) {
-    const o = num(s[lv]);
-    out[lv] = o === null ? TYPE_DEFAULTS[lv] : Math.max(-8, Math.min(8, half(o)));
+    const x = num(s[lv]);
+    out[lv] = x === null ? TYPE_DEFAULTS[lv] : typePx(x);
   }
   return out;
 }
@@ -97,7 +112,7 @@ function sanitizeUiPrefs(s) {
   s.keyStrip = sanitizeKeyStrip(s.keyStrip);
   s.quickChips = sanitizeChips(s.quickChips);
   s.clearMode = sanitizeClearMode(s.clearMode);
-  s.trackers = sanitizeTrackers(s.trackers);
+  s.trackers = sanitizeTrackers(Object.assign({}, UI_DEFAULTS.trackers, s.trackers));
   return s;
 }
 

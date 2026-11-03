@@ -60,7 +60,12 @@ test('claude pane spec: session id, --settings hooks file, default account', () 
   const r = m.buildSpec({ kind: 'claude', cwd: d, account: 'acct1', resume: '11111111-2222-3333-4444-555555555555' });
   assert.strictEqual(r.account, 'acct1');
   assert.ok(r.args.includes('--resume') && !r.args.includes('--session-id'));
-  assert.throws(() => new PaneManager(cfg, {}).buildSpec({ kind: 'claude', cwd: d }), /Claude Code CLI not found/);
+  // R1-1 re-resolves at open, so the real claude.exe of this box stays out of the search
+  const saved = { PATH: process.env.PATH, APPDATA: process.env.APPDATA, USERPROFILE: process.env.USERPROFILE };
+  Object.assign(process.env, { PATH: '', APPDATA: d, USERPROFILE: d });
+  try {
+    assert.throws(() => new PaneManager(cfg, {}).buildSpec({ kind: 'claude', cwd: d }), /install\.ps1/);
+  } finally { Object.assign(process.env, saved); }
   m.closeAll(10);
 });
 
@@ -83,4 +88,40 @@ test('closeAll waits for a pane closed EARLIER that has not reported exit yet (C
   fire({ exitCode: 0 });
   await all;
   assert.strictEqual(m.dying.size, 0);
+});
+
+// SIDECAR-TEMP-SESSION (HOME S64): claude honours CLAUDE_CODE_TMPDIR only from its
+// process env, so a claude pane gets the kit's per-tree sidecar temp root.
+test('paneTmpDir maps a pane cwd to <sidecar>/<CODE>/Temp/claude, longest root wins', () => {
+  const d = tmpdir();
+  const side = path.join(d, 'Sidecars');
+  fs.mkdirSync(path.join(side, 'SA'), { recursive: true });
+  fs.mkdirSync(path.join(side, 'HOME'), { recursive: true });
+  const roster = path.join(d, 'roster.json');
+  fs.writeFileSync(roster, JSON.stringify({
+    repos: [
+      { code: 'HOME', root: path.join(d, 'Main') },
+      { code: 'SA', root: path.join(d, 'Main', 'nested-rc') },
+      { code: 'SG', root: path.join(d, 'SG'), removed: '2026-10-19' },
+      { code: 'SC', root: path.join(d, 'SC') },
+    ],
+  }));
+  const o = { rosterFile: roster, sidecarRoot: side };
+  const { paneTmpDir } = require('../server/claudeenv');
+  assert.strictEqual(paneTmpDir(path.join(d, 'Main', 'console'), o), path.join(side, 'HOME', 'Temp', 'claude'));
+  assert.strictEqual(paneTmpDir(path.join(d, 'Main', 'nested-rc', 'x'), o), path.join(side, 'SA', 'Temp', 'claude'));
+  assert.strictEqual(paneTmpDir(path.join(d, 'Mainframe'), o), null, 'prefix must end at a path separator');
+  assert.strictEqual(paneTmpDir(path.join(d, 'SG'), o), null, 'removed tree');
+  assert.strictEqual(paneTmpDir(path.join(d, 'SC'), o), null, 'no sidecar folder -> unchanged');
+  assert.strictEqual(paneTmpDir(path.join(d, 'Main'), { rosterFile: path.join(d, 'missing.json'), sidecarRoot: side }), null);
+});
+
+test('only a claude pane gets CLAUDE_CODE_TMPDIR, replacing an inherited one', () => {
+  const base = { claude_code_tmpdir: 'C:/inherited' };
+  const env = buildPaneEnv(base, { kind: 'claude', account: {}, tmpDir: 'D:/Scratch/SA/Temp/claude' });
+  assert.strictEqual(env.CLAUDE_CODE_TMPDIR, 'D:/Scratch/SA/Temp/claude');
+  assert.strictEqual(env.claude_code_tmpdir, undefined);
+  assert.strictEqual(buildPaneEnv({}, { kind: 'shell', tmpDir: 'E:/x' }).CLAUDE_CODE_TMPDIR, undefined);
+  assert.strictEqual(buildPaneEnv({}, { kind: 'run', tmpDir: 'E:/x' }).CLAUDE_CODE_TMPDIR, undefined);
+  assert.strictEqual(buildPaneEnv(base, { kind: 'claude', account: {} }).claude_code_tmpdir, 'C:/inherited', 'no tmpDir -> untouched');
 });

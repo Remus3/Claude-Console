@@ -2,7 +2,7 @@
   "schema": 1,
   "step": "review",
   "title": "Before you enable anything",
-  "lead": "Before you enable modules, read what each one does and review the .md files it adds. You're in control and can turn anything off later.",
+  "lead": "Before you enable modules, read what each one does and review the files it adds under Full diff on the next step. You're in control and can turn anything off later.",
   "licence": "The console and its setup are provided as-is under the Apache-2.0 licence. The author isn't liable for what they do on your machine.",
   "safeguards_heading": "Already in place",
   "safeguards": [
@@ -19,7 +19,7 @@
     {
       "glyph": "[+]",
       "word": "Your choice",
-      "text": "Every module and every change has its own yes or no."
+      "text": "Custom setup gives every module and change its own yes or no. The author's settings ask once."
     },
     {
       "glyph": "[+]",

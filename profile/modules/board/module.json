@@ -3,16 +3,16 @@
   "id": "board",
   "order": 14,
   "title": "Status board",
-  "summary": "A claude.ai status board per repository, rendered from the checklist and progress files at fixed moments.",
-  "why": "A board you can open on a phone shows every repository's plan and progress at the cost of two tool calls per push.",
+  "summary": "A local status board per repository, rendered from the checklist and progress files at fixed moments.",
+  "why": "A page you open in a browser shows a repository's plan and progress, and rendering it costs no model time.",
   "default": "off",
   "items": [
     {
       "id": "kit-fleet-board",
       "order": 1401,
       "title": "Status board renderer",
-      "does": "Copies kit_board.py, which renders the board deterministically from the checklist and progress files and prints the two tool calls that publish it; the board link is yours, entered in the wizard.",
-      "why": "Rendering from files rather than from the model keeps each push cheap and the board identical to the real state.",
+      "does": "Copies kit_board.py, which renders the board deterministically from the checklist and progress files into one local page; nothing is published.",
+      "why": "Rendering from files rather than from the model keeps each render cheap and the board identical to the real state.",
       "risk": "low",
       "default": "off",
       "platform": [
@@ -50,9 +50,9 @@
     {
       "id": "conv-board-push-points",
       "order": 1402,
-      "title": "Board pushed only at fixed moments",
-      "does": "Adds the rule that the board is pushed at session start, after each checklist reprint and at /done, and the /done step for the final push.",
-      "why": "A bounded number of pushes keeps the board's cost predictable.",
+      "title": "Board rendered only at fixed moments",
+      "does": "Adds the rule that the board is rendered at session start, after each checklist reprint and at /done, and the /done step for the final render.",
+      "why": "A bounded number of renders keeps the board's cost predictable.",
       "risk": "low",
       "default": "off",
       "platform": [

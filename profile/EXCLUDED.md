@@ -4,6 +4,7 @@ Inventory items that are not part of the public profile, each with its reason.
 Everything else in the inventory is an item of a module.
 
 - `sched-dial-volume` - a personal hardware volume-dial script; it belongs to one device, not to any workflow.
+- `sched-device-service-restart` - a restart workaround for one device driver's leak on the author's hardware; it belongs to one device, not to any workflow.
 - `set-acct2-remote` - convenience keys of the author's second account (remote control, inbound sessions); personal, not part of the setup.
 - `console-plugin-main` - the author's own console plugin; the profile engine is the generic consumer it stood in for.
 - `tool-portable-update` - an update folder for a second machine without shared disk; console releases do this job for everyone.

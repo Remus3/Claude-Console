@@ -55,6 +55,44 @@
   // Typed acknowledgement per high-risk item (custom path): "apply <id>".
   function ackPhrase(id) { return 'apply ' + id; }
   function acksComplete(highRisk, typed) { return (highRisk || []).every((x) => (typed[x.id] || '').trim() === ackPhrase(x.id)); }
+  // A row that only works inside a project, on a target without one (R1-10, R3-18). Its
+  // target can hold an unfilled {variable}, so a fold names modules, never targets.
+  function leftOut(r) { return r.status === 'skipped' && /no repo target|needs a project target/.test(r.reason || ''); }
+  function isChange(r) { return r.status !== 'same' && r.status !== 'skipped'; }
+  // The plan's sum line. On a user target it says what the numbers mean (R1-10 step 2);
+  // o.targetWord: what this screen calls its target control.
+  function planSummary(plan, o) {
+    const left = ((plan && plan.rows) || []).filter(leftOut).length;
+    if (!(plan && plan.target && plan.target.user && left)) return countsText(plan && plan.counts) + '.';
+    const c = plan.counts || {};
+    const n = (c.new || 0) + (c.differs || 0) + (c.removed || 0);
+    return n + ' change' + (n === 1 ? '' : 's') + ' to your Claude settings. ' + left + ' more only ' + (left === 1 ? 'works inside a project and is' : 'work inside a project and are')
+      + ' left out. Pick a project under ' + ((o && o.targetWord) || 'Apply to') + ', to add them.';
+  }
+  function foldLine(n) { return n + ' item' + (n === 1 ? ' does' : 's do') + ' not apply to this target (they need a project)'; }
+  // The profile browser's status line (R3-17): a switch writes nothing.
+  function pickLine(line) { return line + ' Switches change your picks only. Nothing reaches your machine until Review, then Apply.'; }
+  // The engine's refusals name the terminal's --ack flag; a screen says it in words.
+  function refusedLine(line, plan) {
+    const l = String(line || '');
+    const title = (id) => { const x = ((plan && plan.highRisk) || []).find((y) => y.id === id); return x && x.title ? x.title : id; };
+    let m = /^refused: (\S+) needs the typed acknowledgement --ack /.exec(l);
+    if (m) return 'Refused: ' + title(m[1]) + ' needs you to type "' + ackPhrase(m[1]) + '" first. Nothing was written.';
+    m = /^refused: (\S+) is high risk; add --ack /.exec(l);
+    if (m) return 'Refused: ' + title(m[1]) + ' is high risk and was not confirmed. Nothing was written.';
+    return l;
+  }
+  // One row of the missing-value card (R1-4, R3-6): a plain label, a hint, and the raw
+  // name only when the profile declares nothing better. hintFor: the wizard's form hint.
+  function missingRow(m, v, hintFor) {
+    v = v || {};
+    const why = m.why || v.why || null;
+    const label = m.label || v.label || why || m.name;
+    if (m.name === 'python') return { label, hint: 'Python was not found. Install Python 3, or skip the items that use it.' };
+    const form = hintFor ? hintFor({ name: m.name, type: m.type || v.type, hint: v.hint }) : '';
+    const hint = [why && why !== label ? why : '', /^must /.test(form) ? 'It ' + form + '.' : ''].filter(Boolean).join(' ');
+    return { label, hint };
+  }
   // Verification rows in place: [>] while running, then [+] / [x] / [-] skipped.
   function verifyGlyph(v) { return v.running ? '[>]' : v.skipped ? '[-]' : v.ok ? '[+]' : '[x]'; }
   function verifyWord(v) { return v.running ? 'running' : v.skipped ? 'skipped' : v.ok ? 'done' : 'failed'; }
@@ -64,7 +102,7 @@
   function adoptGlyph(s) { return (ADOPT[s] || ['[ ]', s || '?'])[0]; }
   function adoptWord(s) { return (ADOPT[s] || ['[ ]', s || '?'])[1]; }
   // Adopt steps in words, never the internal op ids (UX-F21).
-  const OP_WORD = { start: 'Scanning', choose: 'Saving your choices', apply: 'Applying to the copy', setChecks: 'Finding the project checks', check: 'Running the function check', revert: 'Reverting the change', works: 'Recording that it works', promote: 'Making the copy your project', removeOriginal: 'Removing the original', 'remove-original': 'Removing the original', funcheck: 'Running the function check' };
+  const OP_WORD = { start: 'Copying and scanning', load: 'Opening this adoption', choose: 'Saving your choices', apply: 'Applying to the copy', setChecks: 'Finding the project checks', check: 'Running the function check', revert: 'Reverting the change', works: 'Recording that it works', promote: 'Making the copy your project', removeOriginal: 'Removing the original', 'remove-original': 'Removing the original', funcheck: 'Running the function check' };
   function opWord(op) { return OP_WORD[op] || String(op || ''); }
   // A result line that is only "<op id> done" reads as "<words> - done".
   function opLine(op, line) {
@@ -97,7 +135,32 @@
     const c = x.counts && x.counts.passed !== null && x.counts.passed !== undefined ? ', ' + x.counts.passed + ' pass / ' + (x.counts.failed || 0) + ' fail' : '';
     return (x.timedOut ? 'timed out' : 'exit ' + x.code) + c + (typeof x.ms === 'number' ? ', ' + (Math.round(x.ms / 100) / 10) + ' s' : '');
   }
-  const api = { moduleGlyph, moduleCount, riskWord, scopeWord, stateWord, listText, groupPlan, countsText, rowGlyph, ackPhrase, acksComplete, verifyGlyph, verifyWord, adoptGlyph, adoptWord, adoptDefault, rangeText, fileLine, breakText, verdictGlyph, checkSide, opWord, opLine };
+  // R3-19: the "Leave out folders" box. The copy compares each name with a top-level path
+  // and the route drops any other shape in silence, so a shape it cannot use is refused
+  // here, never copied anyway.
+  function excludeList(text) {
+    const list = [];
+    const bad = [];
+    for (const raw of String(text || '').split(',')) {
+      const x = raw.trim().replace(/[\\/]+$/, '');
+      if (!x) continue;
+      if (!/^[A-Za-z0-9._ -]{1,120}$/.test(x) || /^\.+$/.test(x)) bad.push(raw.trim());
+      else if (!list.includes(x)) list.push(x);
+    }
+    return { list, bad };
+  }
+  // R3-20: an adoption's stored status in words.
+  const ADOPT_STATUS = { scanned: 'scanned, nothing applied yet', applied: 'changes applied to the copy', 'check-failed': 'function check failed', checked: 'function check passed', confirmed: 'confirmed working, ready to promote', promoted: 'promoted', 'original-removed': 'promoted, original removed' };
+  function adoptStatusWord(s) { return ADOPT_STATUS[s] || String(s || ''); }
+  // R3-40: an advisor finding with its measurement and next step ({title, body, do}).
+  function findingText(f) {
+    if (typeof f === 'string') return f;
+    if (!f || typeof f !== 'object') return '';
+    if (f.text) return f.text;
+    if (!f.title) return '';
+    return [f.title, f.body, f.do].filter(Boolean).map((s) => (/[.!?]$/.test(String(s)) ? String(s) : s + '.')).join(' ');
+  }
+  const api = { excludeList, adoptStatusWord, findingText, moduleGlyph, moduleCount, riskWord, scopeWord, stateWord, listText, groupPlan, countsText, rowGlyph, ackPhrase, acksComplete, leftOut, isChange, planSummary, foldLine, pickLine, refusedLine, missingRow, verifyGlyph, verifyWord, adoptGlyph, adoptWord, adoptDefault, rangeText, fileLine, breakText, verdictGlyph, checkSide, opWord, opLine };
   if (typeof module === 'object' && module.exports) module.exports.Profile = api;
   else root.CCProfile = api;
 })(this);
@@ -206,16 +269,48 @@
     if (onChange) sel.addEventListener('change', () => onChange(sel.value));
     return sel;
   }
-  // "Needs a value" card for the values a plan reports missing (browser Review and the
-  // wizard Preview, UX-F25). onAgain(newValues) plans again.
-  function missingCard(plan, vars, values, onAgain) {
-    const box = h('div.wz-input.pf-missing', h('div.wz-ctitle', { text: 'Needs a value before it can be planned' }));
-    for (const m of plan.missing || []) {
-      const v = (vars || []).find((x) => x.name === m.name) || {};
-      const inp = h('input.mono', { type: 'text', spellcheck: 'false', dataset: { var: m.name }, value: values[m.name] || '', 'aria-label': m.name });
-      box.appendChild(h('label', m.name + (v.why ? ' - ' + v.why : '') + ' (used by ' + m.items.join(', ') + ')', inp));
+  // The card for the values a plan reports missing (browser Review and the wizard Preview,
+  // UX-F25, R1-4). onAgain(newValues) plans again. o: {titleOf(id), onSkip(name, on) and
+  // canSkip(m) where the screen can skip (wizard), otherLine(m) where it cannot (browser),
+  // skippedRows: values skipped here earlier, kept so the tick can be undone}.
+  function missingCard(plan, vars, values, onAgain, o) {
+    o = o || {};
+    const SP = window.CCSetup;
+    const need = plan.missing || [];
+    const box = h('div.wz-input.pf-missing', h('div.wz-ctitle', { text: need.length ? 'One more thing is needed before this can be previewed' : 'Skipped for now' }));
+    const titles = (m) => (o.titleOf ? m.items.map(o.titleOf) : m.items).join(', ');
+    const declared = (m) => (vars || []).find((x) => x.name === m.name) || {};
+    const skipTick = (m, on) => {
+      const sk = h('input', { type: 'checkbox', checked: on, 'aria-label': 'Skip ' + PF.missingRow(m, declared(m)).label, dataset: { skip: m.name } });
+      sk.addEventListener('change', () => o.onSkip(m.name, sk.checked));
+      return h('label.check.small', sk, 'Skip - the items that use it stay off');
+    };
+    const lines = {};
+    for (const m of need) {
+      const v = declared(m);
+      const r = PF.missingRow(m, v, SP && SP.hintFor);
+      const inp = h('input.mono', { type: 'text', spellcheck: 'false', dataset: { var: m.name }, value: values[m.name] || '', 'aria-label': r.label });
+      lines[m.name] = h('span.small.wz-val', { role: 'status' });
+      const row = h('div', { title: 'Used by: ' + titles(m) }, h('label', r.label + ' ', inp), ' ', lines[m.name]);
+      if (r.hint) row.appendChild(h('div.small.muted', { text: r.hint }));
+      if (o.onSkip && (!o.canSkip || o.canSkip(m))) row.appendChild(h('div', skipTick(m, false)));
+      else if (o.otherLine && o.otherLine(m)) row.appendChild(h('div.small.muted', { text: o.otherLine(m) }));
+      box.appendChild(row);
     }
-    box.appendChild(h('button.small', { type: 'button', text: 'Preview again', on: { click: () => { const nv = Object.assign({}, values); for (const i of box.querySelectorAll('input[data-var]')) if (i.value) nv[i.dataset.var] = i.value; onAgain(nv); } } }));
+    for (const m of o.skippedRows || []) box.appendChild(h('div', { title: 'Used by: ' + titles(m) }, h('div', { text: PF.missingRow(m, declared(m)).label }), h('div', skipTick(m, true))));
+    if (need.length) box.appendChild(h('button.small', { type: 'button', text: 'Preview again', on: { click: () => {
+      const nv = Object.assign({}, values);
+      let ok = true;
+      for (const m of need) {
+        const i = box.querySelector('input[data-var="' + CSS.escape(m.name) + '"]');
+        if (!i || !i.value) continue;
+        const v = Object.assign({}, declared(m), { name: m.name, type: m.type || declared(m).type, pattern: m.pattern || declared(m).pattern });
+        const good = !SP || SP.validValue(v, i.value);
+        note(lines[m.name], good ? '' : '[x] ' + (SP ? SP.hintFor(v) : ''), !good);
+        if (good) nv[m.name] = i.value; else ok = false;
+      }
+      if (ok) onAgain(nv);
+    } } }));
     return box;
   }
   // Plan view: per-module groups (collapsed), the diff, high-risk heading; shared by the
@@ -223,29 +318,53 @@
   function planView(plan, modules, o) {
     o = o || {};
     const box = h('div.pf-plan');
-    box.appendChild(h('p.pf-sum', { text: 'Dry run - nothing written yet. ' + PF.countsText(plan.counts) + '.' }));
-    if (plan.verdict && plan.verdict.line) box.appendChild(h('p.pf-bad', { role: 'alert', text: '[x] ' + plan.verdict.line }));
+    box.appendChild(h('p.pf-sum', { text: 'Dry run - nothing written yet. ' + PF.planSummary(plan, { targetWord: o.targetWord }) }));
+    // a value still missing is asked by its card, so no verdict line repeats it (R1-4)
+    if (plan.verdict && plan.verdict.line && !(plan.missing && plan.missing.length)) box.appendChild(h('p.pf-bad', { role: 'alert', text: '[x] ' + plan.verdict.line }));
     if (plan.depsAdded && plan.depsAdded.length) box.appendChild(h('p.small', { text: 'Also on (needed by your choices): ' + plan.depsAdded.map((x) => x.title).join(', ') }));
-    for (const g of PF.groupPlan(plan, modules)) {
+    // The high-risk list, with no raw id where no phrase is typed. o.riskFirst: above the
+    // module rows, followed by o.consent (the wizard's Preview, N1).
+    const riskBlock = () => {
+      if (plan.highRisk && plan.highRisk.length) {
+        box.appendChild(h('h4', { text: 'High-risk items (' + plan.highRisk.length + ')' }));
+        // With a yes under it, a long list scrolls in its own box, so the yes stays in view.
+        const capped = !!(o.consent && o.consent.length);
+        const ul = capped ? h('ul.pf-hr.pf-hr-capped', { tabindex: '0', 'aria-label': 'High-risk items' }) : h('ul.pf-hr');
+        for (const x of plan.highRisk) {
+          const li = h('li', h('span', { text: '! ' + x.title + (o.typedAcks ? ' (' + x.id + ')' : '') }));
+          if (o.typedAcks) {
+            const inp = h('input.pf-ack', { type: 'text', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Type ' + PF.ackPhrase(x.id), placeholder: PF.ackPhrase(x.id), dataset: { id: x.id } });
+            inp.addEventListener('input', () => { o.typed[x.id] = inp.value; if (o.onAck) o.onAck(); });
+            li.appendChild(inp);
+          }
+          ul.appendChild(li);
+        }
+        box.appendChild(ul);
+      }
+      for (const el of o.consent || []) box.appendChild(el);
+    };
+    if (o.riskFirst) riskBlock();
+    const rowEl = (r) => h('div.pf-row.mono', { text: PF.rowGlyph(r.status) + ' ' + r.status.padEnd(9) + ' ' + r.kind + ' ' + r.target + (r.reason ? ' - ' + r.reason : '') });
+    const left = (plan.rows || []).filter(PF.leftOut);
+    // Changing rows show by default; what stays as it is sits one click further (R3-18).
+    for (const g of PF.groupPlan(Object.assign({}, plan, { rows: (plan.rows || []).filter((r) => !PF.leftOut(r)) }), modules)) {
       const det = h('details.pf-group');
       det.appendChild(h('summary', { text: g.title + ' - ' + PF.countsText(g.counts) }));
-      for (const r of g.rows) det.appendChild(h('div.pf-row.mono', { text: PF.rowGlyph(r.status) + ' ' + r.status.padEnd(9) + ' ' + r.kind + ' ' + r.target + (r.reason ? ' - ' + r.reason : '') }));
+      for (const r of g.rows.filter(PF.isChange)) det.appendChild(rowEl(r));
+      const same = g.rows.filter((r) => !PF.isChange(r));
+      if (same.length) {
+        const more = h('details.pf-same', h('summary.small', { text: same.length + ' not changing' }));
+        for (const r of same) more.appendChild(rowEl(r));
+        det.appendChild(more);
+      }
       box.appendChild(det);
     }
-    if (plan.highRisk && plan.highRisk.length) {
-      box.appendChild(h('h4', { text: 'High-risk items (' + plan.highRisk.length + ')' }));
-      const ul = h('ul.pf-hr');
-      for (const x of plan.highRisk) {
-        const li = h('li', h('span', { text: '! ' + x.title + ' (' + x.id + ')' }));
-        if (o.typedAcks) {
-          const inp = h('input.pf-ack', { type: 'text', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Type ' + PF.ackPhrase(x.id), placeholder: PF.ackPhrase(x.id), dataset: { id: x.id } });
-          inp.addEventListener('input', () => { o.typed[x.id] = inp.value; if (o.onAck) o.onAck(); });
-          li.appendChild(inp);
-        }
-        ul.appendChild(li);
-      }
-      box.appendChild(ul);
+    if (left.length) {
+      const fold = h('details.pf-fold', h('summary.small', { text: PF.foldLine(left.length) }));
+      for (const g of PF.groupPlan({ rows: left }, modules)) fold.appendChild(h('div.small.muted', { text: g.title + ' - ' + g.rows.length }));
+      box.appendChild(fold);
     }
+    if (!o.riskFirst) riskBlock();
     if (plan.diff) {
       const det = h('details.pf-diff');
       det.appendChild(h('summary', { text: 'Full diff' }));
@@ -307,9 +426,7 @@
   function rerender() { U.keep($('#dlg-profile'), [$('#pf-items'), $('#pf-mods')], render); }
 
   function render() {
-    U.note($('#pf-line'), st.status.line);
-    $('#pf-review').textContent = 'Review ' + st.status.pending;
-    $('#pf-review').title = st.status.pending + ' pending change(s): open the dry-run plan';
+    U.note($('#pf-line'), PF.pickLine(st.status.line));
     const ul = $('#pf-mods');
     ul.textContent = '';
     // listbox > li role=presentation > option; one Tab stop (roving tabindex, UX-F12)
@@ -325,7 +442,7 @@
     const m = st.modules.find((x) => x.id === cur);
     const box = $('#pf-items');
     box.textContent = '';
-    const head = h('div.pf-mhead', h('h4', { text: m.order + ' ' + m.title }), h('span.pf-c.num', { text: m.locked ? 'always on' : 'on ' + m.on + ' of ' + m.total }));
+    const head = h('div.pf-mhead', h('h4', { text: m.order + ' ' + m.title }), m.locked ? null : h('span.pf-c.num', { text: 'on ' + m.on + ' of ' + m.total }));
     if (m.locked) head.appendChild(h('span.pf-lock', { text: 'always on - a safety rule you cannot turn off' }));
     else {
       const cb = h('input', { type: 'checkbox', id: 'pf-modtoggle', checked: m.on > 0, 'aria-label': 'Module ' + m.title + ' on or off' });
@@ -335,7 +452,7 @@
     }
     box.appendChild(head);
     box.appendChild(h('p.small', { text: m.summary }));
-    if (m.why) box.appendChild(h('p.small.muted', { text: 'Why it is on: ' + m.why }));
+    if (m.why) box.appendChild(h('p.small.muted', { text: 'Why the author uses it: ' + m.why }));
     box.appendChild(h('div.pf-slot#pf-modslot', { role: 'status' }));
     for (const it of m.items) box.appendChild(itemRow(it));
   }
@@ -358,7 +475,7 @@
     row.appendChild(top);
     const det = h('div.pf-det', { hidden: true },
       h('div', h('b', { text: 'Does: ' }), it.does),
-      h('div', h('b', { text: 'Why it is on: ' }), it.why),
+      h('div', h('b', { text: 'Why the author uses it: ' }), it.why),
       h('div', h('b', { text: 'Needs: ' }), PF.listText(it.depends_on, byId), '   ', h('b', { text: 'Usually with: ' }), PF.listText(it.pairs_with, byId)),
       it.conflicts_with.length ? h('div', h('b', { text: 'Clashes with: ' }), PF.listText(it.conflicts_with, byId)) : null,
       h('div.pf-acts',
@@ -466,7 +583,7 @@
     } catch (e) { pane.textContent = e.message; }
   }
 
-  // Review N: the dry-run plan, typed acks for high-risk items, then Apply.
+  // Review: the dry-run plan, typed acks for high-risk items, then Apply.
   async function review(values) {
     const pane = paneOpen();
     pane.textContent = 'Planning (dry run)...';
@@ -476,7 +593,10 @@
     pane.textContent = '';
     // A value the plan needs (repo code, identity, ...) is asked right here, then re-planned.
     if (plan.missing && plan.missing.length) {
-      const box = U.missingCard(plan, st.variables || [], values, (nv) => review(nv));
+      const box = U.missingCard(plan, st.variables || [], values, (nv) => review(nv), {
+        titleOf: (id) => (byId[id] ? byId[id].title : id),
+        otherLine: (m) => (m.items.every((id) => byId[id] && !byId[id].locked) ? 'Or turn off the items that use it, then Review again.' : ''),
+      });
       box.id = 'pf-missing';
       pane.appendChild(box);
     }
@@ -484,23 +604,22 @@
     const go = h('button.primary#pf-apply', { type: 'button', text: 'Apply' });
     const upd = () => { go.disabled = plan.empty || (plan.verdict && plan.verdict.code !== 0) || !PF.acksComplete(plan.highRisk, typed); };
     pane.insertBefore(paneHead('Review: ' + (target === 'user' || !$('#pf-target').selectedOptions[0] ? 'this user' : $('#pf-target').selectedOptions[0].textContent)), pane.firstChild);
-    pane.appendChild(U.planView(plan, st.modules, { typedAcks: true, typed, onAck: upd }));
+    pane.appendChild(U.planView(plan, st.modules, { typedAcks: true, typed, onAck: upd, targetWord: 'Target' }));
     const res = h('div#pf-result', { role: 'status' });
     go.addEventListener('click', async () => {
       go.disabled = true;
       res.textContent = '[>] applying...';
       try {
-        const r = await api('POST', '/api/profile/apply', { planId: plan.planId, confirm: true, acks: plan.highRisk.map((x) => x.id) });
+        const r = await api('POST', '/api/profile/apply', { planId: plan.planId, confirm: true, acks: plan.highRisk.map((x) => x.id), typed });
         res.textContent = '';
         const miss = document.querySelector('#pf-missing');
         if (miss && r.ok) miss.remove();
-        res.appendChild(h('p' + (r.ok ? '' : '.pf-bad'), { text: (r.ok ? '[+] ' : '[x] ') + r.line }));
+        res.appendChild(h('p' + (r.ok ? '' : '.pf-bad'), { text: (r.ok ? '[+] ' : '[x] ') + PF.refusedLine(r.line, plan) }));
         if (r.ok) res.appendChild(U.verifyRows(r.verify, U.report));
         if (r.commit) res.appendChild(h('p.small.muted', { text: 'Nothing was committed. Suggested commit message: ' + r.commit.message }));
         if (!r.ok) res.appendChild(h('button.small', { type: 'button', text: 'Report a problem', on: { click: () => U.report({ id: 'apply', reason: r.line }) } }));
         await load();
-        U.note($('#pf-line'), st.status.line);
-        $('#pf-review').textContent = 'Review ' + st.status.pending;
+        U.note($('#pf-line'), PF.pickLine(st.status.line));
       } catch (e) { res.textContent = '[x] ' + e.message; }
     });
     pane.appendChild(h('div.dlg-actions', go));
@@ -564,14 +683,72 @@
     U.open(dlg);
     const body = $('#ad-body');
     body.textContent = '';
+    U.note($('#ad-note'), '');
     let cap = { available: false };
     try { cap = await api('GET', '/api/profile/adopt'); } catch (e) { cap = { available: false }; }
     if (!cap.available) { body.appendChild(h('p.small', { text: '[-] Adopting a project needs the setup profile, which this build does not have. The rest of the console works without it.' })); return; }
     const sel = U.targetSelect('ad-target', (v) => { target = v; }, { projectsOnly: true, label: 'Project' });
     body.appendChild(h('p.small', { text: 'Adopt works on a copy of the project. Your original stays read-only until you promote the copy, and it is removed only by a separate, later step.' }));
+    body.appendChild(h('div#ad-list'));
     body.appendChild(h('label', 'Project ', sel));
-    body.appendChild(h('div.dlg-actions', h('button.primary', { type: 'button', text: 'Scan (read-only)', on: { click: () => start() } })));
+    body.appendChild(h('label', 'Leave out folders (comma separated) ', h('input#ad-exclude', { type: 'text', value: 'node_modules', autocomplete: 'off', spellcheck: 'false' })));
+    body.appendChild(h('p.small.muted', { text: 'Folders at the top of the project, by name. They are not copied and the checks run without them; promoting the copy keeps them.' }));
+    body.appendChild(h('p.small', { text: 'Copies the project into the console\'s data folder first, then scans the copy. Your project\'s files are not changed.' }));
+    body.appendChild(h('div.dlg-actions', h('button.primary', { type: 'button', text: 'Copy and scan', on: { click: () => start() } })));
     body.appendChild(h('div#ad-out'));
+    await loadList();
+  }
+
+  // R3-20: every adoption on disk stays reachable after the dialog closes.
+  async function loadList() {
+    const box = $('#ad-list');
+    let r = null;
+    try { r = await api('POST', '/api/profile/adopt', { op: 'list' }); } catch (e) { return; }
+    if (!box || !r || !(r.adoptions || []).length) return;
+    box.textContent = '';
+    box.appendChild(h('h4', { text: 'Adoptions already started' }));
+    for (const a of r.adoptions.slice().sort((x, y) => String(y.created).localeCompare(String(x.created)))) {
+      box.appendChild(h('div.ad-row', h('span.ad-name', { text: a.project + ' (' + String(a.created || '').slice(0, 10) + ')' }), h('span.small.muted', { text: PF.adoptStatusWord(a.status) }),
+        h('button.small', { type: 'button', text: 'Continue', dataset: { adoption: a.id }, on: { click: () => resumeAdoption(a.id) } })));
+    }
+  }
+
+  async function resumeAdoption(id) {
+    adoption = null;
+    picked = {};
+    phrases = {};
+    const r = await call('load', { id });
+    if (!r || !r.ok) return;
+    last = r;
+    // What was chosen before stays chosen: the defaults are for a first look only.
+    const chosen = (r.adoption && r.adoption.accepted) || [];
+    if (chosen.length) for (const c of (r.report && r.report.changes) || []) if (!c.reportOnly) picked[c.id] = chosen.includes(c.id);
+    renderReport($('#ad-out'), r);
+    await renderProgress(r.adoption || {});
+  }
+
+  // The step the adoption had reached: its next action, Promote and Remove original included.
+  async function renderProgress(ad) {
+    const st = $('#ad-step');
+    if (ad.status === 'promoted' || ad.status === 'original-removed') {
+      const row = $('#ad-apply-row');
+      if (row) row.remove();
+      st.appendChild(h('p.small', { text: PF.adoptStatusWord(ad.status) + ': the copy is your project now. To change more, start a new adoption.' }));
+      if (ad.status === 'promoted') st.appendChild(removeBlock());
+      return;
+    }
+    if ((ad.status === 'checked' || ad.status === 'confirmed') && ad.lastCheck) {
+      st.appendChild(h('p.small', { text: 'Last function check: passed' + (ad.lastCheck.at ? ', ' + String(ad.lastCheck.at).slice(0, 10) : '') + '.' }));
+      const out = h('div#ad-check');
+      st.appendChild(out);
+      renderCheck(out, { ok: true, result: { hash: ad.lastCheck.hash, verdict: ad.lastCheck.verdict, rows: [], bisect: [] } });
+      out.appendChild(h('button', { type: 'button', text: 'Run the function check again', on: { click: () => runCheck() } }));
+      return;
+    }
+    if (ad.status === 'applied' || ad.status === 'check-failed') {
+      if (ad.status === 'check-failed') st.appendChild(h('p.small.pf-bad', { text: '[x] The last function check failed: promotion is blocked. Change what is ticked and apply again, or run the check again.' }));
+      await proposeChecks(st);
+    }
   }
 
   // One facade step; the answer is always {ok, code, line, ...}.
@@ -586,28 +763,41 @@
 
   async function start() {
     if (!target || target === 'user') { U.note($('#ad-note'), 'Pick a project.', true); return; }
+    const ex = PF.excludeList(($('#ad-exclude') || {}).value);
+    if (ex.bad.length) { U.note($('#ad-note'), '[x] Leave out folders takes names of top-level folders only, not paths: ' + ex.bad.join(', '), true); return; }
     adoption = null;
     picked = {};
     phrases = {};
-    const r = await call('start', { project: target.slice(2) });
+    const r = await call('start', { project: target.slice(2), exclude: ex.list });
     if (r && r.ok) { last = r; renderReport($('#ad-out'), r); }
+  }
+
+  // R3-37: a change in words: its rule's title and file. The id stays in a title attribute.
+  function changeName(id) {
+    for (const mod of ((last && last.report) || {}).modules || []) {
+      for (const rule of mod.items || []) {
+        const ch = (rule.changes || []).find((x) => x.id === id);
+        if (ch) return (rule.title || rule.item) + '  ' + PF.fileLine(ch);
+      }
+    }
+    return id;
   }
 
   function renderReport(out, r) {
     out.textContent = '';
     const rep = (r && r.report) || { modules: [], counts: {}, local: [] };
     const c = rep.counts || {};
-    out.appendChild(h('p.small', { text: 'Conformance: ' + ['conforms', 'differs', 'missing', 'conflicts'].map((k) => (c[k] || 0) + ' ' + PF.adoptWord(k)).join(', ') + ((rep.local || []).length ? ', ' + rep.local.length + ' local (always kept)' : '') }));
+    out.appendChild(h('p.small', { text: 'Compared with your setup: ' + ['conforms', 'differs', 'missing', 'conflicts'].map((k) => (c[k] || 0) + ' ' + PF.adoptWord(k)).join(', ') + ((rep.local || []).length ? ', ' + rep.local.length + ' local (always kept)' : '') }));
     for (const mod of rep.modules || []) {
       const changes = [];
       for (const rule of mod.items || []) for (const ch of rule.changes || []) if (!ch.reportOnly) changes.push(ch);
       const msec = h('details.ad-module', { open: changes.length > 0 });
-      msec.appendChild(h('summary', { text: 'Module ' + mod.id + ' - ' + (mod.title || mod.id) + ' (' + changes.length + ' change' + (changes.length === 1 ? '' : 's') + ')' }));
+      msec.appendChild(h('summary', { text: (mod.title || mod.id) + ' (' + changes.length + ' change' + (changes.length === 1 ? '' : 's') + ')' }));
       if (changes.length) {
         const slot = h('div.pf-slot.ad-slot', { role: 'status' });
         const all = h('button.small', { type: 'button', text: 'Accept all for this module', on: { click: () => {
           const risky = changes.filter((x) => x.breakRisk && !x.blocked);
-          if (risky.length && !all.dataset.second) { all.dataset.second = '1'; U.note(slot, 'Also accept ' + risky.length + ' change(s) with a break risk: ' + risky.map((x) => x.id).join(', ') + '? Click Accept all again to confirm.'); return; }
+          if (risky.length && !all.dataset.second) { all.dataset.second = '1'; U.note(slot, 'Also accept ' + risky.length + ' change(s) with a break risk: ' + risky.map((x) => changeName(x.id)).join(', ') + '? Click Accept all again to confirm.'); return; }
           delete all.dataset.second;
           U.note(slot, '');
           for (const x of changes) { if (x.blocked) continue; picked[x.id] = true; const cb = msec.querySelector('input[data-change="' + CSS.escape(x.id) + '"]'); if (cb) cb.checked = true; }
@@ -623,12 +813,12 @@
         for (const ch of rule.changes || []) {
           const meta = h('span.small', { text: ch.reportOnly ? 'report only' : (ch.risk || 'low') + ' risk' + (ch.breakRisk ? ', ! break risk ' + PF.breakText(ch) : '') + (ch.blocked ? ', blocked: ' + ch.blocked : '') + (ch.conflict ? ', conflict: ' + ch.conflict : '') });
           if (ch.reportOnly) {
-            sec.appendChild(h('div.ad-change.ad-ronly', h('span.mono', { text: '[-] ' + ch.id + '  ' + PF.fileLine(ch) }), meta));
+            sec.appendChild(h('div.ad-change.ad-ronly', h('span.mono', { text: '[-] ' + (rule.title || rule.item) + '  ' + PF.fileLine(ch), title: ch.id }), meta));
           } else {
             if (picked[ch.id] === undefined) picked[ch.id] = PF.adoptDefault(rule, ch);
-            const cb = h('input', { type: 'checkbox', checked: picked[ch.id], disabled: !!ch.blocked, dataset: { change: ch.id }, 'aria-label': 'Change ' + ch.id + ' yes or no' });
+            const cb = h('input', { type: 'checkbox', checked: picked[ch.id], disabled: !!ch.blocked, dataset: { change: ch.id }, 'aria-label': 'Change ' + (rule.title || rule.item) + ' ' + PF.fileLine(ch) + ' yes or no' });
             cb.addEventListener('change', () => { picked[ch.id] = cb.checked; });
-            sec.appendChild(h('div.ad-change', h('label.check', cb, h('span.pf-word', { text: 'yes' })), h('span.mono', { text: ch.id + '  ' + (ch.op || '') + '  ' + PF.fileLine(ch) }), meta));
+            sec.appendChild(h('div.ad-change', h('label.check', cb, h('span.pf-word', { text: 'yes' })), h('span.mono', { text: (rule.title || rule.item) + '  ' + PF.fileLine(ch), title: ch.id }), meta));
             if (ch.needsPhrase) {
               const ph = h('input', { type: 'text', autocomplete: 'off', spellcheck: 'false', placeholder: ch.needsPhrase, dataset: { phrase: ch.item }, 'aria-label': 'High risk: type ' + ch.needsPhrase });
               ph.addEventListener('input', () => { phrases[ch.item] = ph.value; });
@@ -643,7 +833,7 @@
       }
       out.appendChild(msec);
     }
-    out.appendChild(h('div.dlg-actions',
+    out.appendChild(h('div.dlg-actions#ad-apply-row',
       h('button.primary', { type: 'button', text: 'Apply chosen changes to the copy', on: { click: () => applyChosen() } })));
     out.appendChild(h('div#ad-step'));
   }
@@ -658,7 +848,7 @@
     if (!ch) return;
     const st = $('#ad-step');
     st.textContent = '';
-    for (const s of ch.skipped || []) st.appendChild(h('div.small', { text: '[-] not taken: ' + s.id + ' - ' + s.why }));
+    for (const s of ch.skipped || []) st.appendChild(h('div.small', { text: '[-] not taken: ' + changeName(s.id) + ' - ' + s.why, title: s.id }));
     if (!ch.ids || !ch.ids.length) { st.appendChild(h('p.small', { text: 'Nothing chosen: the copy stays as the original.' })); return; }
     const ap = await call('apply', { confirm: true });
     if (!ap) return;
@@ -695,13 +885,13 @@
     const tb = h('tbody');
     for (const x of res.rows || []) tb.appendChild(h('tr' + (x.verdict === 'WORSE' ? '.pf-bad' : ''), h('td.mono', { text: x.id + ' (' + x.cmd + ')' }), h('td.mono', { text: PF.checkSide(x.original) }), h('td.mono', { text: PF.checkSide(x.copy) }), h('td.mono', { text: PF.verdictGlyph(x.verdict) + ' ' + (x.verdict || '-') })));
     tbl.appendChild(tb);
-    out.appendChild(tbl);
+    if ((res.rows || []).length) out.appendChild(tbl);
     for (const x of res.rows || []) if (x.verdict === 'WORSE' && x.newlyFailing && x.newlyFailing.length) out.appendChild(h('div.small', { text: x.id + ' newly failing: ' + x.newlyFailing.join(', ') }));
     if (res.verdict === 'FAILED' || !r.ok) {
       out.appendChild(h('p.pf-bad', { text: '[x] Function check failed: promotion is blocked.' }));
       const culprits = [...new Set((res.bisect || []).flatMap((b) => b.culprits.map((c) => c.id)))];
       for (const id of culprits) {
-        out.appendChild(h('button', { type: 'button', text: 'Revert change ' + id, dataset: { revert: id }, on: { click: async () => { const rv = await call('revert', { change: id, confirm: true }); if (rv && rv.ok) await runCheck(); } } }));
+        out.appendChild(h('button', { type: 'button', text: 'Revert change ' + changeName(id), title: id, dataset: { revert: id }, on: { click: async () => { const rv = await call('revert', { change: id, confirm: true }); if (rv && rv.ok) await runCheck(); } } }));
       }
       if (!culprits.length) out.appendChild(h('p.small', { text: 'Bisect could not name one change: untick changes and apply again.' }));
       return;
@@ -711,12 +901,16 @@
       h('button', { type: 'button', text: 'It works (copy ' + String(hash).slice(0, 12) + ')', on: { click: () => call('works', { word: 'works' }) } }),
       h('label', 'Promote by ', h('select#ad-method', h('option', { value: 'swap', text: 'folder swap' }), h('option', { value: 'git', text: 'git merge' }))),
       h('button.primary', { type: 'button', text: 'Make the conformed copy your project', on: { click: () => call('promote', { method: $('#ad-method').value, confirm: true }) } })));
+    out.appendChild(removeBlock());
+  }
+
+  function removeBlock() {
     const name = adoption ? adoption.project : '';
     const phrase = h('input', { type: 'text', autocomplete: 'off', spellcheck: 'false', placeholder: 'remove original ' + name, 'aria-label': 'Type remove original ' + name });
-    out.appendChild(h('details', h('summary', { text: 'Remove the original (later, separate, opt-in)' }),
+    return h('details', h('summary', { text: 'Remove the original (later, separate, opt-in)' }),
       h('p.small', { text: 'Offered on a later run, at the earliest 24 h after promote. The original goes to the Recycle Bin or a zip archive; nothing is unlinked.' }),
       h('label', 'Method ', h('select#ad-rm', h('option', { value: 'recycle', text: 'Recycle Bin' }), h('option', { value: 'zip', text: 'zip archive' }))), phrase,
-      h('button.danger', { type: 'button', text: 'Remove original', on: { click: () => call('removeOriginal', { phrase: phrase.value, method: $('#ad-rm').value, confirm: true }) } })));
+      h('button.danger', { type: 'button', text: 'Remove original', on: { click: () => call('removeOriginal', { phrase: phrase.value, method: $('#ad-rm').value, confirm: true }) } }));
   }
 
   function wire() {
@@ -740,12 +934,36 @@
     U.open($('#dlg-machine'));
     const body = $('#mp-body');
     body.textContent = '';
-    body.appendChild(h('p.small', { text: 'Reads this machine locally (nothing leaves it) and proposes changes. Every change is off until you tick it, is previewed first, backed up, read back and revertable.' }));
+    body.appendChild(h('p.small', { text: 'Reads hardware and Windows details into one file on this computer. Claude panes can read that file, so Claude may see it. Delete machine data removes it, to the Recycle Bin.' }));
+    body.appendChild(h('p.small', { text: 'Suggest changes proposes changes. Every change is off until you tick it, is previewed first, backed up, read back and revertable.' }));
+    body.appendChild(h('p.small.muted#mp-read-line', { role: 'status' }));
     body.appendChild(h('div.dlg-actions',
+      h('button#mp-read', { type: 'button', text: 'Read machine', title: 'Read-only: nothing on the machine changes', on: { click: readMachine } }),
       h('button', { type: 'button', text: 'View machine data', on: { click: view } }),
       h('button.danger', { type: 'button', text: 'Delete machine data...', on: { click: del } }),
-      h('button.primary#mp-advise', { type: 'button', text: 'Look at this machine', on: { click: advise } })));
+      h('button.primary#mp-advise', { type: 'button', text: 'Suggest changes', on: { click: advise } })));
     body.appendChild(h('div#mp-out'));
+    api('GET', '/api/machine/read').then((r) => { readLine(r); }).catch(() => { readLine(null); });
+  }
+
+  // R3-14: Read machine moved here from Settings: the saved read, its date and its file.
+  function readLine(r) {
+    const n = $('#mp-read-line');
+    if (!n) return;
+    if (!r || !r.scanned) { n.textContent = 'Not read yet.' + (r && r.file ? ' The file would be ' + r.file : ''); return; }
+    n.textContent = 'Read ' + String(r.scanned).slice(0, 10) + ': ' + (r.line || 'no details') + (r.file ? '. File: ' + r.file : '');
+  }
+  async function readMachine() {
+    const b = $('#mp-read');
+    const n = $('#mp-read-line');
+    b.disabled = true;
+    n.textContent = 'Reading the machine (read-only, about 10 s)...';
+    try {
+      const r = await api('POST', '/api/machine/read', {});
+      if (r.ok) readLine(r);
+      else n.textContent = r.error || 'Read machine failed.';
+    } catch (e) { n.textContent = 'Read machine failed: ' + e.message; }
+    b.disabled = false;
   }
 
   async function advise() {
@@ -753,13 +971,14 @@
     out.textContent = '[>] reading...';
     try { adv = await api('POST', '/api/machine/advise', {}); } catch (e) { out.textContent = '[x] ' + e.message; return; }
     out.textContent = '';
-    if (adv.findings && adv.findings.length) { out.appendChild(h('h4', { text: 'Findings (report only)' })); for (const f of adv.findings) out.appendChild(h('div.small', { text: '- ' + (typeof f === 'string' ? f : f.text || f.title || pairsText(f)) })); }
+    if (adv.findings && adv.findings.length) { out.appendChild(h('h4', { text: 'Findings (report only)' })); for (const f of adv.findings) out.appendChild(h('div.small', { text: '- ' + (window.CCProfile.findingText(f) || pairsText(f)) })); }
     out.appendChild(h('h4', { text: 'Proposed changes (' + (adv.proposals || []).length + ')' }));
     if (!(adv.proposals || []).length) out.appendChild(h('p.small.muted', { text: 'No change to propose.' }));
     for (const p of adv.proposals || []) {
       const cb = h('input', { type: 'checkbox', dataset: { prop: p.id }, 'aria-label': p.title + ' yes or no' });
       out.appendChild(h('div.mp-prop', h('label.check', cb, h('span.pf-word', { text: 'yes' })), h('span', { text: p.title + (p.app_title ? ' (' + p.app_title + ')' : '') }), h('span.small.muted', { text: p.why || '' })));
     }
+    if (!(adv.proposals || []).length) return; // R3-40: no controls with nothing to act on
     const pv = h('div#mp-preview', { role: 'status' });
     out.appendChild(h('div.dlg-actions', h('button', { type: 'button', text: 'Preview selected', on: { click: () => preview(pv) } }), h('button.primary#mp-apply', { type: 'button', text: 'Apply selected', disabled: true, on: { click: () => apply(pv) } })));
     out.appendChild(pv);

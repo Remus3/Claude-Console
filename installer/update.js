@@ -61,11 +61,26 @@ function runNode(args, cwd, timeoutMs) {
 }
 
 // npm ci in the app dir, by npm-cli.js next to this node (a .cmd cannot be spawned bare).
-async function defaultNpmCi(dir) {
+// o (tests): run(args, cwd, timeoutMs), reportDir.
+async function defaultNpmCi(dir, o) {
+  o = o || {};
   const cli = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
-  const r = await runNode([cli, 'ci', '--omit=dev', '--no-audit', '--no-fund'], dir, 15 * 60000);
-  if (r.code !== 0) throw new Error('npm ci failed: ' + (r.err || r.out).trim().split('\n').slice(-3).join(' | '));
+  const r = await (o.run || runNode)([cli, 'ci', '--omit=dev', '--no-audit', '--no-fund'], dir, 15 * 60000);
+  if (r.code !== 0) throw new Error(npmCiFailure(dir, r, o.reportDir));
   return true;
+}
+
+// R1-28: the headline says the cause in words; npm's last 3 lines go to a report file.
+function npmCiFailure(dir, r, reportDir) {
+  const rd = reportDir || path.resolve(dir, '..', '..', 'reports');
+  let details = rd;
+  try {
+    fs.mkdirSync(rd, { recursive: true });
+    const f = path.join(rd, 'npm-ci-' + stamp() + '.log');
+    fs.writeFileSync(f, String(r.err || r.out || '').trim().split('\n').slice(-3).join('\n') + '\n');
+    details = f;
+  } catch (e) { /* the headline still names the folder */ }
+  return "Could not download the program's libraries. Check your internet connection and run the command again. Details: " + details;
 }
 
 // The self-test: the new version's server answers /api/info with its version, then a
@@ -323,4 +338,4 @@ async function rollbackSwap(o) {
   return out;
 }
 
-module.exports = { applyUpdate, rollback, rollbackSwap, arpLine, refreshArp, prepareRelease, requireRelease, copyRelease, ensureBase, defaultNpmCi, defaultSelftest, moveAside, writeReport, runNode, SELFTEST_SUBSET, selftestPlan, summarizeTestFailure, writeSelftestLog, selftestDetail };
+module.exports = { applyUpdate, rollback, rollbackSwap, arpLine, refreshArp, prepareRelease, requireRelease, copyRelease, ensureBase, defaultNpmCi, npmCiFailure, defaultSelftest, moveAside, writeReport, runNode, SELFTEST_SUBSET, selftestPlan, summarizeTestFailure, writeSelftestLog, selftestDetail };

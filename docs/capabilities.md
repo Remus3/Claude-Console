@@ -3,7 +3,7 @@
 This guide lists every feature of Claude Console in plain words. Each feature says
 what it does, whether it is on when you first start the console, how to turn it on
 or off, and gives a short example. Sections follow the screen: left, middle, right,
-top, bottom, then Settings. For the technical reference see `../README.md`.
+top, bottom, then Settings.
 
 How to read the "Default" lines:
 
@@ -19,8 +19,8 @@ computer only.
 Two words used below:
 
 - **pane**: one terminal box in the console, running Claude Code or a shell.
-- **headless run**: a Claude run in the background with no pane, started by a
-  project's own automation.
+- **background run**: a Claude run with no pane, started by a project's own automation.
+  The Status panel marks one `headless`.
 
 ---
 
@@ -44,19 +44,21 @@ the shortcut; the pane is still there and still working.
 
 ## 2. Projects list (left side)
 
-Every git repository found directly under `C:\` is listed. Click a project to open
-Claude Code in it. If a pane for it is already open, the click takes you there.
+Every git repository found directly under `C:\`, in your user folder or in its
+Documents, Desktop, `source\repos`, Projects and code folders is listed. Click a project
+to open Claude Code in it. If a pane for it is already open, the click takes you there.
 Shift+click always opens a new one.
 
 - **Rescan** finds new repositories.
 - **Tasks** opens the scheduled-tasks screen (section 3).
-- **+ New pane** opens a dialog: project, working folder (with a folder browser),
-  kind (claude or shell), account, and extra options (for example `--continue` to
-  pick up the last conversation).
-- Right-click a project: a new pane in that project.
+- **+ New** (new pane) opens a dialog: project, **Use another folder** (with a folder
+  browser and a line saying where the pane opens), kind (claude or shell), account, and
+  extra arguments (for example `--continue` to pick up the last conversation). A git
+  repository you open this way stays listed.
+- Right-click a project: the same dialog, set to a shell in that project.
 - Drag projects to reorder them. The order is saved.
 - **Groups**: `+ Group` at the bottom makes a named group. Drag projects onto its
-  header to put them in it. Groups fold open and shut with `+` / `-`.
+  header to put them in it. A group's caret folds it: `v` is open, `^` is shut.
 - **Collapse the list**: the menu button at the top left, or Ctrl+Alt+B. A thin
   strip with one status dot per project stays visible.
 
@@ -68,35 +70,25 @@ and fold everything else shut.
 ### Tools under a project
 
 A project can carry its own shortcuts: programs, scripts, files, folders or web
-pages. They show as indented rows under the project when you open it with `+`.
+pages. They show as indented rows under the project when you open its `^` caret.
 
 - **Add a tool**: click `+ Tool`, or drag a file, folder or Desktop shortcut from
   Explorer onto a project row.
 - **Change a tool**: hover it and use `...` to Rename, Edit path or Remove. Remove
   only hides the entry; the file on disk is never touched.
-- **Status board**: a project that has a claude.ai status board gets a
-  `Status board` row. It opens the board in your normal browser.
 
-Default: off until you add a tool. A project without tools shows no `+`.
+Default: off until you add a tool. A project without tools shows no caret.
 
 Example: drag `notes.txt` from your Desktop onto the project row. A `notes` row
 appears under the project; clicking it opens the file in Notepad.
 
-### Sub-categories
 
-Some projects have more than one kind of row under them, for example local model
-controls, a service stack and tools. Each kind then gets its own header row with a
-one-line summary and its own `+` / `-`. Its rows show only while that header is
-open. Nothing shows while the project itself is folded shut. A project with only
-tools keeps a plain list.
+### Hide a project from the list
 
-Default: always on. Which headers are open is remembered in this window.
-
-### Remove a project from the list
-
-Settings > Projects > Remove. You must type `DELETE PROJECT` to confirm. Only the
-listing is hidden; the folder and its files are never touched. A project with open
-panes cannot be removed until they are closed.
+Settings > Projects > **Hide**. You must type `DELETE PROJECT` to confirm, though only
+the listing goes: the folder and its files are never touched. A project with open panes
+cannot be hidden until they are closed. Hidden projects stay in Settings > Projects with
+**Show**, which brings them back.
 
 ## 3. Scheduled tasks (Tasks button)
 
@@ -107,7 +99,9 @@ left out).
   top shows one project only. **Refresh** reloads the list.
 - Each row shows the trigger and the state.
 - Tasks that run at boot or logon are marked: they add work to every start-up.
-- "Machine facts" lists the result codes that look like errors but are not
+- Tasks from other programs sit folded under **Other tasks on this PC**. There, Disable
+  asks twice, like Remove.
+- "What the result codes mean" lists the codes that look like errors but are not
   (still running, never run, repeat refused).
 
 What you can change:
@@ -131,10 +125,10 @@ its row, set the time to 03:00, click **Change trigger**.
 
 Each pane is a real terminal. Panes tile in a grid that reflows as you open more.
 
-- **Header**: state glyph, title, what Claude is doing (`Bash 2m`, `thinking 3m`),
+- **Header**: state glyph, title, what Claude is doing (`working 2m`, `thinking 3m`; no tool names),
   the project's running task with its progress, a badge when it needs you, and Max,
-  Min and X (close). Everything else (text size A- / A+, Find, Compose, Restart,
-  and the pane's kind, account and folder) is in the `...` menu.
+  Min and X (close). Everything else (text size A- / A+, Find, Hide message box,
+  Restart, and the pane's kind, account and folder) is in the `...` menu.
 - **Move panes**: drag a pane's title onto another pane to swap them, or onto the
   bottom bar to minimize it.
 - **Your input stands out**: every line you send is marked with a tinted band, so
@@ -148,18 +142,18 @@ Default: always on.
 Example: double-click a pane's header to make it fill the grid; double-click again
 to put it back.
 
-## 5. The message box (composer)
+## 5. The message box
 
-Under every pane is a message box. Enter sends, Shift+Enter starts a new line, and
-Alt+Up / Alt+Down bring back earlier messages.
+Under every pane is a message box with **Attach** and **Send** beside it. Enter sends,
+Shift+Enter starts a new line, and Alt+Up / Alt+Down bring back earlier messages.
 
 - **Quick chips**: one-click messages under the box. The first three are
-  `continue`, `/done` and `/clear`. In Settings > Quick chips you can untick a
+  `continue`, `/done` and `/clear`; `/done` shows only where the project has that
+  command, and a shell pane has no chips. In Settings > Quick chips you can untick a
   chip, change its text, remove it, or add your own with **+ Add chip** (up to 12).
-- **Key buttons**: Esc, ^C, Enter, ^X^S, S-Tab and the four arrows send that key to
-  the pane. **^X^S** is Claude Code's own "send now": it sends a message you typed
-  or queued while Claude was still busy. Hide any key you never use in Settings >
-  Pane key buttons.
+- **Key buttons**: Esc and S-Tab show at first. Settings > Pane key buttons adds ^C,
+  Enter, ^X^S and the four arrows; a phone shows them all. **^X^S** is Claude Code's own
+  "send now": it sends a message you typed or queued while Claude was still busy.
 - **Slash list**: type `/` at the start of the box to see the commands and skills
   of that project. Up / Down choose, Tab or Enter fill it in, Esc closes.
 - **Attachments**: drop a file or image onto a pane, paste an image, or click
@@ -169,10 +163,10 @@ Alt+Up / Alt+Down bring back earlier messages.
 
 Default: on. Each chip and key can be turned off in Settings.
 
-Example: Claude is busy and you type "also check the tests". Click **^X^S** and
-Claude takes your message now instead of after its current step.
+Example: Claude is busy and you type "also check the tests". With the ^X^S key turned
+on, click it and Claude takes your message now instead of after its current step.
 
-### Composer-only Claude panes
+### Message box only
 
 Claude Code draws its own input box and status rows at the bottom of the terminal.
 The console hides them, so the message box is the only place you type. A small chip
@@ -181,13 +175,16 @@ is how full Claude's memory of the conversation is). Hover the chip to read the
 rows; click it to show or hide them in that pane. When Claude shows a menu or asks
 for permission, nothing is hidden.
 
-Default: on. Turn it off in Settings: **Composer-only claude panes: hide claude's
-own input box and status rows (this window)**.
+Default: on. Turn it off in Settings: **Message box only: hide Claude Code's own input
+box and status rows (this window)**.
 
-## 6. Workflow rows and the ETA clock
+## 6. Progress rows and the ETA clock
 
-When a project writes progress files, the console shows them as fixed rows above
-the pane's terminal and on its status card:
+A progress file is a JSON file in the project's `ops/loop/control/progress` folder with
+the fields `task`, `pct`, `step`, `eta_s`, `status` (`running`, `done` or `failed`) and
+`updated`, and optionally `started`. Anything can write one: a script, a build or Claude
+itself. The console shows them as fixed rows above the pane's terminal and on its status
+card:
 
 ```
 [>] build    45%  ~4m of 9m [3:42PM]  running tests
@@ -203,9 +200,9 @@ the pane's terminal and on its status card:
 - **After /clear** the pane's rows and the project's card start fresh. Rows from
   before the clear stay out until that task writes progress again.
 
-Settings > Pane workflow rows chooses how many rows and which states:
+Settings > Pane progress rows chooses how many rows and which states:
 
-- **Rows shown (0 hides the strip)**: 0 to 12, default 6.
+- **Rows shown** (0 hides the strip): 0 to 12, default 6.
 - One box per state: running, stale, failed, pending and idle are ticked; done is
   not.
 
@@ -222,45 +219,45 @@ only when the console can check that the session really finished and nothing
 changed since (no new commit, no new prompt). The project's dot in the list and its
 status card show the same. The next prompt or `/clear` removes it.
 
-Default: always on.
+Default: always on, but it needs a `/done` that writes the marker the console checks, as
+the setup profile's Session shape module does.
 
 ## 8. Status panel (right side)
 
 One card per project, refreshed every few seconds. It only reads; it changes
 nothing. A card shows the git branch, how many files are changed, open tasks with
-their progress, and new inbox notes. Click a card to expand it.
+their progress. Click a card to expand it.
 
 - **Next:** an expanded card shows one "Next:" line: the first sentence of the
   project's next action. Hover for the whole text; click to open it in place.
-- **inbox N new**: notes that arrived since the project's last `/done` (or in the
-  last 24 hours). Hover to see the newest note's kind and subject.
-- **headless**: a tinted card has a headless run going right now.
+- **headless**: a tinted card has a background run going right now.
+- **Trackers**, at the top of the panel: your projects' scheduled tasks. Click the heading
+  to fold it. Settings > Status panel trackers can add **Machine**: this computer's CPU,
+  commit charge and free disk space.
 - Drag cards to reorder them.
 
 Default: on. The **Status** button in the top bar hides or shows the panel.
 
-Example: a card reads `inbox 2 new`. Hover it to see that the newest is an ORDER,
-then click the project to open a pane and act on it.
+Example: a card shows `2 uncommitted`. Click the project to open a pane and deal with
+it.
 
 ## 9. Top bar
 
 - **Usage strip**: for each account, how much of each usage window is used and when
   it resets, for example `7d 62%: 2d4h`. The windows are 7-day, 5-hour, and Fable
   (the separate weekly limit for that model). Numbers turn orange at 70 percent and
-  red at 90. The gear at the end picks which windows and accounts to show. In a
-  narrow window the strip folds into one `Use NN%` button.
+  red at 90. The gear at the end picks what to show. In a narrow window the strip folds
+  into one `Use NN%` button.
 - **Resource readout**: CPU, RAM, GPU, each drive's activity and network use, the
   same numbers Task Manager shows.
-- **A- / A+**: the default terminal text size for every pane. A pane changed with
-  its own A- / A+ (in its `...` menu) keeps its size.
 - **Update available**: shown only when a newer console release is found
   (section 16). Click it to go to Settings > Updates & repair.
 
-Default: on. Account 3 starts hidden; API and Extra Usage show `--` while there is
-no data for them.
+Default: on, showing the 7-day window. The gear lists a third account and Extra Usage
+only when there is something to show for them.
 
-Example: you only watch the weekly limit. Open the gear and untick 5h and Fable;
-the strip gets shorter.
+Example: you also watch the 5-hour limit. Open the gear and tick it; the strip gets one
+number longer.
 
 ## 10. Bottom bar
 
@@ -273,20 +270,22 @@ Default: always on.
 
 ## 11. Look and feel (Settings)
 
-- **Theme**: system (follows Windows), dark or light. **Toggle** flips it at once.
-- **Default terminal font size**, **Font family**, **Line height**: how text in the
-  terminals looks.
+- **Theme**: system (follows Windows), dark or light. It applies at once.
+- **Terminal font px**, **Font family**, **Line height**: how text in the terminals
+  looks. A pane's own A- / A+, in its `...` menu, changes only that pane.
 - **Scrollback lines**: how much past output each pane keeps (1,000 to 100,000).
 - **Default shell**: the shell a new shell pane uses.
-- **Text size** sets the console's own text (not the terminals) in six levels:
-  header (top bar), subheader (titles), body, nested / secondary, mono (rows,
-  paths) and badges / meters. You set one base size in pixels and an offset per
-  level. Changes show at once; Cancel undoes them; **Reset to defaults** goes back.
+- **Fine-tune console text size** sets the console's own text (not the terminals) in six
+  levels, each its own size in pixels: Header (top bar), Subheader (titles), Body,
+  Secondary, Mono (rows, paths) and Badges. Changes show at once; Cancel undoes them;
+  **Reset** goes back.
+- **After /clear in a Claude pane**: keep Claude running and restart the progress rows
+  (the default), or restart Claude with a new session.
 
 Default: on, with the standard sizes and the system theme.
 
-Example: the top bar is hard to read from across the room. Raise "Header (top bar)"
-from 1 to 3 and "Badges / meters" from -3.5 to -1.5, then Save.
+Example: the top bar is hard to read from across the room. Raise Header from 16 to 20
+and Badges from 11.5 to 14, then Save.
 
 ## 12. Notifications and badges (Settings)
 
@@ -295,25 +294,38 @@ from 1 to 3 and "Badges / meters" from -3.5 to -1.5, then Save.
 - **Desktop notification when a hidden pane needs you**: a Windows notification
   when a pane you cannot see asks for permission. Default: off (opt-in). Turn it on
   to work in another window and still hear when Claude is stuck.
+- **Needs-you list**: the top-bar `? N` button counts the panes that need you (a
+  permission prompt) or wait unread after a turn, and lists them one line per pane.
+  Click a line to restore and focus that pane; **Ctrl+Alt+U** jumps to the newest
+  unread one, also from inside a terminal. Default: always on.
+- **Progress line**: a 2 px line along the pane header while Claude generates, from
+  Claude Code's own progress signal. Default: always on.
 
 ## 13. Accounts (Settings)
 
-Claude Code can run on more than one account. Settings has two lists side by side:
+Claude Code keeps each login in its own config folder, and the console can run panes on
+more than one. With one account configured, Settings shows a single line that points
+here.
 
-- **Main / orchestrator account (interactive panes)**: the account new Claude panes
-  start on. The New pane dialog can pick another one for a single pane.
-- **Headless lane account**: the account headless runs use. Leave it unset to keep
-  the normal split. Picking the same account as the main one runs everything on one
-  account.
+To add an account, add it to the `accounts` block in `data\console.local.json` with a
+label and a folder of its own (your first account stays as it is, whatever else that
+file holds), create the folder, and restart the console:
 
-The lists show labels only, never names, emails or ids. The line under them shows
-which route is really in effect. A choice that cannot work is refused, with the
-reason.
+```json
+{ "accounts": { "acct2": { "label": "Account 2", "configDir": "D:\\claude\\account2" } } }
+```
 
-Default: on, with the configured main account and the headless account unset.
+Then open a Claude pane on that account from **+ New** and log in there.
 
-Example: pick Account 2 as the main account and Save. The next Claude pane you open
-starts on Account 2; panes already open keep their account.
+**Account for new Claude panes** in Settings then chooses the account new Claude panes
+start on, and the New pane dialog can pick another one for a single pane. The lists show
+labels only, never names, emails or ids. Where background runs go is set by the setup
+profile's **Background runs on a second account** module, not here.
+
+Default: on, with your first account.
+
+Example: pick Account 2 and Save. The next Claude pane you open starts on Account 2; panes
+already open keep their account.
 
 ## 14. Health & cleanup (Settings)
 
@@ -321,7 +333,7 @@ Settings > Health & cleanup > **Run health check...** opens a list of checks and
 cleanups.
 
 - Each row says how long it usually takes, what it costs and what it deletes.
-  Everything costs `$0 / 0 tokens` except the optional AI report.
+  Everything costs `$0 / 0 tokens`.
 - Tick the rows you want and click **Run**. Each step shows progress, and the run
   ends with a short report.
 - Anything deleted goes to the Recycle Bin, so it can be restored.
@@ -332,23 +344,6 @@ cleanups.
 
 Default: nothing runs until you click Run.
 
-### Scheduled health check
-
-The same dialog has a **Schedule** box.
-
-- Tick **Run on a schedule**, pick a time and, if you like, days (no day ticked =
-  every day), then **Save schedule**.
-- A scheduled run uses read-only steps only: disk, boot, scheduled tasks,
-  repository drift and progress. It never deletes, never starts another task and
-  never spends tokens.
-- Each run writes a report and one status line, shown in Settings.
-- Turning it off disables the task; it is not deleted.
-
-Default: off (opt-in). Turn it on to get a daily health line without clicking
-anything. It needs a plugin; without it the box says why it is unavailable.
-
-Example: tick **Run on a schedule**, set 07:30, tick Mon to Fri, **Save schedule**.
-Each weekday morning the health line in Settings shows that morning's result.
 
 ## 15. Watchdog (observe only)
 
@@ -356,7 +351,6 @@ Settings > Health & cleanup > **Watchdog readings...** shows what the background
 watchdog has measured:
 
 - processes whose memory or handle count keeps growing;
-- known problem cases;
 - paging: pages per second, available memory, commit;
 - crashes and hangs per app.
 
@@ -366,35 +360,44 @@ reading at once.
 It only measures. It never stops a process and never sends a report. Its warning
 limits stay unset until enough normal readings exist to choose them.
 
-Default: on (measuring only).
+Default: on (measuring only). Turn it off with `"watchdog": {"enabled": false}` in
+`data\console.local.json`.
 
 Example: open **Watchdog readings...** after a day. A process listed under "Handle
-growth" with a high r2 has been climbing steadily all day.
+growth" with an r2 close to 1 has been climbing steadily all day.
+
+### Machine advisor
+
+The `...` menu, **Machine advisor...**, or Settings > Machine > **Open machine advisor...**.
+
+- **Read machine**: one read-only query of your hardware and Windows, saved in one file on
+  this computer. Claude panes can read that file, so Claude may see it.
+- **Suggest changes** proposes changes. Each is off until you tick it, is previewed first,
+  backed up, read back and revertable.
+- **View machine data** shows what is saved; **Delete machine data...** removes it, to the
+  Recycle Bin.
+
+Default: nothing is read or changed until you press a button.
 
 ## 16. Updates & repair (Settings)
 
-Settings > Updates & repair shows the installed version and whether a newer one
-exists.
+Settings > Updates & repair shows the installed version and, after a check, whether a
+newer one exists.
 
 - **Check now** looks for a new release.
 - **Update now** asks first, then downloads, verifies and installs it next to the
   current one. Your own changes to console files are merged in and backed up. The
   new version runs after the next restart. `claude-console rollback` goes back.
-- **Auto-update**: tick **Auto-update inside the update window, only when no pane
-  is busy** to get updates while you are away (window 04:00 to 05:00 unless
-  changed). A restart never happens while a pane is working. If your changes clash
-  with the new version, the update stops at "needs review" and the old version
-  stays.
 - **Repair...** restores missing console files and keeps your tweaks. It first
   shows what it will restore and keep, then asks you to type a phrase; the red
   **Repair** button runs it. It only touches the console's own program files and
   makes a backup first.
-- **Contribute?** saves a cleaned patch of your local changes in the console's
-  reports folder. Nothing is sent.
+- **Save my edits as a patch** saves a cleaned patch of your local changes in the
+  console's reports folder. Nothing is sent.
 
-Default: off (opt-in). No release source is set yet, so no check runs and the top
-bar badge stays hidden. A console run from a git copy (a developer setup) updates
-through git, and these buttons are disabled there.
+Default: no check runs by itself. Check now looks when you press it; the optional task
+from `autoupdate --register` checks daily. A console run from a git copy (a developer
+setup) updates through git, and these buttons are disabled there.
 
 Example: the top bar shows **Update available v0.2.0**. Click it, then **Update
 now**, confirm, and restart the console when the panes are idle.
@@ -412,7 +415,11 @@ copy run it as `node bin/claude-console.js <command>`.
 | `rollback` | Go back to the previous installed version. |
 | `reinstall` | Shows what a repair, fresh or factory reinstall would do; each needs a typed confirmation. |
 | `contribute` | Saves a cleaned patch of your local changes; sends it only when you add `--send --yes`. |
-| `setup` | Shows the Claude Code pieces the console ships (section 18). |
+| `setup` | Shows the setup plan for the console's own items (section 18). |
+| `stop-all --yes`, `resume --yes` | Stop what the console and the setup profile started, and undo that stop. |
+| `crash-report`, `recover-prompt` | Build a scrubbed problem report or help text for you to read first. |
+| `profile` | The setup profile from a terminal: list, view, apply, revert, adopt. |
+| `uninstall` | Remove the console. It stops while a setup profile is applied (`--keep-profile` overrides); `--purge` also recycles your data. |
 | `autoupdate --register` | Writes a script that creates the auto-update task; you run it yourself. |
 | `release` | Builds a release package on this computer. It never uploads. |
 
@@ -423,29 +430,29 @@ version is installed.
 
 ## 18. Setting up Claude Code for the console
 
-The console ships a few Claude Code pieces: the `/done` command behind the quick
-chip, an optional status line for Claude Code outside the console, and the pane
-hooks that tell the console when a pane is waiting.
+The pane hooks that tell the console when a pane is waiting are never installed: each
+pane gets them at start. Two other pieces are yours to add, and both go through the setup
+profile, so every apply shows its plan first and `claude-console profile revert --last
+--apply --yes` undoes it.
 
-`claude-console setup` only **shows a plan**, one line per piece:
+- **The `/done` command** behind the quick chip is written into a project. `claude-console
+  profile apply --target repo:C:\code\my-app --only cmd-done --var repo_code=APP` shows
+  the plan, and adding `--apply --yes` writes it. It brings the project's hand-off file
+  with it, named from that code.
+- **A status line outside the console**: `claude-console profile enable set-statusline-user`,
+  then `claude-console profile apply --target user --only set-statusline-user`, and the
+  same with `--apply --yes`. It shows in every project.
 
-- **new**: would be added;
-- **same**: already there, nothing to do;
-- **differs** / **conflict**: you already have a different version; it is kept.
+`claude-console setup` installs neither. It looks at `claude-console profile apply --target
+user --only console`, whose items live in a project or inside the console, so it normally
+has nothing to write: it says so, even `--apply --yes` then records nothing, and it names
+the wizard (the `...` menu, **Run setup...**).
 
-Nothing is written. To apply the plan, run `claude-console setup --apply --yes`
-(add `--only <ids>` to pick pieces). A backup is made first. A different file you
-already have is replaced only if you also add `--force` (commands) or `--replace`
-(settings). The pane hooks are never installed: each pane gets them at start.
+The console's simpler status line (account, model, repository, context and quota) has no
+install command. It is `statusline.js` in the install folder, for a `statusLine` entry you
+add to your Claude settings yourself; remove that entry the same way.
 
-For a guided version, paste `claude/first-run.md` into a Claude pane. Claude shows
-the plan in plain words and asks before each write.
-
-Default: plan only. Your global Claude settings never change without your yes.
-
-Example: `claude-console setup` lists `cmd-done new`. Run
-`claude-console setup --apply --yes --only cmd-done` to add just the `/done`
-command.
+Default: nothing is written. Your global Claude settings never change without your yes.
 
 ## 19. What the console never does
 
@@ -455,3 +462,10 @@ command.
 - It never changes your global Claude Code settings without a shown plan and your
   yes.
 - It never deletes your files directly: cleanups use the Recycle Bin.
+
+## Setup profile, adoption and recovery
+
+These have their own pages: [the setup profile](profile.md), [adopting an existing
+project](adopt.md), [recovery](recovery.md) and [privacy](privacy.md). **Report a
+problem** and **Get help in the browser** are in the `...` menu; both show you the exact
+text first.

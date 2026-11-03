@@ -26,9 +26,15 @@
     apply: 'Apply and verify',
   };
   const PROXY_VAR = 'headless_base_url';
+  const PROXY_ENV = 'CLAUDE_HEADLESS_BASE_URL';
+  // The env step's cards: the proxy variable belongs to the account step (R1-7).
+  function envCards(inputs) { return ((inputs && inputs.env) || []).filter((e) => !e.secret && e.name !== PROXY_ENV); }
   // The steps a path needs, from what its selection asks for. y = steps.length is fixed
   // when path A is chosen or path B's modules are confirmed; skipping an input later
-  // never changes it (the step stays, its dependants show as off).
+  // never changes it (the step stays, its dependants show as off). Only a change of
+  // target on those two steps moves y, since a target decides what applies at all.
+  // o.accounts: how many accounts are configured. The account step needs two (R1-7).
+  // A value that already has one asks nothing, so it alone does not make a details step.
   function stepsFor(pathName, inputs, o) {
     o = o || {};
     const first = o.update ? 'update' : 'path';
@@ -37,29 +43,64 @@
     if (pathName === 'custom') s.push('modules');
     else s.push('glance');
     const i = inputs || {};
-    if ((i.env || []).some((e) => !e.secret)) s.push('env');
+    if (envCards(i).length) s.push('env');
     if ((i.secrets || []).length) s.push('keys');
-    if ((i.account && i.account.needed) || (i.variables || []).some((v) => v.name === PROXY_VAR)) s.push('account');
-    if ((i.variables || []).some((v) => v.name !== PROXY_VAR)) s.push('details');
+    if (o.accounts >= 2 && ((i.account && i.account.needed) || (i.variables || []).some((v) => v.name === PROXY_VAR))) s.push('account');
+    if ((i.variables || []).some((v) => v.name !== PROXY_VAR && (v.value === null || v.value === undefined))) s.push('details');
     if ((i.tasks || []).length) s.push('tasks');
     s.push('review', 'preview', 'apply');
     return s;
   }
   function label(steps, idx) { return 'Step ' + (idx + 1) + ' of ' + steps.length + ' - ' + (TITLES[steps[idx]] || steps[idx]); }
-  function rail(steps, idx) { return steps.map((s, i) => (i < idx ? '[+]' : i === idx ? '[>]' : '[ ]')); }
-  // The words a screen reader gets for each rail item (UX-F2): step name + state.
+  // The words a screen reader gets for each rail item (UX-F2): step name + state. The rail
+  // has no visual row: "Step x of y" says it, and tooltips do not reach a phone (R1-26).
   function railWord(steps, idx, i) { return (TITLES[steps[i]] || steps[i]) + ', ' + (i < idx ? 'done' : i === idx ? 'current' : 'to do'); }
   // Path card marker: a chosen / not chosen mark outside the state vocabulary (UX-F1).
   function cardMark(chosen) { return chosen ? '(o) ' : '( ) '; }
-  function inputLabel(n) {
+  // o.labels: {variable name: plain label}; o.oneAccount: the proxy was never asked (R1-7).
+  function inputLabel(n, o) {
+    o = o || {};
     const s = String(n);
     if (s.startsWith('secret:')) return 'API key ' + s.slice(7);
     if (s.startsWith('env:')) return s.slice(4);
     if (s.startsWith('task:')) return 'task ' + s.slice(5);
-    if (s === PROXY_VAR) return 'proxy URL';
-    return s;
+    if (s === PROXY_VAR) return o.oneAccount ? 'a second Claude account' : 'proxy URL';
+    return (o.labels && o.labels[s]) || s;
   }
-  function offLine(x) { return '[ ] off - needs ' + (x.needs || []).map(inputLabel).join(', ') + ' - ' + (x.title || x.item); }
+  function offLine(x, o) { return '[ ] off - needs ' + (x.needs || []).map((n) => inputLabel(n, o)).join(', ') + ' - ' + (x.title || x.item); }
+  // The Stays off box: what a group of items needs is said once, then their titles (N2).
+  function offLines(rows, o) {
+    const groups = new Map();
+    for (const x of rows || []) {
+      const k = (x.needs || []).join('\n');
+      if (!groups.has(k)) groups.set(k, { needs: x.needs, titles: [] });
+      groups.get(k).titles.push(x.title || x.item);
+    }
+    return [...groups.values()].map((g) => offLine({ needs: g.needs, title: g.titles.join(', ') }, o));
+  }
+  // A task question not answered yet is not a skip: those rows wait for the answer (R1-8).
+  function offRows(offNeeds, pathName, tasksYes) {
+    const waiting = pathName !== 'custom' && tasksYes === null;
+    return (offNeeds || []).filter((x) => !(waiting && (x.needs || []).length && x.needs.every((n) => String(n).startsWith('task:'))));
+  }
+  // The inputs that start skipped, once each: hardware most people lack (start_skipped),
+  // and the proxy on a one-account machine. seen keeps a later untick from being undone.
+  function startSkips(inputs, accounts, seen) {
+    const i = inputs || {};
+    const out = [];
+    const add = (k) => { if (!seen.has(k)) { seen.add(k); out.push(k); } };
+    for (const v of i.variables || []) if (v.startSkipped) add(v.name);
+    if (!(accounts >= 2) && ((i.account && i.account.needed) || (i.variables || []).some((v) => v.name === PROXY_VAR))) add(PROXY_VAR);
+    return out;
+  }
+  // The preset card's text (R3-7), its numbers from the preset itself.
+  function presetCardSub(items, tasks) {
+    const n = (tasks || []).length;
+    const word = (tasks || []).every((t) => t.hidden) ? 'hidden ' : '';
+    return "The author's full setup: " + items + ' items. It changes your Claude settings, adds rules, hooks and scripts to the project you pick'
+      + (n ? ', and can register ' + n + ' ' + word + 'scheduled task' + (n === 1 ? '' : 's') : '')
+      + '. It suits people who already run Claude Code daily. The next screens list everything; nothing is written until Apply.';
+  }
   // FB-1021: an item the preset itself leaves off, with the reason (glance step).
   function presetOffLine(x) { return '[ ] off - ' + (x.why || 'off in this preset') + ' - ' + (x.title || x.item); }
   // Skip keys an input card adds: env:NAME, secret:ref, a variable name, task:NAME.
@@ -89,7 +130,54 @@
     }
     return out;
   }
-  const api = { TITLES, stepsFor, label, rail, railWord, cardMark, inputLabel, offLine, presetOffLine, skipKey, validValue, hintFor, taskSkips, PROXY_VAR };
+  // What Apply sends for the high-risk items (R1-3, R3-1). Path B: the phrases as typed, the
+  // server checks them. Path A: the Preview tick, and only it, stands for the high-risk items
+  // that take a grouped yes; a needsAck id is never sent, so the engine refuses it. o.seen:
+  // the ids the human was shown (another account's plan may hold more; those stay refused).
+  function applyConsent(plan, pathName, o) {
+    o = o || {};
+    const ids = ((plan && plan.highRisk) || []).map((x) => x.id);
+    const seen = o.seen ? new Set(o.seen) : null;
+    if (pathName === 'custom') {
+      const acks = ids.filter((id) => !seen || seen.has(id));
+      const typed = {};
+      for (const id of acks) if (o.typed && o.typed[id] !== undefined) typed[id] = o.typed[id];
+      return { groupedConsent: false, acks, typed };
+    }
+    const need = new Set((plan && plan.needsAck) || []);
+    const yes = o.tick === true && (!seen || ids.every((id) => seen.has(id)));
+    return { groupedConsent: yes || !ids.length, acks: yes ? ids.filter((id) => !need.has(id)) : [], typed: {} };
+  }
+  // Preview's Next. Path A with a needsAck id stays shut: this path takes no typed phrase.
+  function nextBlocked(plan, pathName, o) {
+    o = o || {};
+    if (plan.empty || plan.verdict.code !== 0 || (plan.missing && plan.missing.length > 0)) return true;
+    if (pathName === 'custom') return !o.acksDone;
+    if ((plan.needsAck || []).length) return true;
+    return (plan.highRisk || []).length > 0 && o.tick !== true;
+  }
+  // Why Preview's Apply is shut, in one line beside the button (N1); '' when it is open.
+  function blockedWhy(plan, pathName, o) {
+    if (!nextBlocked(plan, pathName, o)) return '';
+    if (plan.missing && plan.missing.length) return 'Fill in or skip the value above to continue.';
+    if (plan.verdict.code !== 0) return 'This plan was refused; the reason is above.';
+    if (plan.empty) return 'Nothing to apply: this target already matches. Skip for now closes setup.';
+    if (pathName === 'custom') return 'Type the apply phrase beside each high-risk item above to continue.';
+    if ((plan.needsAck || []).length) return 'This path cannot apply that item; the way out is above.';
+    return 'Tick "Yes, apply them" above to continue.';
+  }
+  function typedOnlyLine(plan) {
+    const hr = (plan && plan.highRisk) || [];
+    const names = ((plan && plan.needsAck) || []).map((id) => { const x = hr.find((y) => y.id === id); return x && x.title ? x.title : id; });
+    return names.join(', ') + ' needs its own typed yes, which this path does not ask. Use Switch to custom setup to type it, or to turn it off.';
+  }
+  // The result line (R1-10 step 3). left: rows left out because no project was picked.
+  function doneLine(plan, left) {
+    return plan && plan.target && plan.target.user && left > 0
+      ? '[+] Your Claude settings are set up. Project modules were left out; run setup again on a project to add them. Restart Claude panes to load this.'
+      : '[+] Setup complete - restart Claude panes to load it';
+  }
+  const api = { TITLES, stepsFor, envCards, label, railWord, cardMark, inputLabel, offLine, offLines, offRows, startSkips, presetCardSub, presetOffLine, skipKey, validValue, hintFor, taskSkips, applyConsent, nextBlocked, blockedWhy, typedOnlyLine, doneLine, PROXY_VAR };
   if (typeof module === 'object' && module.exports) module.exports.Setup = api;
   else root.CCSetup = api;
 })(this);
@@ -109,7 +197,7 @@
   function fresh(o) {
     return { update: !!(o && o.update), offer: null, path: null, steps: null, idx: 0, base: null, sel: null, offNeeds: [], presetOff: [], draft: null, skipped: new Set(), values: {}, inputs: null,
       target: 'user', tick: false, tasksYes: null, consent: {}, plan: null, typed: {}, modIdx: 0, saved: {}, result: null, states: {}, baseStates: {}, useSaved: false,
-      applying: false, arm: null, shown: null, opener: null };
+      applying: false, arm: null, shown: null, opener: null, accounts: 0, seeded: new Set(), card: { items: 0, tasks: [] }, hrTick: false, missSeen: new Map(), why: '' };
   }
 
   // ---- the page: shown over the console, the rest hidden from view and Tab (CSS
@@ -152,10 +240,11 @@
     const major = (v) => String(v || '').split('.')[0];
     const ack = st.selection && st.selection.review_ack;
     W.tick = !!(ack && major(ack.version) === major(st.profile.version));
+    try { W.accounts = ((await api('GET', '/api/info')).accounts || []).length; } catch (e) { W.accounts = 0; }
     if (W.update) { try { W.offer = await api('GET', '/api/profile/update'); } catch (e) { W.offer = { mode: 'none' }; } if (!W.offer || W.offer.mode === 'none') W.update = false; }
     // Before a path is chosen, y shows path A's count (the shorter, common case).
     try { await choosePresetBaseline(); } catch (e) { noProfile('The setup profile could not be read: ' + e.message); return; }
-    W.steps = SP.stepsFor(W.update ? null : 'preset', W.inputs, { update: W.update });
+    W.steps = SP.stepsFor(W.update ? null : 'preset', W.inputs, { update: W.update, accounts: W.accounts });
     W.path = null;
     render();
   }
@@ -180,8 +269,11 @@
     const r = await api('POST', '/api/profile/wizard', { op: 'preset', name });
     setBase(r);
     W.presetOff = r.presetOff || [];
-    W.inputs = await api('POST', '/api/profile/wizard', { op: 'inputs', selection: W.base });
+    // The card states the whole preset, whatever the target (no target = no filter).
+    W.card = { items: r.on, tasks: (await api('POST', '/api/profile/wizard', { op: 'inputs', selection: W.base })).tasks };
+    W.inputs = await inputsFor(W.base);
   }
+  function inputsFor(selection) { return api('POST', '/api/profile/wizard', { op: 'inputs', selection, target: U.targetOf(W.target) }); }
   function presetName() { return st.presets.includes('remus3') ? 'remus3' : st.presets[0]; }
   function presetTitle(n) { return (st.presetTitles && st.presetTitles[n]) || n; }
 
@@ -203,7 +295,14 @@
     if (!W || !W.arm) return;
     clearTimeout(W.arm.timer);
     W.arm = null;
-    U.note($('#wz-note'), '');
+    U.note($('#wz-note'), W.why);
+  }
+  // The reason a button is shut stays in the footer beside it, unless the switch-back arm
+  // is talking. Unchanged text is not set again: the note is an alert region.
+  function setWhy(text) {
+    W.why = text;
+    const n = $('#wz-note');
+    if (!W.arm && n.textContent !== text) U.note(n, text);
   }
 
   // A new step moves focus to its heading (UX-F3); a re-render of the same step keeps
@@ -231,8 +330,8 @@
     $('#wz-step').textContent = SP.label(W.steps, W.idx);
     const rl = $('#wz-rail');
     rl.textContent = '';
-    SP.rail(W.steps, W.idx).forEach((g, i) => rl.appendChild(h('li.mono', { title: SP.TITLES[W.steps[i]], 'aria-current': i === W.idx ? 'step' : null },
-      h('span', { 'aria-hidden': 'true', text: g }), h('span.sr-only', { text: SP.railWord(W.steps, W.idx, i) }))));
+    W.steps.forEach((s, i) => rl.appendChild(h('li', { 'aria-current': i === W.idx ? 'step' : null }, h('span.sr-only', { text: SP.railWord(W.steps, W.idx, i) }))));
+    W.why = '';
     if (!W.arm) U.note($('#wz-note'), '');
     const body = $('#wz-body');
     body.textContent = '';
@@ -247,7 +346,7 @@
     cancel.textContent = done ? 'Close' : 'Skip for now';
     cancel.disabled = W.applying;
     const next = $('#wz-next');
-    next.textContent = step === 'preview' ? 'Apply' : step === 'apply' ? 'Done' : 'Next';
+    next.textContent = step === 'preview' ? 'Apply' : step === 'apply' ? 'Done' : step === 'modules' ? 'Done with modules' : 'Next';
     next.disabled = false;
     return (VIEWS[step] || (() => body.appendChild(h('p', { text: step }))))(body, next);
   }
@@ -261,16 +360,32 @@
   function skipRow(cb, consequence) {
     return h('div.wz-skiprow', h('label.check.small', cb, 'Skip'), h('span.small.muted', { text: '- ' + consequence }));
   }
-  // Always rendered, so a skip never moves the content below it (UX-N13).
+  // Sits below the step's content, so showing it never moves anything above it (UX-N13).
   function offList(body) {
-    const box = h('div.wz-off', h('div.small', { text: 'Turned off because an input was skipped:' }));
-    if (!W.offNeeds.length) box.appendChild(h('div.mono.small', { text: '-' }));
-    for (const x of W.offNeeds) box.appendChild(h('div.mono.small', { text: SP.offLine(x) }));
+    const rows = SP.offRows(W.offNeeds, W.path, W.tasksYes);
+    if (!rows.length) return;
+    const labels = {};
+    for (const v of st.variables || []) if (v.label) labels[v.name] = v.label;
+    for (const m of W.missSeen.values()) if (m.label) labels[m.name] = m.label;
+    for (const v of (W.inputs && W.inputs.variables) || []) if (v.label) labels[v.name] = v.label;
+    const box = h('div.wz-off', h('div.small', { text: 'Stays off:' }));
+    for (const line of SP.offLines(rows, { labels, oneAccount: !(W.accounts >= 2) })) box.appendChild(h('div.mono.small', { text: line }));
     body.appendChild(box);
   }
+  // The target decides what the path asks. On path A it re-reads the inputs at once, so y
+  // and the rows below are right; path B re-reads them when its modules are confirmed.
+  async function setTarget(v) {
+    if (v === W.target) return;
+    W.target = v;
+    if (W.path === 'custom') return;
+    const next = $('#wz-next');
+    next.disabled = true;
+    try { await fixSteps(); render(); } catch (e) { next.disabled = false; U.note($('#wz-note'), '[x] ' + e.message, true); }
+  }
   function targetRow(body) {
-    const sel = U.targetSelect('wz-target', (v) => { W.target = v; }, { value: W.target });
-    body.appendChild(h('label.wz-target', 'Apply to ', sel));
+    const sel = U.targetSelect('wz-target', setTarget, { value: W.target });
+    body.appendChild(h('label.wz-target', 'Apply to (choose one) ', sel));
+    body.appendChild(h('p.small.muted', { text: 'This user: only your Claude settings change. The rules, hooks and safety floors go into a project, so they are skipped here. A project: settings, rules, hooks and floors all apply.' }));
   }
   function itemTitles(ids) {
     const t = {};
@@ -285,6 +400,7 @@
 
   const VIEWS = {
     path(body, next) {
+      body.appendChild(h('p.wz-lead', { text: 'Optional setup. Claude Console works without it. Skip for now opens the console; you can run this later from the ... menu, Run setup.' }));
       whatThis(body, 'Pick how much you want to decide yourself. Nothing is written until the Apply step, and everything can be reverted later.');
       const grp = h('div.wz-cards', { role: 'radiogroup', 'aria-label': 'Setup path' });
       const pick = (id) => {
@@ -299,11 +415,10 @@
       const card = (id, title, sub) => h('button.wz-card', { type: 'button', role: 'radio', 'aria-checked': W.path === id ? 'true' : 'false', dataset: { path: id, title },
         on: { click: () => pick(id) } },
       h('span.wz-ctitle', { text: SP.cardMark(W.path === id) + title }), h('span.small.muted', { text: sub }));
-      grp.appendChild(card('preset', "Use Remus3's current settings (recommended for experienced users)", 'What the author runs plus every item they ship on, ready in a few steps; the next screens list what stays off and why'));
-      grp.appendChild(card('custom', 'Custom setup', 'Choose each module and review every change'));
+      grp.appendChild(card('preset', "Use Remus3's current settings (for experienced users)", SP.presetCardSub(W.card.items, W.card.tasks)));
+      grp.appendChild(card('custom', 'Custom setup (best if you are new)', 'Starts from the recommended set. Choose each module and review every change'));
       U.arrowNav(grp, '.wz-card');
       body.appendChild(grp);
-      body.appendChild(h('p.small.muted.wz-skipline', { text: 'Not now? "Skip for now" leaves setup without writing anything; Run setup in the ... menu or in Settings brings it back.' }));
       next.disabled = !W.path;
     },
     update(body) {
@@ -318,8 +433,8 @@
       body.appendChild(list);
     },
     glance(body) {
-      whatThis(body, 'These are the modules the author runs. Each line says what it does; open one to see its items (read-only here). Use "Switch to custom setup" to change any of them.',
-        'nothing to decide here; Next keeps the author\'s modules as listed.');
+      whatThis(body, 'These are the modules the author runs. Each line says what it does; open one to see its items (read-only here). Use "Switch to custom setup" to change any of them.');
+      body.appendChild(h('p.small.muted.wz-skipline', { text: "Choose where this applies. Next keeps the author's modules as listed." }));
       targetRow(body);
       const on = (m) => m.items.filter((it) => it.locked || W.states[it.id] === 'on').length;
       const listBox = h('div#wz-glance', { hidden: true });
@@ -355,7 +470,7 @@
       body.appendChild(pager);
       const isOn = (it) => it.locked || W.baseStates[it.id] === 'on';
       const n = m.items.filter(isOn).length;
-      const head = h('div.pf-mhead', h('h4', { text: m.order + ' ' + m.title }), h('span.pf-c.num', { text: m.locked ? 'always on' : 'on ' + n + ' of ' + m.total }));
+      const head = h('div.pf-mhead', h('h4', { text: m.order + ' ' + m.title }), m.locked ? null : h('span.pf-c.num', { text: 'on ' + n + ' of ' + m.total }));
       const mslot = h('div.pf-slot#wz-modslot', { role: 'status' });
       if (!m.locked) {
         const cb = h('input#wz-modtoggle', { type: 'checkbox', checked: n > 0, 'aria-label': 'Module ' + m.title + ' on or off' });
@@ -365,7 +480,7 @@
       body.appendChild(head);
       body.appendChild(mslot);
       body.appendChild(h('p.small', { text: m.summary }));
-      if (m.why) body.appendChild(h('p.small.muted', { text: 'Why it is on: ' + m.why }));
+      if (m.why) body.appendChild(h('p.small.muted', { text: 'Why the author uses it: ' + m.why }));
       for (const it of m.items) {
         const row = h('div.pf-itop');
         const slot = h('div.pf-slot.wz-islot', { role: 'status', dataset: { slot: it.id } });
@@ -384,13 +499,13 @@
       }
     },
     env(body) {
-      whatThis(body, 'These user environment variables are what the modules you chose need. They are written for your Windows user only (new terminals see them). API keys are asked for on the next step, never here.',
+      whatThis(body, 'These user environment variables are what the modules you chose need. They are written for your Windows user only (new terminals see them).',
         'skip each variable below; the items that need it are turned off and listed.');
-      for (const e of W.inputs.env.filter((x) => !x.secret)) {
+      for (const e of SP.envCards(W.inputs)) {
         const k = SP.skipKey('env', e.name);
         const skip = W.skipped.has(k);
         const card = h('div.wz-input', h('div.mono.wz-ctitle', { text: e.name + (e.proposed ? ' = ' + e.proposed : '') }),
-          h('div.small', { text: 'Does: ' + e.does }), h('div.small.muted', { text: 'Why it is on: ' + e.why }),
+          h('div.small', { text: 'Does: ' + e.does }), h('div.small.muted', { text: 'Why the author uses it: ' + e.why }),
           h('div.small', { text: 'Scope: your user. Now: ' + e.current + '. Used by: ' + itemTitles(e.items) }));
         const rg = h('div.wz-choice', { role: 'radiogroup', 'aria-label': e.name });
         for (const [v, t] of [['set', 'Set it'], ['skip', 'Skip']]) {
@@ -451,18 +566,20 @@
       offList(body);
     },
     details(body) {
-      whatThis(body, 'A few values the chosen modules write into files. Your git identity is stored in this project\'s local git config only, so commits carry your name and never an AI co-author line.',
+      const askGit = W.inputs.variables.some((x) => x.name === 'operator_ident');
+      whatThis(body, 'A few values the chosen modules write into files.' + (askGit ? ' Your git identity is stored in this project\'s local git config only, so commits carry your name and never an AI co-author line.' : ''),
         'skip each value below; the items that use it are turned off and listed.');
       for (const v of W.inputs.variables.filter((x) => x.name !== SP.PROXY_VAR)) {
-        const inp = h('input.mono', { type: 'text', spellcheck: 'false', value: W.values[v.name] || v.value || '', 'aria-label': v.name, dataset: { var: v.name } });
+        const name = v.label || v.name;
+        const inp = h('input.mono', { type: 'text', spellcheck: 'false', value: W.values[v.name] || v.value || '', 'aria-label': name, dataset: { var: v.name } });
         const line = h('span.small.wz-val', { role: 'status' });
-        const sk = h('input', { type: 'checkbox', checked: W.skipped.has(v.name), 'aria-label': 'Skip ' + v.name });
+        const sk = h('input', { type: 'checkbox', checked: W.skipped.has(v.name), 'aria-label': 'Skip ' + name });
         const upd = () => { const ok = SP.validValue(v, inp.value); U.note(line, inp.value ? (ok ? '[+]' : '[x] ' + SP.hintFor(v)) : '', !ok); if (ok) W.values[v.name] = inp.value; else delete W.values[v.name]; };
         inp.addEventListener('input', upd);
         enterNext(inp, () => SP.validValue(v, inp.value));
         if (inp.value) upd();
         sk.addEventListener('change', () => reskip(v.name, sk.checked));
-        body.appendChild(h('div.wz-input', h('div.mono.wz-ctitle', { text: v.name }), h('div.small.muted', { text: (v.why || '') + ' Used by: ' + itemTitles(v.items) }), h('div', inp, ' ', line), skipRow(sk, 'the items that use it stay off.')));
+        body.appendChild(h('div.wz-input', { title: 'Used by: ' + itemTitles(v.items) }, h(v.label ? 'div.wz-ctitle' : 'div.mono.wz-ctitle', { text: name }), v.why ? h('div.small.muted', { text: v.why }) : null, h('div', inp, ' ', line), skipRow(sk, 'the items that use it stay off.')));
       }
       offList(body);
     },
@@ -470,12 +587,13 @@
       const preset = W.path !== 'custom';
       whatThis(body, preset ? 'The author\'s setup registers these scheduled tasks for your user. Say yes or no for all of them at once.' : 'Each scheduled task needs its own yes: tick the ones you want. Unticked tasks are not registered.',
         preset ? 'answer No and no task is registered; the task-backed items are turned off and listed.' : 'leave every task unticked; the task-backed items are turned off and listed.');
+      if (preset) body.appendChild(h('p.small', { text: 'Want only some of them? Use Switch to custom setup.' }));
       for (const t of W.inputs.tasks) {
         const card = h('div.wz-input', h('div.mono.wz-ctitle', { text: t.name }),
           h('div.small', { text: 'When: ' + (t.trigger || 'see the task file') + (t.limitMinutes ? '; stops after ' + t.limitMinutes + ' min' : '') + (t.hidden ? '; runs hidden' : '') }),
           h('div.small', { text: 'Runs: ' + t.does }),
-          h('div.small', { text: 'May delete: ' + (t.deletes || 'nothing') }),
-          h('div.small.muted', { text: 'Why it is on: ' + t.why }));
+          h('div.small', { text: 'May delete: ' + (t.deletes || 'not stated') }),
+          h('div.small.muted', { text: 'Why the author uses it: ' + t.why }));
         if (!preset) {
           const cb = h('input', { type: 'checkbox', checked: !!W.consent[t.name], dataset: { task: t.name }, 'aria-label': 'Register ' + t.name });
           cb.addEventListener('change', async () => { W.consent[t.name] = cb.checked; await applyTaskSkips(); render(); });
@@ -517,16 +635,40 @@
       try { plan = await api('POST', '/api/profile/plan', { target: U.targetOf(W.target), draft, values: W.values }); } catch (e) { body.appendChild(h('p.pf-bad', { text: '[x] ' + e.message })); return; }
       W.plan = plan;
       W.typed = {};
-      // a value the plan still needs is asked right here (UX-F25), then planned again
-      if (plan.missing && plan.missing.length) {
-        const card = U.missingCard(plan, (W.inputs && W.inputs.variables) || st.variables || [], W.values, (nv) => { Object.assign(W.values, nv); W.shown = null; render(); });
+      // A new plan can list other high-risk items, so the yes is asked again.
+      W.hrTick = false;
+      // a value the plan still needs is asked right here (UX-F25), then planned again; a
+      // skip turns its items off (R1-4), and its tick stays here so it can be undone
+      for (const m of plan.missing || []) W.missSeen.set(m.name, m);
+      const skippedRows = [...W.missSeen.values()].filter((m) => W.skipped.has(m.name) && !(plan.missing || []).some((x) => x.name === m.name));
+      if ((plan.missing && plan.missing.length) || skippedRows.length) {
+        const card = U.missingCard(plan, (W.inputs && W.inputs.variables) || st.variables || [], W.values, (nv) => { Object.assign(W.values, nv); W.shown = null; render(); }, {
+          titleOf: (id) => itemTitles([id]),
+          onSkip: reskip,
+          canSkip: (m) => !m.items.some((id) => st.modules.some((x) => x.locked && x.items.some((it) => it.id === id))),
+          skippedRows,
+        });
         card.id = 'wz-missing';
         body.appendChild(card);
       }
       const custom = W.path === 'custom';
-      const upd = () => { next.disabled = plan.empty || plan.verdict.code !== 0 || (plan.missing && plan.missing.length > 0) || (custom && !PF.acksComplete(plan.highRisk, W.typed)); };
-      body.appendChild(U.planView(plan, st.modules, { typedAcks: custom, typed: W.typed, onAck: upd }));
-      if (!custom && plan.highRisk.length) body.appendChild(h('p.small.muted', { text: 'On this path, your answer on scheduled tasks and the review tick count as your yes for the high-risk items listed above.' }));
+      const upd = () => {
+        const o = { acksDone: PF.acksComplete(plan.highRisk, W.typed), tick: W.hrTick };
+        next.disabled = SP.nextBlocked(plan, W.path, o);
+        setWhy(SP.blockedWhy(plan, W.path, o));
+      };
+      // The yes sits right under the high-risk list, above the per-module rows, so it is in
+      // view on arrival (N1). A plan still missing a value asks it first: a new plan resets
+      // the tick anyway.
+      const consent = [];
+      if (!custom && (plan.needsAck || []).length) consent.push(h('p.pf-bad#wz-typedonly', { role: 'alert', text: '[x] ' + SP.typedOnlyLine(plan) }));
+      else if (!custom && plan.highRisk.length && !(plan.missing && plan.missing.length)) {
+        const cb = h('input#wz-hrtick', { type: 'checkbox', checked: false });
+        cb.addEventListener('change', () => { W.hrTick = cb.checked; upd(); });
+        consent.push(h('label.check.wz-tickrow', cb, 'These high-risk items are part of this preset. Yes, apply them.'));
+        consent.push(h('p.small.muted', { text: 'Your answer on scheduled tasks covers tasks only.' }));
+      }
+      body.appendChild(U.planView(plan, st.modules, { typedAcks: custom, typed: W.typed, onAck: upd, riskFirst: true, consent }));
       offList(body);
       upd();
     },
@@ -546,7 +688,7 @@
       const taskConsent = W.path !== 'custom'
         ? { mode: 'grouped', yes: W.tasksYes === true, listed: planTasks }
         : { mode: 'per-task', tasks: Object.fromEntries(planTasks.filter((n) => W.consent[n]).map((n) => [n, true])) };
-      try { r = await api('POST', '/api/profile/apply', { planId: W.plan.planId, confirm: true, groupedConsent: W.path !== 'custom', taskConsent, acks: W.plan.highRisk.map((x) => x.id) }); } catch (e) { r = { ok: false, line: e.message, verify: [] }; }
+      try { r = await api('POST', '/api/profile/apply', Object.assign({ planId: W.plan.planId, confirm: true, taskConsent }, SP.applyConsent(W.plan, W.path, { typed: W.typed, tick: W.hrTick }))); } catch (e) { r = { ok: false, line: e.message, verify: [] }; }
       if (r.ok) r.accounts = await applyOtherAccounts();
       W.result = r;
       W.applying = false;
@@ -559,11 +701,11 @@
 
   function showResult(body, next) {
     const r = W.result;
-    body.appendChild(h('p' + (r.ok ? '' : '.pf-bad'), { role: 'status', text: (r.ok ? '[+] ' : '[x] ') + r.line }));
+    body.appendChild(h('p' + (r.ok ? '' : '.pf-bad'), { role: 'status', text: (r.ok ? '[+] ' : '[x] ') + PF.refusedLine(r.line, W.plan) }));
     if (r.verify && r.verify.length) body.appendChild(U.verifyRows(r.verify, U.report));
     for (const a of r.accounts || []) body.appendChild(h('p.small' + (a.ok ? '' : '.pf-bad'), { text: (a.ok ? '[+] ' : '[x] ') + a.label + ' settings: ' + a.line }));
     const bad = r.ok && (r.verify || []).some((v) => !v.ok && !v.skipped);
-    if (r.ok && !bad) body.appendChild(h('p.wz-done', { text: '[+] Setup complete - restart Claude panes to load it' }));
+    if (r.ok && !bad) body.appendChild(h('p.wz-done', { text: SP.doneLine(W.plan, (W.plan.rows || []).filter(PF.leftOut).length) }));
     if (!r.ok) body.appendChild(h('button', { type: 'button', text: 'Report a problem', on: { click: () => U.report({ id: 'apply', reason: r.line }) } }));
     if (r.commit) body.appendChild(h('p.small.muted', { text: 'Nothing was committed. Suggested commit message: ' + r.commit.message }));
     next.disabled = false;
@@ -583,8 +725,9 @@
         if (pl.empty) x = { ok: true, line: 'already up to date' };
         else if (pl.verdict.code !== 0) x = { ok: false, line: pl.verdict.line || 'refused' };
         else {
-          const acks = pl.highRisk.map((h2) => h2.id).filter((id) => W.path !== 'custom' || W.plan.highRisk.some((y) => y.id === id));
-          x = await api('POST', '/api/profile/apply', { planId: pl.planId, confirm: true, groupedConsent: W.path !== 'custom', taskConsent: { mode: 'grouped', yes: false, listed: [] }, acks });
+          const c = SP.applyConsent(pl, W.path, { typed: W.typed, tick: W.hrTick, seen: W.plan.highRisk.map((y) => y.id) });
+          x = await api('POST', '/api/profile/apply', Object.assign({ planId: pl.planId, confirm: true, taskConsent: { mode: 'grouped', yes: false, listed: [] } }, c));
+          x.line = PF.refusedLine(x.line, pl);
         }
       } catch (e) { x = { ok: false, line: e.message }; }
       out.push({ label: a.label, ok: !!x.ok, line: x.line });
@@ -630,8 +773,9 @@
 
   // Leaving the path / modules step fixes y for the rest of the run.
   async function fixSteps() {
-    W.inputs = await api('POST', '/api/profile/wizard', { op: 'inputs', selection: W.base });
-    W.steps = SP.stepsFor(W.path, W.inputs, {});
+    W.inputs = await inputsFor(W.base);
+    for (const k of SP.startSkips(W.inputs, W.accounts, W.seeded)) W.skipped.add(k);
+    W.steps = SP.stepsFor(W.path, W.inputs, { accounts: W.accounts });
     // tasks start unconsented (path B) / unanswered (path A): no task registers without a yes
     await applyTaskSkips();
   }
@@ -642,8 +786,21 @@
       if (!step || W.applying) return;
       if (step === 'path') {
         if (!W.path) return;
-        if (W.path === 'custom') { setBase(await api('POST', '/api/profile/wizard', { op: 'custom', selection: W.base })); W.steps = SP.stepsFor('custom', W.inputs, {}); }
-        else await fixSteps();
+        // A fresh Custom starts from the recommended set, never the author's (R1-5). Back to
+        // this step and Custom again keeps the toggles made so far; a Custom base never
+        // carries over into the preset path.
+        const hadCustom = W.base && W.base.path === 'custom';
+        if (W.path === 'custom') {
+          if (!hadCustom) {
+            const r = await api('POST', '/api/profile/wizard', { op: 'preset', name: 'recommended' });
+            setBase(await api('POST', '/api/profile/wizard', { op: 'custom', selection: r.selection }));
+          }
+          W.inputs = await inputsFor(W.base);
+          W.steps = SP.stepsFor('custom', W.inputs, { accounts: W.accounts });
+        } else {
+          if (hadCustom) await choosePresetBaseline();
+          await fixSteps();
+        }
       } else if (step === 'update') {
         // the offer's selection is saved (selection only; no target is touched) and the
         // preview plans from it
@@ -701,7 +858,7 @@
         W.update = false;
         W.useSaved = false;
         setBase(c);
-        W.steps = SP.stepsFor('custom', W.inputs, {});
+        W.steps = SP.stepsFor('custom', W.inputs, { accounts: W.accounts });
         W.idx = W.steps.indexOf('modules');
         W.modIdx = 0;
       }

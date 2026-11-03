@@ -3,8 +3,9 @@
 // Every effect goes through `deps`, so tests drive the whole CLI against scratch dirs
 // with fakes (no npm, no shortcuts, no Recycle Bin, no network, no server start).
 //
-//   install    [--source DIR] [--no-shortcuts] [--ignore-prereqs]
-//   start      [--open]                start the installed version hidden
+//   install    [--source DIR] [--no-shortcuts] [--ignore-prereqs] [--verbose]
+//   start      [--open]                start the installed version hidden; a server that
+//                                      exits nonzero within 15 s prints why and exits 1
 //   stop       [--force] [--timeout S] POST /api/shutdown, then wait for the server pid to exit
 //   status                             marker, legacy layouts, running server
 //   update     [--check] [--from DIR | --zip FILE] [--yes]
@@ -15,7 +16,8 @@
 //   release    --out DIR               build a release zip locally (never uploads)
 //   setup      [--config-dir DIR] [--apply --yes] [--json]   (CON-SHIP-SETUP)
 //   autoupdate [--once]                (CON-AUTOUPDATE)
-//   uninstall  [--purge]               (VMFIX; user data kept unless --purge)
+//   uninstall  [--purge] [--keep-profile]  (VMFIX; user data kept unless --purge; refused
+//                                      while a setup profile is applied)
 //   profile    list|view|diff|apply|enable|disable|edit|revert|uninstall|verify|status|
 //              preset|adopt ...       (CON-013 setup profile; dry run unless --apply --yes)
 //   crash-report [--step ID] [--action issue|claude|save --yes]   (CON-013 e.2)
@@ -29,8 +31,11 @@ const { layout } = require('./paths');
 const { readJson, exists, isDir } = require('./fsutil');
 const { detect, readMarker, readToken } = require('./detect');
 const { CLAUDE_MISSING } = require('./prereq');
+const { START_FAILED } = require('./launcher');
 
 const PKG_ROOT = path.resolve(__dirname, '..');
+const START_WATCH_MS = 15000;
+const INSTALL_OK = /^(installed|updated|updated-with-conflicts|already-installed|repaired)$/;
 
 function parseArgs(argv) {
   const out = { _: [] };
@@ -39,7 +44,7 @@ function parseArgs(argv) {
     if (a.startsWith('--')) {
       const k = a.slice(2);
       const next = argv[i + 1];
-      const flag = ['open', 'yes', 'check', 'json', 'reapply', 'no-save-tweaks', 'no-shortcuts', 'ignore-prereqs', 'send', 'apply', 'once', 'force', 'replace', 'setup', 'register', 'unregister', 'purge'].includes(k);
+      const flag = ['open', 'yes', 'check', 'json', 'reapply', 'no-save-tweaks', 'no-shortcuts', 'ignore-prereqs', 'send', 'apply', 'once', 'force', 'replace', 'setup', 'register', 'unregister', 'purge', 'verbose', 'keep-profile'].includes(k);
       if (flag || next === undefined || next.startsWith('--')) out[k] = true;
       else { out[k] = next; i++; }
     } else out._.push(a);
@@ -61,15 +66,44 @@ function postShutdown(port, token) {
   });
 }
 
-function startServer(L, marker, open, nodePath) {
+// o (optional): spawn (tests), onChild(child): `start` watches the child's exit.
+function startServer(L, marker, open, nodePath, o) {
   const app = marker.path && isDir(marker.path) ? marker.path : L.app(marker.version);
   const env = Object.assign({}, process.env, { CLAUDE_CONSOLE_DATA: L.data, CLAUDE_CONSOLE_RUN: L.run, CLAUDE_CONSOLE_DROPS: L.drops });
   for (const d of [L.data, L.run, L.drops]) fs.mkdirSync(d, { recursive: true });
   const args = [path.join(app, 'server', 'server.js')];
   if (open) args.push('--open');
-  const child = spawn(nodePath || process.execPath, args, { cwd: app, env, detached: true, stdio: 'ignore', windowsHide: true });
+  const child = ((o && o.spawn) || spawn)(nodePath || process.execPath, args, { cwd: app, env, detached: true, stdio: 'ignore', windowsHide: true });
   child.unref();
+  if (o && o.onChild) o.onChild(child);
   return app;
+}
+
+// R1-12: {code, signal} or {error} when the child ends within ms, else null. The server
+// is unref'd, so only the timer holds this process, and never past ms.
+function watchExit(child, ms) {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(null), ms);
+    child.on('exit', (code, signal) => { clearTimeout(t); resolve({ code, signal }); });
+    child.on('error', (e) => { clearTimeout(t); resolve({ error: e.message }); });
+  });
+}
+
+function fileSize(f) {
+  try { return fs.statSync(f).size; } catch (e) { return 0; }
+}
+
+// The failure in words, from what this start added to run/server.log.
+function startFailureReason(L, port, exit, logFile, logFrom) {
+  if (exit.error) return 'the server could not be run (' + exit.error + ')';
+  let text = '';
+  try { text = fs.readFileSync(logFile).subarray(logFrom).toString('utf8'); } catch (e) { text = ''; }
+  const hits = text.match(/start failed: [^\r\n]*/g);
+  if (!hits) return 'the server stopped with exit code ' + exit.code;
+  const msg = hits[hits.length - 1].slice('start failed: '.length).trim();
+  if (!/EADDRINUSE/.test(msg)) return msg.replace(/\.+$/, '');
+  const p = /:(\d+)\s*$/.exec(msg);
+  return 'port ' + (p ? p[1] : port) + ' is used by another program. Set a free "port" in ' + path.join(L.data, 'console.local.json') + ', then start again';
 }
 
 async function run(argv, deps) {
@@ -88,7 +122,7 @@ async function run(argv, deps) {
   }
 
   if (cmd === 'uninstall') {
-    const r = await require('./uninstall').uninstall(Object.assign(procDeps(deps), { home: L.home, purge: !!a.purge, port, removeShell: deps.removeShell, recycle: deps.recycle, deleteLater: deps.deleteLater, rm: deps.rm, retryMs: deps.retryMs }));
+    const r = await require('./uninstall').uninstall(Object.assign(procDeps(deps), { home: L.home, purge: !!a.purge, keepProfile: !!a['keep-profile'], port, removeShell: deps.removeShell, removeEdgeProfile: deps.removeEdgeProfile, recycle: deps.recycle, deleteLater: deps.deleteLater, rm: deps.rm, retryMs: deps.retryMs }));
     emit(r, r.lines);
     return r.ok ? 0 : 1;
   }
@@ -106,32 +140,39 @@ async function run(argv, deps) {
     });
     const lines = ['install: ' + r.status + (r.version ? ' v' + r.version : '')];
     for (const p of pre.problems) lines.push('missing: ' + p);
-    for (const w of pre.warnings) lines.push(w === CLAUDE_MISSING ? w : 'note: ' + w);
+    // install.ps1, the one caller with --ignore-prereqs, prints the Claude line last itself.
+    for (const w of pre.warnings) if (!(w === CLAUDE_MISSING && a['ignore-prereqs'])) lines.push(w === CLAUDE_MISSING ? w : 'note: ' + w);
     if (r.selftest && r.selftest.note) lines.push('note: ' + r.selftest.note);
     if (r.status === 'selftest-failed' && r.selftest) {
       for (const t of r.selftest.failed || []) lines.push('failing test: ' + t);
       lines.push('error: ' + (r.selftest.error || r.selftest.detail || 'unknown'));
       if (r.selftest.log) lines.push('full test output: ' + r.selftest.log);
     }
-    if (r.reportFile) lines.push('report: ' + r.reportFile);
+    // R1-16: paths for a stranger only when something went wrong or they asked.
+    const verbose = a.verbose === true || !INSTALL_OK.test(r.status);
+    if (verbose && r.reportFile) lines.push('report: ' + r.reportFile);
     if (r.restored && r.restored.length) lines.push('restored: ' + r.restored.slice(0, 10).join(', ') + (r.restored.length > 10 ? ' (+' + (r.restored.length - 10) + ' more)' : ''));
-    if (r.launcher) lines.push('launcher: ' + r.launcher);
-    if (r.command) lines.push('command: ' + r.command);
+    if (verbose && r.launcher) lines.push('launcher: ' + r.launcher);
+    if (verbose && r.command) lines.push('command: ' + r.command);
     if (r.shortcutError) lines.push('note: shortcuts / Apps & features / PATH not written: ' + r.shortcutError);
     if (r.update && r.update.summary) lines.push('merge: ' + JSON.stringify(r.update.summary));
-    // CON-SHIP-SETUP: the installer offers the Claude setup as a reviewed plan; it never
-    // writes into ~/.claude* here (apply is `claude-console setup --apply --yes`).
-    const setup = require('./setup');
-    const m = readMarker(L.home);
-    const root = deps.consoleRoot || (m && m.path) || (a.source ? path.resolve(a.source) : PKG_ROOT);
-    if (exists(path.join(root, 'claude', 'setup.json'))) {
-      const plan = setup.planSetup({ consoleRoot: root, configDir: a['config-dir'] && a['config-dir'] !== true ? path.resolve(a['config-dir']) : setup.configDirFor(process.env), nodePath: deps.nodePath, statuslinePath: setup.statuslineFor(L, root) });
-      r.setupPlan = plan.actions.map((x) => ({ id: x.id, status: x.status, selected: x.selected }));
-      if (a.setup) lines.push(...setup.planLines(plan), 'apply with: claude-console setup --apply --yes');
-      else lines.push('Claude commands/settings the console ships: review with `claude-console setup` (nothing is written without --apply --yes)');
+    // CON-SHIP-SETUP: --setup shows the Claude setup as a reviewed plan; it never writes
+    // into ~/.claude* here (apply is `claude-console setup --apply --yes`).
+    if (a.setup) {
+      const setup = require('./setup');
+      const m = readMarker(L.home);
+      const root = deps.consoleRoot || (m && m.path) || (a.source ? path.resolve(a.source) : PKG_ROOT);
+      const routed = setup.profileRoute(root, deps);
+      if (routed) {
+        // CON-SETUP-ROUTE: the old plan below names writes that a routed setup does not do.
+        lines.push(...(await setup.routeWritesNothing(routed, ['console'], a, L, deps) ? setup.NOTHING_TO_SET_UP : ['review with: claude-console setup']));
+      } else if (exists(path.join(root, 'claude', 'setup.json'))) {
+        const plan = setup.planSetup({ consoleRoot: root, configDir: a['config-dir'] && a['config-dir'] !== true ? path.resolve(a['config-dir']) : setup.configDirFor(process.env), nodePath: deps.nodePath, statuslinePath: setup.statuslineFor(L, root) });
+        lines.push(...setup.planLines(plan), 'apply with: claude-console setup --apply --yes');
+      }
     }
     emit(r, lines);
-    return /^(installed|updated|updated-with-conflicts|already-installed|repaired)$/.test(r.status) ? 0 : 1;
+    return INSTALL_OK.test(r.status) ? 0 : 1;
   }
 
   if (cmd === 'status') {
@@ -147,9 +188,25 @@ async function run(argv, deps) {
     const m = readMarker(L.home);
     if (!m) { out('not installed; run: claude-console install'); return 1; }
     const run = deps.startServer || startServer;
-    const app = run(L, m, !!a.open, deps.nodePath);
-    emit({ started: true, version: m.version, app }, ['starting v' + m.version]);
-    return 0;
+    const logFile = path.join(L.run, 'server.log');
+    const failFile = path.join(L.run, START_FAILED);
+    const logFrom = fileSize(logFile);
+    try { fs.unlinkSync(failFile); } catch (e) { /* none */ }
+    if (!a.json) out('starting v' + m.version);
+    let child = null;
+    const app = run(L, m, !!a.open, deps.nodePath, { spawn: deps.spawn, onChild: (c) => { child = c; } });
+    // R1-12: an exit within the watch is this start's result; still running means success.
+    const exit = child ? await watchExit(child, deps.startWatchMs === undefined ? START_WATCH_MS : deps.startWatchMs) : null;
+    if (!exit || exit.code === 0) {
+      if (a.json) out(JSON.stringify({ started: true, version: m.version, app }));
+      return 0;
+    }
+    const reason = startFailureReason(L, port, exit, logFile, logFrom);
+    const line = 'Claude Console could not start: ' + reason + '. Details: ' + logFile;
+    try { fs.writeFileSync(failFile, Buffer.from('\ufeff' + line, 'utf16le')); } catch (e) { /* launch.vbs has its own line */ }
+    if (a.json) out(JSON.stringify({ started: false, version: m.version, app, reason, line }));
+    else out(line);
+    return 1;
   }
 
   if (cmd === 'stop') {
@@ -222,7 +279,7 @@ async function run(argv, deps) {
   if (cmd === 'release') {
     if (!a.out || a.out === true) { out('release needs --out DIR'); return 1; }
     const r = require('./release').buildRelease(a.source ? path.resolve(a.source) : PKG_ROOT, path.resolve(a.out), {});
-    emit(r.info, ['release v' + r.info.version + ': ' + r.zip, 'sha256 ' + r.sha256 + ' (' + r.info.files + ' files)', 'not uploaded: publishing waits for the operator']);
+    emit(r.info, ['release v' + r.info.version + ': ' + r.zip, 'sha256 ' + r.sha256 + ' (' + r.info.files + ' files)', 'not uploaded']);
     return 0;
   }
 
@@ -231,7 +288,7 @@ async function run(argv, deps) {
   if (cmd === 'crash-report' || cmd === 'stop-all' || cmd === 'resume' || cmd === 'recover-prompt') return require('./profile-cli').cliRecover(cmd, argv.filter((x, i) => i !== argv.indexOf(cmd)), L, deps, out);
   if (cmd === 'autoupdate') return require('./autoupdate').cliAutoupdate(a, L, deps, emit, out, port);
 
-  out('unknown command: ' + cmd);
+  out('unknown command: ' + cmd + '. See: claude-console help');
   return 2;
 }
 
@@ -318,15 +375,17 @@ function procDeps(deps) {
 }
 
 const HELP = [
+  'Claude Console. Everyday: start --open, stop, status, update --yes. Everything below is for troubleshooting.',
   'claude-console <command> [--home DIR] [--json]',
-  '  install    [--source DIR] [--repo OWNER/NAME] [--no-shortcuts]   install or repair (a re-run repairs)',
+  '  install    [--source DIR] [--repo OWNER/NAME] [--no-shortcuts] [--verbose]   install or repair (a re-run repairs)',
   '  start [--open] | stop [--force] [--timeout S] | status   stop waits for the server process to exit',
   '  update     [--check] [--from DIR | --zip FILE] [--yes]           restarts the console when no pane is busy',
   '  rollback',
   '  reinstall  shows the pre-flight report and the exact confirm phrase; then:',
   '             reinstall --mode repair|fresh|factory --confirm "reinstall <N>"  (N = local modifications;',
   '             factory also needs --factory-confirm "factory reset")',
-  '  uninstall  [--purge]   removes shortcuts, Apps & features entry, PATH entry and code; --purge also user data',
+  '  uninstall  [--purge] [--keep-profile]   removes shortcuts, Apps & features entry, PATH entry and code; --purge also user data;',
+  '             refused while a setup profile is applied, unless --keep-profile',
   '  contribute [--send --yes] | release --out DIR | setup [--apply --yes] | autoupdate [--register|--unregister]',
   '  profile    list | view <id> | diff | apply [--preset P] [--only ids] [--apply --yes --ack id] | enable | disable',
   '             | edit <item> | revert [--last|--tx T] | uninstall [<module>|--all] | verify | status | adopt <dir>',

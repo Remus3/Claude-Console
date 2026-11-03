@@ -113,7 +113,8 @@
         {
           "kind": "task",
           "name": "ClaudeProfile-WeeklyReport",
-          "template": "templates/tasks/weekly-report.xml"
+          "template": "templates/tasks/weekly-report.xml",
+          "deletes": "nothing"
         }
       ],
       "verify": [
@@ -169,7 +170,8 @@
         {
           "kind": "task",
           "name": "ClaudeProfile-AtlasRefresh",
-          "template": "templates/tasks/atlas-refresh.xml"
+          "template": "templates/tasks/atlas-refresh.xml",
+          "deletes": "nothing"
         }
       ],
       "verify": [

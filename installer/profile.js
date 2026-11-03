@@ -465,7 +465,7 @@ function openEngine(o) {
       const pending = on.filter((id) => !applied.has(id)).concat([...applied].filter((id) => !on.includes(id)));
       const txs = TX.listTx(dataDir);
       return { profile: model.profile ? model.profile.version : null, on: on.length, total: model.order.length, applied: [...applied], pending,
-        drift: drift.rows.filter((r) => r.state !== 'ok'), lastTx: txs.length ? txs[txs.length - 1] : null, preset: sel.preset, path: sel.path };
+        drift: drift.rows.filter((r) => r.state !== 'ok'), lastTx: txs.length ? txs[txs.length - 1] : null, lastAppliedAt: (txs.filter((x) => x.ok && !x.reverted && x.at).pop() || {}).at || null, preset: sel.preset, path: sel.path };
     },
     // Path A / B and updates (profile-update.js).
     presetSelection: (name, a) => PU.presetSelection(model, name, a),
@@ -478,8 +478,15 @@ function openEngine(o) {
   return eng;
 }
 
+// One line for Settings and the crash report (R3-13). The count is the user's picks, not a
+// reading of this machine.
+function statusLine(st) {
+  const picks = ' Your picks: ' + st.on + ' of ' + st.total + ' items.';
+  return st.lastAppliedAt ? 'Setup profile: applied ' + String(st.lastAppliedAt).slice(0, 10) + '.' + picks : 'Setup profile: not applied.' + picks;
+}
+
 module.exports = {
-  openEngine,
+  openEngine, statusLine,
   loadProfile, loadPresets, emptySelection, normaliseSelection, effectiveState, onIds, moduleOn,
   dependencyClosure, dependants, expandIds, enable, disable, conflictsAmong,
   builtins, resolveVariables, renderText, projectSlug, trackedVars, BARE_EXE, readTemplate, checkTemplateText, templatesOf, editTemplate,

@@ -372,8 +372,8 @@
       "id": "console-statusline-basic",
       "order": 409,
       "title": "The console's simple status line",
-      "does": "Keeps the simpler line the console ships: account, model, repository, context and quota.",
-      "why": "For people who do not want workflow rows, this is the lighter choice; it replaces the fixed-slot line.",
+      "does": "Records that you prefer the simpler line the console ships (account, model, repository, context and quota) and writes nothing: to use it, add a statusLine entry for statusline.js in the install folder to your Claude settings yourself.",
+      "why": "For people who do not want workflow rows, this is the lighter choice, the alternative to the fixed-slot line.",
       "risk": "low",
       "default": "off",
       "platform": [
@@ -388,7 +388,7 @@
         "set-statusline-user"
       ],
       "contributes": [],
-      "notes": "Installed by the console's own setup; choosing it here only records the choice."
+      "notes": "Nothing installs it; choosing it here only records the choice."
     },
     {
       "id": "kit-tokens",

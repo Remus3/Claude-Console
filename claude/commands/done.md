@@ -1,5 +1,5 @@
 ---
-description: End the session cleanly - commit the work, write NEXT-SESSION.txt with every open item, then say "Done, safe to clear".
+description: End the session cleanly - commit the work, write NEXT-SESSION.txt with every open item, then say "Done ritual complete, safe to clear".
 argument-hint: [optional note for the next session]
 ---
 
@@ -22,5 +22,5 @@ Note for the next session, if any: $ARGUMENTS
      never dropped;
    - anything the user must do by hand (passwords, physical acts), batched.
    Commit it.
-4. Print exactly one line: `Done, safe to clear`.
+4. Print exactly one line: `Done ritual complete, safe to clear`.
    If a step failed, print the failure instead.

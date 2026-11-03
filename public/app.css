@@ -42,7 +42,7 @@
   --term-bg: #111318;
   --drop-bg: rgba(232, 163, 92, 0.16);
   /* CON-RES resource readout bands: fleet tokens, so both themes follow tokens.css */
-  --res-low: var(--fk-chart-6, #3fc0c8);
+  --res-low: var(--ok); /* R2-31: the chart green measured 3.3:1 at this size; low and ok differ by the bar */
   --res-ok: var(--fk-status-ok, #46b85c);
   --res-mid: var(--fk-status-warn, #d19a2a);
   --res-high: var(--fk-status-bad, #f0605a);
@@ -83,6 +83,7 @@ button { padding: 4px 10px; cursor: pointer; }
 button:hover { border-color: var(--accent); }
 button.small { padding: 1px 7px; font-size: var(--fs-secondary); }
 button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+button.primary:disabled { opacity: 0.45; cursor: not-allowed; }
 button.danger:hover { border-color: var(--bad); color: var(--bad); }
 .muted { color: var(--muted); }
 .small { font-size: var(--fs-secondary); }
@@ -111,7 +112,7 @@ body.no-sidebar #side-rail { display: flex; }
 #topbar .top-actions > button { padding: 5px 12px; }
 
 #main { flex: 1; display: flex; min-height: 0; }
-#sidebar { width: 272px; background: var(--bg2); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+#sidebar { width: 224px; background: var(--bg2); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
 #statuspanel { width: 380px; background: var(--bg2); border-left: 1px solid var(--line); overflow-y: auto; padding-bottom: 20px; }
 body.no-status #statuspanel { display: none; }
 .side-head { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; font-weight: 600; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg2); z-index: 1; }
@@ -119,6 +120,8 @@ body.no-status #statuspanel { display: none; }
 #project-list li { display: flex; align-items: center; gap: 6px; padding: 7px 10px; cursor: pointer; border-left: 3px solid transparent; }
 #project-list li:hover { background: var(--bg3); border-left-color: var(--accent); }
 #project-list li.retired { opacity: 0.45; }
+/* R2-8: the list scrolls, so an outer ring would be clipped */
+#project-list li:focus-visible, #status-list .card:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 #project-list li .pname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #project-list li .pmeta { font-size: calc(var(--fs-secondary) - 1px); color: var(--muted); }
 #project-list li .pact { display: none; gap: 3px; }
@@ -180,9 +183,9 @@ body.no-status #statuspanel { display: none; }
 .pane { position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--term-bg); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 .pane.focused { border-color: var(--accent); }
 .pane.hidden { display: none; }
-.pane-head { display: flex; align-items: center; gap: 5px; padding: 1px 4px 1px 7px; background: var(--bg2); border-bottom: 1px solid var(--line); font-size: var(--fs-secondary); min-width: 0; }
+.pane-head { position: relative; display: flex; align-items: center; gap: 5px; padding: 1px 4px 1px 7px; background: var(--bg2); border-bottom: 1px solid var(--line); font-size: var(--fs-secondary); min-width: 0; }
 .pane-head { cursor: grab; }
-.pane-head .ptitle { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 2em; flex: 0 1 auto; }
+.pane-head .ptitle { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 12ch; flex: 1 1 auto; }
 /* Compact header: the "kind | account | path" subtitle is the title's hover tooltip. */
 .pane-head .pinfo { display: none; }
 .pane-head .badge { flex: none; }
@@ -192,15 +195,27 @@ body.no-status #statuspanel { display: none; }
 .pane-head .pbtns button { padding: 0 5px; font-size: calc(var(--fs-secondary) - 1px); line-height: 1.45; background: transparent; border-color: transparent; }
 .pane-head .pbtns button:hover { border-color: var(--accent); }
 .pane-strip { flex: none; height: 22px; line-height: 22px; padding: 0 10px; font-size: var(--fs-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pane-strip.note { background: var(--warn); color: var(--on-warn); }
+.pane-strip.note { height: auto; min-height: 22px; line-height: 1.4; padding-top: 2px; padding-bottom: 2px; white-space: normal; background: var(--warn); color: var(--on-warn); }
+/* CON-PANEL-COMPACT (operator 2026-10-25): a blank strip takes no height (it opens for a note or the DONE band). */
+.pane-strip.blank { height: 0; }
+#status-age { margin-left: 10px; min-width: 0; font-weight: 400; }
 /* Workflow rows (standard section 4): fixed columns in ch, tabular numerals. */
 .flow { flex: none; font: var(--fs-mono)/1.5 Consolas, "Cascadia Mono", monospace; font-variant-numeric: tabular-nums; }
 .pane > .flow { background: var(--bg2); padding: 0 10px; }
 .pane > .flow:not(:empty) { border-bottom: 1px solid var(--line); }
 .card > .flow { margin: 3px 0 0; }
-.frow { display: grid; grid-template-columns: 3ch minmax(0, 18ch) 5ch 6ch minmax(0, 1fr); column-gap: 1ch; height: calc(var(--fs-mono) * 1.5); white-space: nowrap; color: var(--muted); }
-.frow > span { overflow: hidden; text-overflow: ellipsis; }
-.frow .fc2, .frow .fc3 { text-align: right; }
+.card > .flow:empty { margin: 0; }
+/* CON-PANEL-WRAP (operator 2026-10-25: content was cut off): a row is at least one line
+   tall and wraps inside its cell, never clipped or ellipsised. */
+/* CON-PANEL-COMPACT (operator 2026-10-25): a row is ONE text line - glyph, label, pct/clock,
+   eta, step inline, empty cells take no room - that wraps at the full row width under a
+   4ch hanging indent (never a narrow column, never clipped: CON-PANEL-WRAP still holds). */
+.frow { display: block; padding-left: 4ch; text-indent: -4ch; min-height: calc(var(--fs-mono) * 1.5); white-space: normal; overflow-wrap: anywhere; color: var(--muted); }
+.frow > span { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.frow > span:empty { display: none; }
+.frow > span + span { margin-left: 1ch; }
+.frow .fc0 { display: inline-block; width: 3ch; text-indent: 0; }
+.frow .fc4 { font-weight: 400; color: var(--muted); }
 .frow.f-running { color: var(--fg); font-weight: 700; }
 .frow.f-running .fc0 { color: var(--busy); }
 .frow.f-done .fc0 { color: var(--ok); }
@@ -249,7 +264,8 @@ body.dragging-pane .term { pointer-events: none; }
 .pane.focused .composer textarea:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
 .composer .trow { display: flex; gap: 4px; align-items: stretch; }
 .composer .trow textarea { flex: 1; min-width: 0; }
-.composer .trow button.primary { padding: 0 10px; font-size: calc(var(--fs-secondary) - 1px); }
+.composer .trow button.primary, .composer .trow button.attach-btn { padding: 0 10px; font-size: calc(var(--fs-secondary) - 1px); }
+.composer .trow button.attach-btn { padding: 0 6px; }
 .composer.collapsed textarea { display: none; }
 .composer.collapsed .trow { justify-content: flex-end; }
 .attach-row { display: flex; flex-wrap: wrap; gap: 3px; }
@@ -311,6 +327,7 @@ body.dragging-pane .term { pointer-events: none; }
 #us-gear { flex: none; padding: 0 5px; font-size: var(--fs-secondary); line-height: 1.4; }
 #us-pop { position: absolute; top: calc(100% + 6px); right: 0; z-index: 40; display: grid; grid-template-columns: repeat(2, max-content); gap: 4px 14px; padding: 8px 10px; background: var(--bg2); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); font-size: var(--fs-secondary); }
 #us-pop[hidden] { display: none; }
+#us-pop label.check[hidden] { display: none; }
 #us-pop label.check { display: flex; align-items: center; gap: 4px; white-space: nowrap; margin: 0; }
 #usage-strip.compact #us-summary { display: inline-block; }
 #usage-strip.compact #us-pop { left: 0; right: auto; }
@@ -325,6 +342,11 @@ body.dragging-pane .term { pointer-events: none; }
 .card .hl-mark { color: var(--headless); font-weight: 700; font-size: calc(var(--fs-badge) + 0.5px); white-space: nowrap; }
 .card h4 { margin: 0 0 4px 0; font-size: var(--fs-sub); display: flex; gap: 6px; align-items: center; }
 .card h4 .grow { flex: 1; }
+/* CON-PANEL-ONELINE: the card header stays one line; the name gives way first */
+.card h4 { flex-wrap: nowrap; white-space: nowrap; min-width: 0; }
+.card h4 > span { flex: none; }
+.card h4 > span.card-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.card h4 > span.grow { flex: 1 1 0; min-width: 4px; }
 .card .kv { color: var(--muted); }
 /* CON-UX-STATUSPANEL: one Next line (body text, ellipsis); click shows the full block */
 .card .next { margin: 4px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
@@ -373,6 +395,10 @@ dialog input, dialog select { padding: 4px 6px; }
 }
 /* New-pane folder picker (CON-4) */
 #dlg-new { width: min(560px, calc(100vw - 32px)); min-width: 0; }
+.fp-details { margin: 0 0 10px; }
+.fp-details summary { cursor: pointer; }
+.fp-details #new-opens { display: block; overflow-wrap: anywhere; }
+.fp-details .folder-pick { margin: 6px 0 0; }
 .folder-pick { border: 1px solid var(--fk-border); border-radius: 6px; padding: 6px 8px 4px; margin: 0 0 10px; min-width: 0; }
 .folder-pick legend { padding: 0 4px; color: var(--fk-text-muted); font-size: var(--fs-secondary); }
 .fp-row { display: flex; gap: 4px; align-items: stretch; }
@@ -402,8 +428,20 @@ dialog input, dialog select { padding: 4px 6px; }
 .set-projects li { display: flex; align-items: center; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--fk-border); }
 .set-projects li:last-child { border-bottom: 0; }
 .set-projects .sp-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.set-projects .sp-name, .set-projects .sp-dir { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#dlg-remove { width: min(460px, calc(100vw - 32px)); min-width: 0; }
+/* R3-26: the path wraps. A fieldset's min-content width would still push the dialog sideways. */
+#mach-line, #settings-info, #set-projects .sp-text { overflow-wrap: anywhere; min-width: 0; }
+#set-acct-row[hidden], #set-acct-one[hidden], #set-hl-box[hidden], #hs-box[hidden] { display: none; }
+/* R3-25: Save stays in view however far the dialog is scrolled */
+#form-settings .dlg-actions { position: sticky; bottom: 0; background: var(--bg2); padding: 8px 0; box-shadow: 0 1.5em 0 var(--bg2); } /* the shadow fills the dialog's bottom padding */
+#mp-read-line { overflow-wrap: anywhere; }
+#dlg-settings fieldset { min-width: 0; }
+.set-projects .sp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#dlg-remove, #dlg-paneerr { width: min(460px, calc(100vw - 32px)); min-width: 0; }
+#rm-phrase-row[hidden] { display: none; }
+.pe-cmd { display: flex; gap: 4px; margin: 0 0 10px; }
+.pe-cmd[hidden] { display: none; }
+.pe-cmd input { flex: 1; min-width: 0; font-family: Consolas, "Cascadia Mono", monospace; font-size: var(--fs-mono); }
+#dlg-paneerr p { overflow-wrap: anywhere; }
 #dlg-remove .rm-safe { color: var(--fk-text); font-weight: 600; }
 #dlg-remove .rm-note { color: var(--bad); min-height: 1em; margin: 0 0 8px; }
 button.danger-solid { background: var(--bad); color: #fff; border-color: var(--bad); }
@@ -437,13 +475,27 @@ button.danger-solid:disabled { opacity: 0.45; cursor: not-allowed; }
 .pane-head .pword.v-running { color: var(--busy); font-weight: 700; }
 .pane-head .pword.v-needs { color: var(--warn); font-weight: 700; }
 .pane-head .pword.v-failed { color: var(--bad); }
+.pane-head .pword.v-offline { color: var(--bad); font-weight: 700; }
 .pane-head .pword.v-done { color: var(--ok); }
 /* CON-ETA-REMAIN: the slot holds '<id> started h:mmAM - pct% ~rem of total Remain [h:mmAM]';
    a fixed basis (no jitter as the text changes) that yields to the title in a narrow pane */
 /* CON-AUDIT UX-A6: 64ch holds the id prefix plus the longest started / Remain text */
-.pane-head .pprog { flex: 0 1 64ch; min-width: 15ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; font: var(--fs-mono)/1.5 Consolas, "Cascadia Mono", monospace; font-variant-numeric: tabular-nums; color: var(--muted); }
-.pane-head .pprog.on { color: var(--fg); }
+.pane-head .pprog { flex: 0 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: right; font: var(--fs-mono)/1.5 Consolas, "Cascadia Mono", monospace; font-variant-numeric: tabular-nums; color: var(--muted); }
+.pane-head .pprog.on { color: var(--fg); min-width: 16ch; }
 .pane-head .pprog.stale { color: var(--bad); }
+/* R2-5 ruling (STANDARD section 4, 2026-11-02): the title keeps room in a narrow pane. */
+.pane.pane-narrow .pane-head .pprog, .pane.pane-narrow .pane-head .badge.slot.blank { display: none; }
+/* A pane of 400 to 599 px has no room for the running text beside the fixed slots (measured:
+   one letter per line at 16 to 34 px wide, or the buttons pushed out with word wrapping alone).
+   The text takes its own full-width line under them, so nothing collapses and nothing clips;
+   an empty slot stays in the row, where it costs no height. */
+.pane.pane-mid .pane-head { flex-wrap: wrap; row-gap: 0; column-gap: 3px; }
+.pane.pane-mid .pane-head .ptitle { flex-basis: 0; }
+.pane.pane-mid .pane-head .pstat { flex: 1 1 3ch; max-width: max-content; }
+.pane.pane-mid .pane-head .badge.slot { width: 10ch; }
+.pane.pane-mid .pane-head .pbtns button { padding: 0 4px; }
+.pane.pane-mid .pane-head .pprog { flex: 0 1 0; width: auto; min-width: 0; }
+.pane.pane-mid .pane-head .pprog.on, .pane.pane-mid .pane-head .pprog.stale { order: 1; flex: 1 0 100%; }
 .pane-head .pbtns button.more { letter-spacing: 1px; }
 /* R7: header '...' menu (A-, A+, Find, Compose, Restart, kind | account | path). */
 .pmenu { display: none; position: absolute; right: 4px; top: 24px; z-index: 25; min-width: 190px; max-width: calc(100% - 8px); padding: 4px; background: var(--bg2); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3); font-size: var(--fs-secondary); }
@@ -458,22 +510,30 @@ button.danger-solid:disabled { opacity: 0.45; cursor: not-allowed; }
 .xterm-screen .xterm-decoration-container .xterm-decoration.cc-l-tool { pointer-events: none; border-left: 2px dashed var(--muted); }
 .xterm-screen .xterm-decoration-container .xterm-decoration.cc-l-error { pointer-events: none; border-left: 3px solid var(--bad); }
 .xterm-screen .xterm-decoration-container .xterm-decoration.cc-l-agent { pointer-events: none; border-left: 2px dotted var(--headless); }
-/* R3 phone layout: sidebar and status panel become drawers over the grid, one pane
+/* R2-7: at 1100 px or under the status panel is a drawer below the bar (R2-1); the bar
+   stays on top of it, its menus included. */
+@media (max-width: 1100px) {
+  #topbar { position: relative; z-index: 35; }
+  #statuspanel { position: fixed; top: var(--topbar-h, 80px); bottom: 0; right: 0; width: min(88vw, 340px) !important; z-index: 30; box-shadow: 0 0 18px rgba(0, 0, 0, 0.4); }
+}
+/* R3 phone layout: the sidebar becomes a drawer too (R2-1: below the bar), one pane
    at a time (relayout), dialogs fit, tap targets >= 32px. */
 @media (max-width: 760px) {
-  #sidebar, #statuspanel { position: fixed; top: 0; bottom: 0; width: min(88vw, 340px) !important; z-index: 30; box-shadow: 0 0 18px rgba(0, 0, 0, 0.4); }
-  #sidebar { left: 0; }
-  #statuspanel { right: 0; }
+  #sidebar { position: fixed; top: var(--topbar-h, 80px); bottom: 0; left: 0; width: min(88vw, 340px) !important; z-index: 30; box-shadow: 0 0 18px rgba(0, 0, 0, 0.4); }
   dialog { min-width: 0; width: calc(100vw - 32px); }
   #topbar { padding: 4px 8px; }
   #topbar button { min-height: 32px; }
-  #btn-font-dn, #btn-font-up, #font-size-label { display: none; }
   #side-rail { width: 36px; }
   #side-rail button { width: 30px; min-height: 32px; }
   #rail-projects li { height: 32px; }
   .pane-head .pbtns button { min-width: 32px; min-height: 32px; }
+  /* R2-11 + R1-17: no 20 px taps in the composer or on the wizard's way out */
+  .composer .crow button, .composer .crow button.key { min-height: 32px; min-width: 32px; }
+  .composer .trow button.attach-btn { min-height: 32px; }
+  .composer .trow button.primary { min-height: 40px; }
+  #wz-back, #wz-next, #wz-cancel, #wz-switch { min-height: 32px; }
   .pane-head .pword { width: 10ch; }
-  .pane-head .pprog { flex: none; width: 9ch; min-width: 0; }
+  .pane-head .pprog, .pane-head .pprog.on { flex: none; width: 9ch; min-width: 0; }
   .pane-head .badge.slot { display: none; }
   .pmenu { top: 36px; }
   .pmenu button { padding: 8px 10px; }
@@ -482,10 +542,9 @@ button.danger-solid:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 
 /* v19.1 B: the two account dropdowns side by side (main / orchestrator, headless lane). */
-.acct-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.acct-pair { display: flex; flex-wrap: wrap; gap: 0 18px; }
 .acct-pair label { min-width: 0; }
 .set-route { margin: -4px 0 10px; min-height: 1em; }
-@media (max-width: 760px) { .acct-pair { grid-template-columns: 1fr; gap: 0; } }
 /* v19.1 A: Health & cleanup (Settings section + confirmation / progress dialog). */
 .health-admin .ha-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; flex-wrap: wrap; padding: 4px 0; }
 #dlg-health { width: min(720px, calc(100vw - 32px)); min-width: 0; max-height: calc(100vh - 32px); overflow-y: auto; }
@@ -505,16 +564,28 @@ button.danger-solid:disabled { opacity: 0.45; cursor: not-allowed; }
 #dlg-health .hc-find { padding-left: 14px; color: var(--muted); }
 #dlg-health .rm-note { color: var(--bad); min-height: 1em; margin: 0 0 8px; }
 /* CON-UX-TYPESCALE: Settings > Text size grid */
-.ts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0 10px; }
-.ts-grid label { margin-bottom: 6px; }
-.ts-grid input { width: 100%; }
+/* CON-SET-COMPACT: Settings fields sized to their content, short fields share a row */
+#dlg-settings { width: min(860px, calc(100vw - 32px)); min-width: 0; }
+#dlg-settings label > select, #dlg-settings label > input:not([type=checkbox]) { align-self: flex-start; max-width: 100%; }
+#dlg-settings label.inl { flex-direction: row; align-items: center; gap: 6px; margin-bottom: 6px; }
+#dlg-settings input.n3, #dlg-settings input.n4 { width: 7ch; }
+#dlg-settings input.n6 { width: 9ch; }
+#dlg-settings .set-font input { field-sizing: content; min-width: 24ch; max-width: 60ch; }
+#dlg-settings .set-help { margin: -2px 0 8px; }
+#dlg-settings .set-sec { margin: 14px 0 6px; font-size: var(--fs-sub); }
+#dlg-settings .set-sec:first-of-type { margin-top: 4px; }
+#dlg-settings .set-type-d { margin: 0 0 10px; }
+#dlg-settings .set-type-d summary { cursor: pointer; margin-bottom: 6px; }
+.set-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0 18px; }
+.ts-grid { display: flex; flex-wrap: wrap; align-items: center; gap: 0 14px; }
+.ts-grid #ts-reset { margin-bottom: 6px; }
 /* CON-UX-PANEROWS: Settings > Pane workflow rows, state checkboxes in one wrapping row */
 .fs-checks { display: flex; flex-wrap: wrap; gap: 0 14px; }
 .fs-checks label.check { margin-bottom: 4px; }
 /* CON-UX-KEYS: Settings > Quick chips list (tick, text, Remove) */
-.set-chips { list-style: none; margin: 0 0 6px; padding: 0; }
-.set-chips li { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
-.set-chips .chip-text { flex: 1; min-width: 0; padding: 2px 6px; }
+.set-chips { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.set-chips li { display: inline-flex; align-items: center; gap: 6px; padding: 2px 0; }
+.set-chips .chip-text { field-sizing: content; min-width: 8ch; max-width: 40ch; padding: 2px 6px; }
 /* CON-UX-VERSION: console version at the bottom right of the footer bar */
 #tb-version { margin-left: auto; flex: none; white-space: nowrap; font: var(--fs-mono) Consolas, "Cascadia Mono", monospace; }
 /* CON-UX-SUBCAT: sub-category headers under an open project; their rows indent once more */
@@ -526,16 +597,16 @@ button.danger-solid:disabled { opacity: 0.45; cursor: not-allowed; }
 #project-list li.tool-row.in-sub { padding-left: 73px; }
 #project-list li.tool-row.in-sub.in-group { padding-left: 87px; }
 /* CONETA + CON-ETA-REMAIN: a clock row (started h:mmAM - pct% ~rem of total Remain [h:mmAM])
-   joins the pct and eta slots into one cell sized to its text (52ch at most, ellipsis when narrow) */
-.frow.clk { grid-template-columns: 3ch minmax(0, 18ch) minmax(0, max-content) minmax(0, 1fr); }
-.frow.clk .fc2 { text-align: left; max-width: 62ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.card .kv .kv-eta { white-space: nowrap; display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; } /* UX-A8 */
+   carries the clock in the pct cell; inline like every row (CON-PANEL-COMPACT) */
+.frow.clk .fc2 { white-space: normal; overflow-wrap: anywhere; }
+.card .kv .kv-eta { white-space: normal; overflow-wrap: anywhere; } /* UX-A8; CON-PANEL-WRAP: wraps, never clipped */
 .frow.clk .fc3 { display: none; }
 /* MERGE-CON: G3 screens - scheduled tasks, health schedule, watchdog readings (type scale only) */
 #dlg-sched, #dlg-watch { width: min(820px, calc(100vw - 32px)); min-width: 0; max-height: calc(100vh - 32px); overflow-y: auto; }
 #dlg-sched .sc-head { display: flex; align-items: center; gap: 8px; }
 #dlg-sched .sc-head h3 { margin: 0; font-size: var(--fs-sub); }
 #dlg-sched .sc-group, #dlg-watch .wd-title { margin: 10px 0 4px; font-size: calc(var(--fs-secondary) - 1px); color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+#dlg-sched summary.sc-group { text-transform: none; letter-spacing: 0; cursor: pointer; }
 #dlg-sched .sc-row { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 14em) auto auto; align-items: center; gap: 2px 8px; padding: 2px 0; font-size: var(--fs-mono); }
 #dlg-sched .sc-row .sc-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 #dlg-sched .sc-row .sc-trig { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); }
@@ -565,7 +636,7 @@ button.danger-solid:disabled { opacity: 0.45; cursor: not-allowed; }
 #dlg-watch .wd-sec p { margin: 2px 0; }
 /* MERGE-CON G5: header badge, shown only when updates.repo is set and a newer release exists */
 #upd-badge { font-size: var(--fs-badge); color: var(--on-warn); background: var(--warn); border-color: var(--warn); }
-#set-updates .ha-row[hidden] { display: none; }
+.health-admin .ha-row[hidden] { display: none; }
 /* CON-GATE-PANEL: tracker panel at the top of the status panel; collapsed = one summary line */
 .trk { border-bottom: 1px solid var(--line); }
 .trk-head { display: flex; align-items: baseline; gap: 6px; width: 100%; padding: 4px 10px; background: none; border: 0; border-radius: 0; color: var(--fg); text-align: left; cursor: pointer; font-size: var(--fs-secondary); min-width: 0; }
@@ -598,3 +669,20 @@ button.danger-solid:disabled { opacity: 0.45; cursor: not-allowed; }
 #dlg-hom .hp-acts button, #dlg-hom button.small { min-height: 24px; }
 @media (pointer: coarse) { #dlg-hom .hp-acts button, #dlg-hom button.small { min-height: 32px; } }
 @media (max-width: 760px) { #dlg-hom .hp-route { flex-wrap: wrap; } #dlg-hom .hp-route input { flex: 1 1 100%; } }
+
+/* CON-OSC-PROGRESS: Claude's OSC 9;4 bar along the pane header's bottom edge; absolute,
+   so it never moves the layout; indeterminate is a static stripe (no motion, P3). */
+.pane-head .pbar { position: absolute; left: 0; bottom: -1px; height: 2px; width: 100%; background: var(--busy); pointer-events: none; }
+.pane-head .pbar[hidden] { display: none; }
+.pane-head .pbar.ind { background: repeating-linear-gradient(90deg, var(--busy) 0 12px, transparent 12px 20px); }
+.pane-head .pbar.err { background: var(--bad); }
+.pane-head .pbar.warn { background: var(--warn); }
+
+/* CON-ATTENTION-PANEL: top-bar "? N" button and its one-line-per-pane list */
+.top-attn { position: relative; display: inline-block; }
+#btn-attn { min-width: 3.2em; font-variant-numeric: tabular-nums; }
+#btn-attn.has { border-color: var(--busy); }
+#btn-attn.needs { border-color: var(--warn); color: var(--warn); }
+.attn-menu { min-width: 260px; max-width: min(420px, 92vw); }
+.attn-menu .attn-row { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.attn-menu .attn-row.unseen { font-weight: 600; }

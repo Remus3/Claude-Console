@@ -49,14 +49,25 @@ test('parse: pid|ppid|created lines; garbage -> null', () => {
   assert.strictEqual(S.parseList('nope'), null);
 });
 
-test('no taskkill /T left in the console sources (installer, server, plugins)', () => {
+test('no taskkill /T anywhere in the console tree (code, scripts, packaged kit, templates)', () => {
   const root = path.join(__dirname, '..');
-  const files = ['installer/profile-funcheck.js', 'installer/safekill.js', 'server/health.js', 'server/plugins/main.js'];
-  for (const f of files) {
-    const p = path.join(root, f);
-    if (!fs.existsSync(p)) continue; // the public build strips a plugin
-    assert.ok(!/['"]\/T['"]/.test(fs.readFileSync(p, 'utf8')), f + ' passes /T to taskkill');
-  }
+  const skip = new Set(['node_modules', '.git', 'run', 'drops', 'tests']);
+  const hits = [];
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) { if (!skip.has(e.name)) walk(p); continue; }
+      const array = /\.(js|cjs|mjs|py)$/i.test(e.name); // an argument list: ['/PID', p, '/T', '/F']
+      const shell = /\.(ps1|cmd|bat|sh|vbs)$/i.test(e.name); // a command line, comments aside
+      if (!array && !shell) continue;
+      fs.readFileSync(p, 'utf8').split('\n').forEach((l, i) => {
+        const bad = array ? /['"]\/T['"]/.test(l) : (!/^\s*(#|rem\b|')/i.test(l) && /taskkill[^\n]*\s\/T\b/i.test(l));
+        if (bad) hits.push(path.relative(root, p) + ':' + (i + 1));
+      });
+    }
+  };
+  walk(root);
+  assert.deepStrictEqual(hits, []);
   assert.match(fs.readFileSync(path.join(root, 'installer', 'profile-funcheck.js'), 'utf8'), /killTree\(child\.pid, t0\)/);
 });
 

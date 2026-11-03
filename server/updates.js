@@ -9,7 +9,7 @@
 //   POST /api/updates/reinstall    {mode, confirm, factoryConfirm, reapply, saveTweaks}
 //   POST /api/updates/contribute   {} -> scrubbed patch + issue URL (never sends)
 // Busy panes: apply only stages the new version; the restart is the operator's (or the
-// auto-updater's when no pane is busy). A checkout run (<drive>:\Main\console) reports
+// auto-updater's when no pane is busy). A checkout run (console/ inside a repo) reports
 // "checkout" and offers nothing destructive.
 const path = require('path');
 const { layout, defaultHome } = require('../installer/paths');

@@ -99,7 +99,9 @@ test('GET /api/profile: 22 modules in order, items with does/why/risk/pairs, rev
     assert.ok(b.review.safeguards.length >= 7);
     assert.ok(b.presets.includes('remus3'));
     assert.deepStrictEqual(b.capabilities, { adopt: false, machine: true, crash: true, recover: true });
-    assert.match(b.status.line, /^profile 1\.0\.0 - \d+ of 45 items on/);
+    // R3-13: one line, the picks named as picks; no second hint line
+    assert.match(b.status.line, /^Setup profile: not applied\. Your picks: \d+ of 45 items\.$/);
+    assert.strictEqual(b.status.hint, undefined);
     assert.strictEqual(b.firstRun, true);
     assert.strictEqual(b.offer, 'install', 'the wizard offers itself at install');
     assert.strictEqual((await c('POST', '/api/profile/offer/dismiss', {})).body.ok, true);
@@ -500,15 +502,21 @@ test('stop everything: dry run line first, then stops recorded spawns only; resu
     recover.registerSpawn(w.runDir, { pid: 4242, kind: 'pane', name: 'cmd.exe', startMs: 1000 });
     let r = await c('POST', '/api/recover/stop', {});
     assert.strictEqual(r.body.dryRun, true);
-    assert.match(r.body.line, /stop 1 console process tree/);
+    assert.match(r.body.line, /^This would end 1 running pane or background run,/);
     assert.deepStrictEqual(w.killed, []);
     r = await c('POST', '/api/recover/stop', { confirm: true });
     assert.strictEqual(r.body.ok, true, JSON.stringify(r.body));
     assert.deepStrictEqual(w.killed, [4242]);
     assert.ok(fs.existsSync(recover.markerFile(w.dataDir)), 'hooks-off marker written');
+    // R3-4: the Stop dialog, opened again later, finds the open stop on this route.
+    r = await c('POST', '/api/recover/resume', {});
+    assert.deepStrictEqual([r.body.ok, r.body.dryRun], [true, true], JSON.stringify(r.body));
+    assert.ok(fs.existsSync(recover.markerFile(w.dataDir)), 'the dry run undoes nothing');
     r = await c('POST', '/api/recover/resume', { confirm: true });
     assert.strictEqual(r.body.ok, true, JSON.stringify(r.body));
     assert.ok(!fs.existsSync(recover.markerFile(w.dataDir)));
+    r = await c('POST', '/api/recover/resume', {});
+    assert.deepStrictEqual([r.body.dryRun, r.body.nothing], [false, true], 'nothing open: Resume stays off');
     r = await c('POST', '/api/recover/prompt', {});
     assert.match(r.body.text, /## Undo steps/);
     r = await c('POST', '/api/recover/prompt/go', {});
@@ -621,4 +629,78 @@ test('server.js: profile routes behind the token, panes recorded for stop-all, m
   const act = await fetch(base + '/api/profile/crash/action', { method: 'POST', headers: H, body: JSON.stringify({ id: cr.id, action: 'issue', confirm: true }) });
   assert.strictEqual(act.status, 500);
   assert.match((await act.json()).error, /disabled on a test server/);
+});
+
+// CON-MACHINE-READ: the machine advisor's Read machine (GET the saved read, POST re-reads)
+test('machine read: GET shows the saved read, POST re-reads once at a time; a test server never reads the box', async () => {
+  await withWorld({}, async (w, c) => {
+    const g = await c('GET', '/api/machine/read');
+    assert.deepStrictEqual([g.body.scanned, g.body.line], [null, null]);
+    assert.ok(g.body.file.endsWith(path.join('machine', 'spec.json')));
+    const p = await c('POST', '/api/machine/read', {});
+    assert.strictEqual(p.status, 500);
+    assert.match(p.body.error, /reading the machine is disabled on a test server/);
+  });
+  let spec = null;
+  let reads = 0;
+  const MS = require('../installer/machine-scan');
+  const fake = {
+    readData: () => ({ spec, inventory: null }),
+    read: async () => { reads++; await new Promise((r) => setTimeout(r, 30)); spec = MS.parseSpec(fs.readFileSync(path.join(__dirname, 'fixtures', 'machine', 'cim-spec.json'), 'utf8')); return { ran: true, spec }; },
+    summary: (s) => MS.summaryLine(s),
+  };
+  await withWorld({ machine: fake }, async (w, c) => {
+    const [a, b] = await Promise.all([c('POST', '/api/machine/read', {}), c('POST', '/api/machine/read', {})]);
+    assert.strictEqual(reads, 1, 'two clicks, one read');
+    assert.strictEqual(a.body.ok, true);
+    assert.strictEqual(b.body.line, a.body.line);
+    assert.match(a.body.line, /^Fakeco Tower 9 - FakeCPU 8-Core Processor \(8C\/16T\) - 32 GB RAM @ 5200 MT\/s - FakeGPU RTX 9070 12 GB/);
+    const g = await c('GET', '/api/machine/read');
+    assert.strictEqual(g.body.scanned, spec.scanned);
+  });
+});
+
+// ------------------------------------------------------------------ 0.1.5 D2 / D7 / R3-8: inputs per target
+
+const REAL_PROFILE = path.join(__dirname, '..', 'profile');
+
+test('inputs with a target: a user target is asked only what has a write there; a project sees the rest', async () => {
+  await withWorld({ profileDir: REAL_PROFILE }, async (w, c) => {
+    const pre = (await c('POST', '/api/profile/wizard', { op: 'preset', name: 'remus3' })).body.selection;
+    const user = (await c('POST', '/api/profile/wizard', { op: 'inputs', selection: pre, target: { user: true } })).body;
+    assert.deepStrictEqual(user.tasks, [], 'no task is offered that the plan would skip');
+    const userNames = user.variables.map((v) => v.name);
+    for (const n of ['repo_code', 'operator_ident', 'wol_mac', 'backup_target', 'sidecar_root', 'runtime_retention_days']) assert.ok(!userNames.includes(n), n + ' has no write on a user target');
+    assert.ok(user.env.length >= 1, 'machine-wide env stays');
+    const proj = (await c('POST', '/api/profile/wizard', { op: 'inputs', selection: pre, target: { project: 'sample-api' } })).body;
+    assert.strictEqual(proj.tasks.length, 7);
+    for (const t of proj.tasks) assert.ok(t.deletes, t.name);
+    const v = Object.fromEntries(proj.variables.map((x) => [x.name, x]));
+    assert.strictEqual(v.repo_code.label, 'Short project code');
+    assert.strictEqual(v.wol_mac.startSkipped, true);
+    assert.strictEqual(v.backup_target.startSkipped, true);
+    assert.strictEqual(v.repo_code.startSkipped, false);
+    assert.strictEqual(v.runtime_retention_days.value, 30);
+    assert.strictEqual(v.effort_level.why, null, 'a why that only repeats the label is not sent twice');
+    // no target = the whole list, as before
+    const all = (await c('POST', '/api/profile/wizard', { op: 'inputs', selection: pre })).body;
+    assert.strictEqual(all.tasks.length, 7);
+    assert.strictEqual((await c('POST', '/api/profile/wizard', { op: 'inputs', selection: pre, target: { project: 'nope' } })).status, 400);
+  });
+});
+
+test('plan route: user target has no dead end; a missing value names no flag, and carries its label', async () => {
+  await withWorld({ profileDir: REAL_PROFILE }, async (w, c) => {
+    const pre = (await c('POST', '/api/profile/wizard', { op: 'preset', name: 'remus3' })).body.selection;
+    const u = (await c('POST', '/api/profile/plan', { target: { user: true }, draft: pre })).body;
+    assert.deepStrictEqual(u.missing, []);
+    assert.deepStrictEqual(u.machine.filter((m) => m.kind === 'task' && m.op === 'set'), []);
+    const r = (await c('POST', '/api/profile/plan', { target: { project: 'sample-api' }, draft: pre })).body;
+    const m = r.missing.find((x) => x.name === 'repo_code');
+    assert.strictEqual(m.label, 'Short project code');
+    assert.ok(m.why && m.type === 'code');
+    assert.match(r.verdict.line, /^Needs a value: [a-z_]+\. Fill it in above and press Preview again\.$/);
+    assert.deepStrictEqual(Object.keys(r.verdict).sort(), ['code', 'line']);
+    assert.ok(!JSON.stringify(r.verdict).includes('--var'));
+  });
 });

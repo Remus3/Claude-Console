@@ -22,6 +22,18 @@ test('hand-off: SESSION number, head lines and the next-action block', async () 
   assert.deepStrictEqual(h.nextAction, ['THE SINGLE NEXT ACTION', '  Ship the widget.', '  Then test it.']);
 });
 
+test('hand-off: a plain NEXT-SESSION.txt counts; a name merely ending in it does not', async () => {
+  const fx = makeFixture();
+  const ps = await discoverProjects(fx.overrides);
+  const beta = ps.find((x) => x.name === 'Beta Repo');
+  fs.writeFileSync(path.join(beta.dir, 'OLDNEXT-SESSION.txt'), 'x\n');
+  assert.strictEqual(S.readHandoff(beta), null);
+  fs.writeFileSync(path.join(beta.dir, 'NEXT-SESSION.txt'), 'SESSION: 3\nNext action: do X\n');
+  const h = S.readHandoff(beta);
+  assert.strictEqual(h.file, 'NEXT-SESSION.txt');
+  assert.strictEqual(h.session, 3);
+});
+
 test('hand-off: "Next action:" inline form and missing SESSION', () => {
   const h = S.parseHandoff('Header\nNext action: do X\n  detail\n\nrest');
   assert.strictEqual(h.session, null);

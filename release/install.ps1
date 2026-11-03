@@ -12,8 +12,7 @@
 #      (https://github.com/<repo>/releases/latest/download/SHA256SUMS.txt names the zip).
 # Every download is checked against a SHA-256 its publisher posts; when no hash can be
 # got, nothing is installed and one line names the manual download page.
-# If Node.js or Git is missing and winget is unavailable, Windows will ask for permission
-# once to install it.
+# If Node.js or Git is missing, Windows may ask for permission to install each one.
 #   4. Installs to %LOCALAPPDATA%\Programs\claude-console (npm ci --omit=dev, a self-test,
 #      Start-menu + Desktop shortcuts, an Apps & features entry, `claude-console` on your
 #      user PATH, updates from Remus3/Claude-Console).
@@ -53,9 +52,14 @@ function Install-ClaudeConsole {
     Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $out -Headers @{ 'User-Agent' = 'claude-console-installer' }
   }
   function Sha([string]$file) { return (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant() }
-  function Run-Elevated([string]$file, [string]$argLine) {
-    if (IsAdmin) { $p = Start-Process -FilePath $file -ArgumentList $argLine -Wait -PassThru }
-    else { $p = Start-Process -FilePath $file -ArgumentList $argLine -Wait -PassThru -Verb RunAs }
+  function Run-Elevated([string]$file, [string]$argLine, [string]$what) {
+    try {
+      if (IsAdmin) { $p = Start-Process -FilePath $file -ArgumentList $argLine -Wait -PassThru }
+      else { $p = Start-Process -FilePath $file -ArgumentList $argLine -Wait -PassThru -Verb RunAs }
+    } catch {
+      if ($_.Exception.Message -match 'canceled by the user') { throw ('You said no to the Windows permission prompt, so ' + $what + ' was not installed.') }
+      throw
+    }
     return $p.ExitCode
   }
   function Find-Node {
@@ -73,11 +77,10 @@ function Install-ClaudeConsole {
   # ---- 1. Node.js LTS
   $node = Find-Node
   if (-not $node -or (Node-Major $node) -lt 24) {
-    if ($node) { Say ('Node.js ' + ((& $node --version) 2>$null) + ' is too old (24+ needed): installing the LTS.') }
-    else { Say 'Node.js not found: installing the LTS.' }
+    if ($node) { Say ('Node.js ' + ((& $node --version) 2>$null) + ' is too old (24 or newer needed): updating it. Other programs that use Node.js will get the new version.') }
+    else { Say 'Installing Node.js (the console needs it). This can take a few minutes and Windows may ask for permission.' }
     $done = $false
     if (HasWinget) {
-      Say 'winget install OpenJS.NodeJS.LTS'
       & winget.exe install --id OpenJS.NodeJS.LTS -e --silent --accept-source-agreements --accept-package-agreements | Out-Host
       RefreshPath
       $node = Find-Node
@@ -90,7 +93,6 @@ function Install-ClaudeConsole {
       if (-not $lts) { throw 'no Node.js LTS release found at nodejs.org' }
       $ver = $lts.version
       $msiName = 'node-' + $ver + '-' + $arch + '.msi'
-      Say ('nodejs.org MSI ' + $msiName)
       $msi = Join-Path $work $msiName
       Get-File ('https://nodejs.org/dist/' + $ver + '/' + $msiName) $msi
       $shaTxt = Join-Path $work 'SHASUMS256.txt'
@@ -99,7 +101,7 @@ function Install-ClaudeConsole {
       foreach ($l in (Get-Content -LiteralPath $shaTxt)) { if ($l -match ('^([0-9a-f]{64})\s+' + [regex]::Escape($msiName) + '$')) { $want = $Matches[1] } }
       if (-not $want) { Say ('no SHA-256 for ' + $msiName + ' in its SHASUMS256.txt; not installed. Install Node.js 24+ LTS from https://nodejs.org and run this again.'); return }
       if ((Sha $msi) -ne $want) { throw ('Node.js MSI checksum mismatch: ' + $msiName) }
-      $code = Run-Elevated 'msiexec.exe' ('/i "' + $msi + '" /qn /norestart')
+      $code = Run-Elevated 'msiexec.exe' ('/i "' + $msi + '" /qn /norestart') 'Node.js'
       if ($code -ne 0 -and $code -ne 3010) { throw ('Node.js MSI failed, msiexec exit ' + $code) }
       RefreshPath
       $node = Find-Node
@@ -110,9 +112,8 @@ function Install-ClaudeConsole {
 
   # ---- 2. Git
   if (-not (Get-Command git.exe -ErrorAction SilentlyContinue)) {
-    Say 'Git not found: installing Git for Windows.'
+    Say 'Installing Git. Windows may ask for permission.'
     if (HasWinget) {
-      Say 'winget install Git.Git'
       & winget.exe install --id Git.Git -e --silent --accept-source-agreements --accept-package-agreements | Out-Host
       RefreshPath
     }
@@ -121,7 +122,6 @@ function Install-ClaudeConsole {
       $pat = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { '^Git-[\d.]+-arm64\.exe$' } else { '^Git-[\d.]+-64-bit\.exe$' }
       $asset = $rel.assets | Where-Object { $_.name -match $pat } | Select-Object -First 1
       if (-not $asset) { throw 'no Git for Windows installer found in its latest release' }
-      Say ('Git for Windows ' + $asset.name)
       # The SHA-256 its release publishes: the release notes' hash table, else a .sha256 asset.
       $gitSha = $null
       if ([string]$rel.body -match ([regex]::Escape($asset.name) + '\s*\|\s*([0-9a-fA-F]{64})')) { $gitSha = $Matches[1].ToLowerInvariant() }
@@ -137,7 +137,7 @@ function Install-ClaudeConsole {
       $exe = Join-Path $work $asset.name
       Get-File $asset.browser_download_url $exe
       if ((Sha $exe) -ne $gitSha) { throw ('Git installer checksum mismatch: ' + $asset.name) }
-      $code = Run-Elevated $exe '/VERYSILENT /NORESTART /NOCANCEL /SP- /SUPPRESSMSGBOXES'
+      $code = Run-Elevated $exe '/VERYSILENT /NORESTART /NOCANCEL /SP- /SUPPRESSMSGBOXES' 'Git'
       if ($code -ne 0) { throw ('Git installer failed, exit ' + $code) }
       RefreshPath
     }
@@ -152,13 +152,12 @@ function Install-ClaudeConsole {
     if (-not $Sums) { $near = Join-Path (Split-Path -Parent $zipFile) 'SHA256SUMS.txt'; if (Test-Path -LiteralPath $near) { $Sums = $near } }
   } else {
     $Sums = Join-Path $work 'SHA256SUMS.txt'
-    Say ('download ' + $base + 'SHA256SUMS.txt')
+    Say 'Downloading Claude Console.'
     Get-File ($base + 'SHA256SUMS.txt') $Sums
     $zipName = $null
     foreach ($l in (Get-Content -LiteralPath $Sums)) { if ($l -match '^[0-9a-f]{64}\s+\*?(claude-console-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\.zip)\s*$') { $zipName = $Matches[1] } }
     if (-not $zipName) { throw 'SHA256SUMS.txt names no claude-console zip' }
     $zipFile = Join-Path $work $zipName
-    Say ('download ' + $zipName)
     Get-File ($base + $zipName) $zipFile
   }
   $zipLeaf = Split-Path -Leaf $zipFile
@@ -177,12 +176,10 @@ function Install-ClaudeConsole {
   # ---- 4. Install (or upgrade / repair) with the release's own installer
   $cliArgs = @((Join-Path $src 'bin\claude-console.js'), 'install', '--source', $src, '--home', $InstallDir, '--repo', $Repo, '--ignore-prereqs')
   if ($NoShortcuts) { $cliArgs += '--no-shortcuts' }
-  Say ('install to ' + $InstallDir + ' (npm ci --omit=dev and a self-test; about a minute)')
+  Say ('Installing to ' + $InstallDir + '. About a minute.')
   & $node @cliArgs | Out-Host
-  if ($LASTEXITCODE -ne 0) { throw ('install failed (exit ' + $LASTEXITCODE + '); see the lines above and ' + (Join-Path $InstallDir 'reports')) }
+  if ($LASTEXITCODE -ne 0) { throw ('the install did not finish; the lines above say why. Details: ' + (Join-Path $InstallDir 'reports')) }
   RefreshPath
-  $cmd = Join-Path $InstallDir 'claude-console.cmd'
-  Say ('command: claude-console (new terminals), or ' + $cmd)
 
   # ---- 5. Claude Code CLI check, then start
   $claude = Get-Command claude.exe -ErrorAction SilentlyContinue
@@ -191,8 +188,8 @@ function Install-ClaudeConsole {
   }
   if (-not $NoLaunch) {
     Start-Process -FilePath (Join-Path $env:WINDIR 'System32\wscript.exe') -ArgumentList ('"' + (Join-Path $InstallDir 'launch.vbs') + '"')
-    Say 'started: the console opens in its own window (Start menu / Desktop: Claude Console)'
-  }
+    Say 'Done. Claude Console is opening in its own window. Next time, start it from the Start menu or the Desktop. You can close this window.'
+  } else { Say 'Done.' }
   try { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue } catch { }
 }
 
@@ -200,5 +197,5 @@ try {
   Install-ClaudeConsole -Repo $Repo -Zip $Zip -Sums $Sums -InstallDir $InstallDir -NoLaunch ([bool]$NoLaunch) -NoShortcuts ([bool]$NoShortcuts)
 } catch {
   Write-Host ('[claude-console] install stopped: ' + $_.Exception.Message) -ForegroundColor Red
-  Write-Host '[claude-console] Fix the cause and run the same command again; a re-run picks up where it stopped.'
+  Write-Host '[claude-console] Run the same command again when that is fixed; it picks up where it stopped.'
 }

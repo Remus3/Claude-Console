@@ -27,6 +27,11 @@ test('recover.ps1: every user environment write goes through the Set-UserVar sea
   assert.strictEqual(gets, 1, 'one GetEnvironmentVariable call, inside Get-UserVar');
 });
 
+test('R3-22: the prompt says the log line may be unrelated, the same words as recover.js', () => {
+  assert.ok(src.includes("'- Last console log line (may be unrelated): ' + $logLine"));
+  assert.ok(!src.includes("'- log: '"));
+});
+
 // steps: a PowerShell snippet run after the functions load, with the fake env in $FakeEnv.
 function harness(root, steps) {
   const lines = [
@@ -121,6 +126,35 @@ test('recover.ps1 fake env: a -Resume with nothing stopped says so and changes n
   const { out, r } = harness(root, "$script:FakeEnv[$KillSwitchVar] = 'v'\nInvoke-Resume");
   assert.match(out, /nothing to resume/);
   assert.strictEqual(r.env, 'v');
+});
+
+// Stage run13 G4: PowerShell variable names ignore case, so a loop variable $l overwrote the
+// ArrayList $L in Invoke-Prompt and any error line in run\*.log killed -Prompt. The clipboard
+// and the browser are replaced by fakes: nothing leaves the scratch dir.
+test('recover.ps1 fake env: -Prompt writes the prompt file when a console log holds error lines', win, () => {
+  const root = tmpdir('cc-rps1-');
+  fs.mkdirSync(path.join(root, 'data', 'profile', 'stop-all'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'run'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'run', 'server.log'), 'all fine\nerror: port in use\nrefused by policy\n');
+  const { out, r } = harness(root, [
+    'function Set-Clipboard { param($Value) $script:FakeClip = $Value }',
+    'function Start-Process { param($FilePath) $script:FakeOpened = $FilePath }',
+    'Invoke-Prompt',
+    "Write-Output ('FAKES ' + (ConvertTo-Json -Compress @{ clip = $script:FakeClip; opened = $script:FakeOpened }))",
+  ].join('\n'));
+  assert.deepStrictEqual(r.problems, [], out);
+  assert.match(out, /recovery prompt copied/);
+  const dir = path.join(root, 'data', 'profile');
+  const files = fs.readdirSync(dir).filter((f) => /^recover-prompt-.*\.txt$/.test(f));
+  assert.strictEqual(files.length, 1, out);
+  const text = fs.readFileSync(path.join(dir, files[0]), 'utf8');
+  assert.ok(text.includes('- Last console log line (may be unrelated): error: port in use\n'), text);
+  assert.ok(text.includes('- Last console log line (may be unrelated): refused by policy\n'), text);
+  assert.ok(!text.includes('all fine'), text);
+  assert.ok(text.includes('## Undo steps'), 'the prompt runs on past the log lines\n' + text);
+  const fakes = JSON.parse(out.split(/\r?\n/).find((l) => l.startsWith('FAKES ')).slice(6));
+  assert.strictEqual(fakes.clip, text);
+  assert.strictEqual(fakes.opened, 'https://claude.ai/new');
 });
 
 // 013-VERIFY sandbox G4: File.Replace(tmp, path, $null) failed on every real settings

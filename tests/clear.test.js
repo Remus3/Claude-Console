@@ -1,6 +1,6 @@
 'use strict';
 // CON-UX-CLEAR (S49 intake, screenshot 1 mark 1 + "?" arrow): after /clear in a pane its
-// workflow rows and the project's status card kept the rows from before the clear.
+// progress rows and the project's status card kept the rows from before the clear.
 // claude's SessionStart hook carries source "clear"; the pane records clearedAt and the
 // client restarts both strips from that moment, strict: a file joins only when it is
 // written after the clear (a pre-clear running or stale file does not come back).

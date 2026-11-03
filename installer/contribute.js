@@ -16,9 +16,26 @@ const { exists } = require('./fsutil');
 
 const reEsc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+// CON-RECOVER-TEMP-GAP: the temp folder names the machine even outside home, where neither
+// the home literal nor the Users pattern reaches it. A bare drive root or "/" is skipped:
+// it would eat every ordinary path. The real path joins in when the folder is a junction or
+// a short name, because a log line may hold either form.
+function tempDirs() {
+  const out = new Set();
+  for (const d of [process.env.TEMP, process.env.TMP, os.tmpdir()]) {
+    const p = String(d || '').trim().replace(/[\\/]+$/, '');
+    if (!p || /^[A-Za-z]:$/.test(p)) continue;
+    out.add(p);
+    try { out.add(fs.realpathSync.native(p)); } catch (e) { /* not on this machine */ }
+  }
+  return [...out];
+}
+
 // Scrubber shared by the patch, the crash report and the recovery prompt (CON-013 L3
 // extends it, addendum e.2). o: home, localDir, baseDir, username, hostname, token (the
 // console token), machineDir (<dataDir>/machine: anything under it goes), extra (literals).
+// The temp folders are always covered, like os.homedir(). Paths match in any case: Windows
+// treats them so, and a log may hold c:\ for C:\.
 function scrub(text, o) {
   o = o || {};
   let s = String(text);
@@ -27,9 +44,9 @@ function scrub(text, o) {
       s = s.replace(new RegExp(reEsc(form) + '[^\\s"\'<>]*', 'gi'), '<MACHINE-DATA>');
     }
   }
-  const lits = [o.home, o.localDir, o.baseDir, os.homedir()].concat(o.extra || []).filter(Boolean).sort((a, b) => b.length - a.length);
+  const lits = [o.home, o.localDir, o.baseDir, os.homedir()].concat(tempDirs(), o.extra || []).filter(Boolean).sort((a, b) => b.length - a.length);
   for (const l of lits) {
-    for (const form of [l, l.replace(/\\/g, '/'), l.replace(/\\/g, '\\\\')]) s = s.split(form).join('<PATH>');
+    for (const form of [l, l.replace(/\\/g, '/'), l.replace(/\\/g, '\\\\')]) s = s.replace(new RegExp(reEsc(form), 'gi'), '<PATH>');
   }
   if (o.token && String(o.token).length >= 8) s = s.split(String(o.token)).join('<TOKEN>');
   s = s.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '<EMAIL>');

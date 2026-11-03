@@ -24,12 +24,14 @@ const VAR_REF = /(?<!\$)\{([a-z][a-z0-9_]*)\}/g;
 
 // The inputs an item needs: variables its targets, values and templates reference, and
 // the secret references of its env contributions.
-function inputsOf(model, id) {
+// pred(c), optional: only the contributions it accepts (the wizard's per-target input list).
+function inputsOf(model, id, pred) {
   const { item, module: m } = model.items.get(id);
   const decl = (model.profile && model.profile.variables) || {};
   const names = new Set();
   const scan = (s) => { for (const x of String(s).matchAll(VAR_REF)) names.add(x[1]); };
   for (const c of item.contributes || []) {
+    if (pred && !pred(c)) continue;
     for (const k of ['target', 'value', 'name', 'key']) if (typeof c[k] === 'string') scan(c[k]);
     if (c.value && typeof c.value === 'object') scan(JSON.stringify(c.value));
     if (typeof c.template === 'string') { try { scan(P.readTemplate(model, m.id, c.template, null).text); } catch (e) { /* schema reports it */ } }
@@ -47,6 +49,35 @@ function inputsOf(model, id) {
   return [...names].filter((n) => n.startsWith('secret:') || decl[n]);
 }
 
+// Items with no variable of their own that mean nothing without the proxy input: their
+// rules describe the second account and its route, and the quiet keys go to that account.
+// Skipping the input (a one-account box starts that way) turns them off with it, so setup
+// does not ask a high-risk yes for something it says stays off.
+const GOES_WITH_INPUT = { 'hl-second-account': 'headless_base_url', 'hl-proxy': 'headless_base_url', 'hl-route-file': 'headless_base_url', 'hl-account-quiet': 'headless_base_url' };
+
+// What skipped inputs turn off among the on items, one rule for the CLI and the wizard: a
+// skipped variable / secret, or a no to the item's env variable (env:NAME) or scheduled task
+// (task:NAME). A dependant needs what the item it depends on needs. Locked items stay on.
+function offBySkips(model, on, skipped) {
+  const needsOf = (id) => {
+    const out = inputsOf(model, id).filter((n) => skipped.has(n));
+    if (GOES_WITH_INPUT[id] && skipped.has(GOES_WITH_INPUT[id]) && !out.includes(GOES_WITH_INPUT[id])) out.push(GOES_WITH_INPUT[id]);
+    for (const c of model.items.get(id).item.contributes || []) {
+      if (c.kind === 'env' && skipped.has('env:' + c.name)) out.push('env:' + c.name);
+      if (c.kind === 'task' && skipped.has('task:' + c.name)) out.push('task:' + c.name);
+    }
+    return out;
+  };
+  const direct = on.filter((id) => !model.items.get(id).module.locked && needsOf(id).length);
+  const all = direct.concat(P.dependants(model, direct).filter((id) => on.includes(id) && !direct.includes(id)));
+  return all.filter((id) => !model.items.get(id).module.locked).map((id) => {
+    const own = needsOf(id);
+    if (own.length) return { item: id, needs: own };
+    const closure = P.dependencyClosure(model, [id]);
+    return { item: id, needs: [...new Set(direct.filter((d) => closure.includes(d)).flatMap(needsOf))] };
+  });
+}
+
 // o.skipped: input names the user skipped (variables, or secret:<name>).
 function presetSelection(model, name, o) {
   o = o || {};
@@ -56,28 +87,8 @@ function presetSelection(model, name, o) {
   sel.preset = name;
   Object.assign(sel.variables, model.presets[name].variables || {}, o.values || {});
   const skipped = new Set(o.skipped || []);
-  const offNeeds = [];
-  if (skipped.size) {
-    const on = P.onIds(model, sel);
-    // As the wizard's skip op: a skipped variable / secret, or a no to the item's env
-    // variable (env:NAME) or scheduled task (task:NAME), turns the item off.
-    const needsOf = (id) => {
-      const out = inputsOf(model, id).filter((n) => skipped.has(n));
-      for (const c of model.items.get(id).item.contributes || []) {
-        if (c.kind === 'env' && skipped.has('env:' + c.name)) out.push('env:' + c.name);
-        if (c.kind === 'task' && skipped.has('task:' + c.name)) out.push('task:' + c.name);
-      }
-      return out;
-    };
-    const direct = on.filter((id) => !model.items.get(id).module.locked && needsOf(id).length);
-    const all = direct.concat(P.dependants(model, direct).filter((id) => on.includes(id)));
-    for (const id of all) {
-      if (model.items.get(id).module.locked) continue;
-      sel.items[id] = 'off';
-      const needs = needsOf(id);
-      offNeeds.push({ item: id, needs: needs.length ? needs : ['(depends on ' + direct.filter((d) => P.dependencyClosure(model, [id]).includes(d)).join(', ') + ')'] });
-    }
-  }
+  const offNeeds = skipped.size ? offBySkips(model, P.onIds(model, sel), skipped) : [];
+  for (const x of offNeeds) sel.items[x.item] = 'off';
   sel.needs_off = offNeeds.map((x) => x.item);
   return { ok: true, selection: sel, offNeeds };
 }
@@ -239,4 +250,4 @@ function updateOffer(oldModel, newModel, sel, dataDir) {
   return { mode: 'custom', newItems: added, line: added.length + ' new item(s) available' };
 }
 
-module.exports = { inputsOf, presetSelection, switchToCustom, switchBackToPreset, isUntouchedPreset, presetDiff, mergeSelection, mergeOverrides, updateOffer, hasOverrides };
+module.exports = { inputsOf, offBySkips, presetSelection, switchToCustom, switchBackToPreset, isUntouchedPreset, presetDiff, mergeSelection, mergeOverrides, updateOffer, hasOverrides };

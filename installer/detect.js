@@ -1,8 +1,7 @@
 'use strict';
 // Detect an existing console before installing (CON-PUBLIC D), in this order:
 //   1. the install marker <home>\install.json {version, path, channel};
-//   2. known legacy layouts: a console/ subtree inside a Main checkout (<drive>:\Main\console)
-//      and any console/ inside the Desktop portable deliveries (private build only);
+//   2. known legacy layouts (private build only);
 //   3. a server answering on 127.0.0.1:<port>/api/info.
 // Nothing found = a clean install. Detection is read-only.
 const fs = require('fs');
@@ -28,8 +27,6 @@ function readMarker(home) {
 function legacyCandidates(env) {
   env = env || process.env;
   const out = [];
-  const drive = (env.SystemDrive || 'C:') + '\\';
-  out.push(path.join(drive, 'Main', 'console'));
   return out;
 }
 

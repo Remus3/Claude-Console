@@ -41,13 +41,25 @@
     }
     return null;
   }
+  // CON-SCROLL-CONPTY: findChrome over `above` scrollback rows plus the screen. A long
+  // prompt in a short pane pushes the box's upper rule off the top of the screen; it is
+  // still the live box when its closing rule is on screen. Indexes are screen rows
+  // (start may be negative); rows = the screen rows.
+  function findChromeLive(lines, above) {
+    const ch = findChrome(lines);
+    if (!ch) return null;
+    const off = above || 0;
+    if (ch.close < off) return null;
+    return { start: ch.start - off, close: ch.close - off, end: ch.end - off, rows: lines.length - off, status: ch.status };
+  }
   // The text in claude's input box (rows between the upper rule and the closing rule),
   // prompt glyph and box borders stripped, rows joined by a space. '' = empty box.
-  function inputText(lines, ch) {
+  function inputText(lines, ch, above) {
     if (!ch) return null;
     const out = [];
+    const off = above || 0;
     for (let y = ch.start + 1; y < ch.close; y++) {
-      const s = String(lines[y] || '').replace(/^\s*\u2502?\s*/, '').replace(/\s*\u2502?\s*$/, '');
+      const s = String(lines[y + off] || '').replace(/^\s*\u2502?\s*/, '').replace(/\s*\u2502?\s*$/, '');
       const t = (y === ch.start + 1 ? s.replace(/^[>\u276f]\s?/, '') : s).trim();
       if (t) out.push(t);
     }
@@ -110,15 +122,16 @@
     if (m < 1) return '';
     return m < 120 ? m + 'm' : Math.floor(m / 60) + 'h';
   }
-  // Header state word: running claude panes say which tool runs or 'thinking', plus
-  // the stretch age; every other state is its vocabulary word.
+  // Header state word: running claude panes say 'working' (a tool runs) or 'thinking',
+  // plus the busy stretch age; every other state is its vocabulary word.
+  // CON-PANEL-NOTOOL (operator 2026-10-25): the tool name is never shown in the panel.
   function paneWord(vs, word, p, now) {
     if (vs !== 'running' || !p) return word;
-    if (p.tool) return (toolLabel(p.tool) + ' ' + age(now - (p.toolSince || now))).trim();
+    if (p.tool) return ('working ' + age(now - (p.busySince || p.toolSince || now))).trim();
     const base = p.kind === 'claude' ? 'thinking' : 'running';
     return (base + ' ' + age(now - (p.busySince || now))).trim();
   }
-  const api = { isRule, isPrompt, findChrome, inputText, summarize, label, planCrop, classifyLine, toolLabel, age, paneWord };
+  const api = { isRule, isPrompt, findChrome, findChromeLive, inputText, summarize, label, planCrop, classifyLine, toolLabel, age, paneWord };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.CCChrome = api;
 })(this);
@@ -127,8 +140,8 @@
 // UI/UX standard section 4 / console-audit 7.2: one fixed row per task, updated in
 // place. Rows come from the item-12 progress files; a checklist holds REMAINING tasks
 // only, so every id seen is remembered and an id that leaves the list turns done in
-// place (failed if the file failed). Rows never reorder and never vanish; the strip
-// height only grows (max seen, cap 6) and the window slides to keep the running row.
+// place (failed if the file failed). Rows never reorder; the strip height is the shown
+// rows (cap 6, CON-PANEL-COMPACT) and the window slides to keep the running row.
 // CON-UX-PANEROWS: opts { cap, show } from Settings - the row count (0 hides the strip)
 // and the states shown. A hidden state leaves the VIEW only (flow.rows keeps every row
 // in order); no opts = cap 6, every state shown.
@@ -153,8 +166,53 @@
   }
   // o.strict (CON-UX-CLEAR, a strip restarted by /clear): a file joins only when it was
   // written after `since`; without it a live running file joins whatever its age.
+  // PANE-CHECKLIST: the board (session checklist) rows join only when status.json was
+  // written at or after boardSince: 0 for a fresh strip (an idle pane shows the session's
+  // checklist), the strip start after /clear (strict) or after DONE (o.boardAfter).
   function create(since, o) {
-    return { since: since || 0, strict: !!(o && o.strict), rows: [], byKey: new Map(), files: new Map(), height: 0 };
+    const bs = o && (o.strict || o.boardAfter) ? since || 0 : 0;
+    return { since: since || 0, strict: !!(o && o.strict), boardSince: bs, rows: [], byKey: new Map(), files: new Map(), board: new Set(), height: 0 };
+  }
+  function drop(flow, key) {
+    const r = flow.byKey.get(key);
+    if (!r) return;
+    flow.byKey.delete(key);
+    const i = flow.rows.indexOf(r);
+    if (i >= 0) flow.rows.splice(i, 1);
+  }
+  // Every name a progress item answers to: its task, its file stem, the kit board's own
+  // progress-row id (task cut to 24) and its checklist ids. A board row by one of these
+  // names is the same task: the progress row wins (it carries the live numbers).
+  function progressNames(items) {
+    const names = new Set();
+    for (const it of items || []) {
+      if (it.task) { names.add(String(it.task)); names.add(String(it.task).slice(0, 24)); }
+      if (it.file) names.add(String(it.file).replace(/\.json$/i, ''));
+      for (const c of it.checklist || []) if (c && c.id) names.add(String(c.id));
+    }
+    return names;
+  }
+  // board: projects[].checklist {updated, rows: [{id, group, task, state, detail}]}, the
+  // remaining rows of the tree's kit v23 status.json (server/status.js readChecklist).
+  function updateBoard(flow, items, board) {
+    const live = board && Array.isArray(board.rows) && (board.updated || 0) >= (flow.boardSince || 0) ? board.rows : [];
+    const names = progressNames(items);
+    const now = new Set();
+    for (const b of live) {
+      if (!b || !b.id) continue;
+      const k = 'board#' + b.id;
+      if (names.has(b.id)) { if (flow.board.has(k)) { flow.board.delete(k); drop(flow, k); } continue; }
+      now.add(k);
+      flow.board.add(k);
+      const st = b.group === 'running' ? 'running' : 'pending';
+      const step = b.group === 'operator' ? 'waiting on you' + (b.detail ? ': ' + b.detail : '') : b.detail || '';
+      put(flow, k, 'board', { label: b.id + ' ' + (b.task || ''), state: st, pct: null, eta_s: null, step, started: null, updated: board.updated || null });
+    }
+    for (const k of flow.board) {
+      if (now.has(k)) continue;
+      const r = flow.byKey.get(k);
+      if (r && r.state !== 'done') Object.assign(r, { state: 'done', step: '' });
+    }
   }
   function fileState(it) {
     if (it.stale) return 'stale';
@@ -174,7 +232,9 @@
     return r;
   }
   // items: the project's normalized progress items (server/status.js readProgress).
-  function update(flow, items, opts) {
+  function update(flow, items, opts, board) {
+    if (!flow.board) flow.board = new Set();
+    updateBoard(flow, items, board);
     for (const it of items || []) {
       const fkey = it.dir ? it.dir + '/' + it.file : it.file;
       const known = flow.files.has(fkey);
@@ -197,7 +257,7 @@
         now.add(k);
         rec.keys.add(k);
         const runs = /running/i.test(c.state || '');
-        let st = fs === 'done' ? 'done' : runs ? (fs === 'stale' ? 'stale' : fs === 'failed' ? 'failed' : 'running') : 'pending';
+        let st = fs === 'done' || /^done$/i.test(c.state || '') ? 'done' : runs ? (fs === 'stale' ? 'stale' : fs === 'failed' ? 'failed' : 'running') : 'pending';
         const own = (v, d) => (v !== null && v !== undefined ? v : d);
         put(flow, k, fkey, { label: (c.id ? c.id + ' ' : '') + (c.task || ''), state: st, pct: runs ? own(c.pct, it.pct) : null, eta_s: runs ? c.eta_s : null, step: runs ? it.step || '' : '', started: runs ? own(c.started, it.started) || null : null, updated: it.updated || null });
       }
@@ -207,9 +267,11 @@
         if (r && r.state !== 'done' && r.state !== 'failed') Object.assign(r, { state: fs === 'failed' ? 'failed' : 'done', pct: null, eta_s: null, step: '' });
       }
     }
-    // grows to min(cap, visible rows), never shrinks mid-task; a lower cap shrinks it
+    // CON-PANEL-COMPACT (operator 2026-10-25, six-pane screenshot): the height follows the
+    // visible rows, min(cap, shown rows); a hidden or finished row leaves no blank slot,
+    // and a strip with nothing to show takes no height at all.
     const cap = (opts || ALL).cap;
-    flow.height = Math.min(cap, Math.max(flow.height, visible(flow, opts).length));
+    flow.height = Math.min(cap, visible(flow, opts).length);
     return flow;
   }
   // The rows to draw: the shown ones up to cap, else cap rows sliding to keep the first
@@ -286,15 +348,24 @@
     const rem = Math.max(0, Math.trunc(etaS) - Math.max(0, nowMs - ref) / 1000);
     return p + '% ~' + fmtHalfMin(rem) + ' Remain';
   }
-  // The KIT-ETA-REMAIN text of a running row, else ''.
-  function clockOf(r, now) {
-    if (!r || r.state !== 'running') return '';
-    return etaRemain(r.pct === null || r.pct === undefined ? 0 : r.pct, r.eta_s, r.started, now || Date.now(), r.updated);
+  // CON-PANEL-COMPACT short form for the narrow slots (pane header, status card): the
+  // same numbers without the start and the total, `<pct>% ~<rem> Remain [<finish>]`; the
+  // full form stays in the pane rows and every tooltip.
+  function shortClock(clk) {
+    return String(clk || '').replace(/^started \S+ - /, '').replace(/ of [0-9.]+m Remain/, ' Remain');
   }
-  // Fixed columns: glyph, label, pct, eta, step. A clock row puts the whole clock text
-  // in the pct slot and leaves the eta slot empty (drawn as one wider cell, .frow.clk).
-  function cells(r, now) {
-    const clk = clockOf(r, now);
+  // The KIT-ETA-REMAIN text of a running row, else ''. short: the short form.
+  function clockOf(r, now, short) {
+    if (!r || r.state !== 'running') return '';
+    const clk = etaRemain(r.pct === null || r.pct === undefined ? 0 : r.pct, r.eta_s, r.started, now || Date.now(), r.updated);
+    return short ? shortClock(clk) : clk;
+  }
+  // Cells: glyph, label, pct, eta, step. A clock row puts the whole clock text in the
+  // pct slot and leaves the eta slot empty (.frow.clk). CON-PANEL-COMPACT: the row is
+  // one text line (cells inline, empty cells take no room) that wraps at the full row
+  // width under a hanging indent, never into a narrow column. short: the short clock.
+  function cells(r, now, short) {
+    const clk = clockOf(r, now, short);
     if (clk) return [GLYPH[r.state] || '[ ]', r.label, clk, '', r.step];
     return [GLYPH[r.state] || '[ ]', r.label, r.pct !== null && r.pct !== undefined && r.state === 'running' ? Math.round(r.pct) + '%' : '', r.state === 'running' ? fmtEta(r.eta_s) : r.state === 'stale' ? 'STALE' : '', r.step];
   }
@@ -313,40 +384,58 @@
     const own = (v, d) => (v !== null && v !== undefined ? v : d);
     const clk = clockOf({ state: 'running', pct: own(run && run.pct, it.pct), eta_s: own(run && run.eta_s, it.eta_s), started: own(run && run.started, it.started), updated: it.updated }, now);
     const text = ((id + (clk || pct + ' ' + eta)).replace(/\s+/g, ' ').trim()) || 'running';
-    return { text, clock: clk, cls: 'on', title: (it.task || it.file || 'progress') + (it.step ? ': ' + it.step : '') + (run && run.task ? '\n' + (run.id ? run.id + ' ' : '') + run.task : '') + (clk ? '\n' + clk : '') };
+    const short = ((id + (clk ? shortClock(clk) : pct + ' ' + eta)).replace(/\s+/g, ' ').trim()) || 'running';
+    return { text, short, clock: clk, cls: 'on', title: (it.task || it.file || 'progress') + (it.step ? ': ' + it.step : '') + (run && run.task ? '\n' + (run.id ? run.id + ' ' : '') + run.task : '') + (clk ? '\n' + clk : '') };
   }
-  const api = { CAP, GLYPH, STATES, DEFAULT_OPTS, normalizeOpts, create, update, view, cells, clockOf, etaClock, etaRemain, fmtHalfMin, fmtClock, fmtClockDown, fileState, top };
+  const api = { CAP, GLYPH, STATES, DEFAULT_OPTS, normalizeOpts, create, update, view, cells, clockOf, shortClock, etaClock, etaRemain, fmtHalfMin, fmtClock, fmtClockDown, fileState, top };
   if (typeof module === 'object' && module.exports) module.exports.Flow = api;
   else root.CCFlow = api;
 })(this);
 
 // ---------- type scale (CON-UX-TYPESCALE; pure, also loaded by tests/typescale.test.js) ----------
-// One base size plus a per-level offset (px, half-pixel steps) -> six CSS custom
-// properties that app.css reads for every UI font size. Defaults equal server/uiprefs.js.
+// Six absolute sizes in px (half-pixel steps, 8..32) -> six CSS custom properties that
+// app.css reads for every UI font size. Defaults equal server/uiprefs.js.
+// CON-SET-PX: stored as absolute px since 2026-10-25; a legacy saved scale (base px plus
+// per-level offsets) is converted to the same rendered px, so nothing moves.
 (function (root) {
   'use strict';
   const LEVELS = ['header', 'sub', 'body', 'secondary', 'mono', 'badge'];
   const LABELS = { header: 'Header (top bar)', sub: 'Subheader (titles)', body: 'Body', secondary: 'Nested / secondary', mono: 'Mono (rows, paths)', badge: 'Badges / meters' };
-  const DEFAULTS = { base: 15, header: 1, sub: 0, body: 0, secondary: -2, mono: -3, badge: -3.5 };
+  const DEFAULTS = { header: 16, sub: 15, body: 15, secondary: 13, mono: 12, badge: 11.5 };
+  const LEGACY = { base: 15, header: 1, sub: 0, body: 0, secondary: -2, mono: -3, badge: -3.5 };
+  const MIN = 8;
+  const MAX = 32;
   const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
   const half = (v) => Math.round(v * 2) / 2;
-  function normalize(v) {
-    const s = v && typeof v === 'object' ? v : {};
-    const b = num(s.base);
-    const out = { base: b === null ? DEFAULTS.base : Math.max(10, Math.min(24, half(b))) };
+  const clamp = (v) => Math.max(MIN, Math.min(MAX, half(v)));
+  // Legacy {base, <level>: offset} -> absolute px, rendered size unchanged.
+  function fromLegacy(s) {
+    const b0 = num(s.base);
+    const b = b0 === null ? LEGACY.base : Math.max(10, Math.min(24, half(b0)));
+    const out = {};
     for (const lv of LEVELS) {
       const o = num(s[lv]);
-      out[lv] = o === null ? DEFAULTS[lv] : Math.max(-8, Math.min(8, half(o)));
+      out[lv] = clamp(Math.max(MIN, b + (o === null ? LEGACY[lv] : Math.max(-8, Math.min(8, half(o))))));
+    }
+    return out;
+  }
+  function normalize(v) {
+    const s = v && typeof v === 'object' ? v : {};
+    if (num(s.base) !== null) return fromLegacy(s);
+    const out = {};
+    for (const lv of LEVELS) {
+      const x = num(s[lv]);
+      out[lv] = x === null ? DEFAULTS[lv] : clamp(x);
     }
     return out;
   }
   function vars(scale) {
     const s = normalize(scale);
     const out = {};
-    for (const lv of LEVELS) out['--fs-' + lv] = Math.max(8, s.base + s[lv]) + 'px';
+    for (const lv of LEVELS) out['--fs-' + lv] = s[lv] + 'px';
     return out;
   }
-  const api = { LEVELS, LABELS, DEFAULTS, normalize, vars };
+  const api = { LEVELS, LABELS, DEFAULTS, MIN, MAX, normalize, vars };
   if (typeof module === 'object' && module.exports) module.exports.Type = api;
   else root.CCType = api;
 })(this);
@@ -397,10 +486,13 @@
     { id: 'right', label: '\u2192', seq: ['\x1b[C'], title: 'Send arrow Right' },
   ];
   const DEFAULT_CHIPS = [{ text: 'continue', on: true }, { text: '/done', on: true }, { text: '/clear', on: true }];
+  // R2-6: Esc and Shift+Tab by default (the composer forwards the rest); Settings offers
+  // every key, and phone width shows them all (touch has no such keys).
+  const DEFAULT_KEYS = { esc: true, stab: true };
   function normalizeStrip(v) {
     const s = v && typeof v === 'object' ? v : {};
     const out = {};
-    for (const k of KEYS) out[k.id] = typeof s[k.id] === 'boolean' ? s[k.id] : true;
+    for (const k of KEYS) out[k.id] = typeof s[k.id] === 'boolean' ? s[k.id] : !!DEFAULT_KEYS[k.id];
     return out;
   }
   // Same rules as server/uiprefs.js sanitizeChips; strings (the old format) migrate.
@@ -421,6 +513,94 @@
   const api = { KEYS, normalizeStrip, normalizeChips };
   if (typeof module === 'object' && module.exports) module.exports.Keys = api;
   else root.CCKeys = api;
+})(this);
+
+// ---------- attention list + OSC progress (CON-ATTENTION-PANEL, CON-OSC-PROGRESS; pure, also loaded by tests/attention.test.js) ----------
+// One list of the panes that need you (hook state attention: a permission prompt) or
+// wait unread after a turn (waiting + unseen), needs-you first, then oldest first.
+// Read from the hook states only; Ctrl+Alt+U jumps to the newest unread one.
+(function (root) {
+  'use strict';
+  const RANK = { needs: 0, waiting: 1 };
+  function kindOf(p) {
+    if (!p || p.kind === 'log') return null;
+    if (p.state === 'attention') return 'needs';
+    if (p.state === 'waiting' && p.unseen) return 'waiting';
+    return null;
+  }
+  const sinceOf = (p) => (Number.isFinite(p.stateAt) ? p.stateAt : Number.isFinite(p.startedAt) ? p.startedAt : 0);
+  function list(panes) {
+    const out = [];
+    for (const p of panes || []) {
+      const k = kindOf(p);
+      if (k) out.push({ id: p.id, title: p.title || p.kind || p.id, kind: k, since: sinceOf(p), unseen: !!p.unseen });
+    }
+    return out.sort((a, b) => RANK[a.kind] - RANK[b.kind] || a.since - b.since);
+  }
+  function newestUnread(panes) {
+    let best = null;
+    for (const x of list(panes)) if (x.unseen && (!best || x.since > best.since)) best = x;
+    return best ? best.id : null;
+  }
+  function age(ms) {
+    const m = Math.floor(ms / 60000);
+    if (m < 1) return '<1m';
+    if (m < 60) return m + 'm';
+    return Math.floor(m / 60) + 'h' + (m % 60) + 'm';
+  }
+  function rowText(x, now) {
+    const head = (x.kind === 'needs' ? '? ' : '- ') + x.title + ' - ' + (x.kind === 'needs' ? 'needs you' : 'waiting');
+    return x.since > 0 ? head + ' - ' + age(Math.max(0, now - x.since)) : head;
+  }
+  const buttonText = (n) => '? ' + n;
+  const isJumpKey = (e) => !!(e && e.ctrlKey && e.altKey && !e.shiftKey && (e.key === 'u' || e.key === 'U'));
+  const api = { list, newestUnread, rowText, buttonText, isJumpKey };
+  if (typeof module === 'object' && module.exports) module.exports.Attn = api;
+  else root.CCAttn = api;
+})(this);
+
+// OSC 9;4 progress (ConEmu / Windows Terminal; Claude Code terminalProgressBarEnabled):
+// state 0 none, 1 percent, 2 error, 3 indeterminate, 4 paused. The hook state is the
+// authority - Claude clears the bar between tool calls - so it shows only while busy.
+(function (root) {
+  'use strict';
+  const HIDE = { show: false, cls: 'pbar', pct: null, title: '' };
+  function view(prog, paneState) {
+    if (!prog || paneState !== 'busy') return HIDE;
+    const pct = Math.max(0, Math.min(100, Math.round(Number(prog.value) || 0)));
+    switch (prog.state) {
+      case 1: return { show: true, cls: 'pbar pct', pct, title: 'generating ' + pct + '%' };
+      case 2: return { show: true, cls: 'pbar err', pct, title: 'error ' + pct + '%' };
+      case 3: return { show: true, cls: 'pbar ind', pct: null, title: 'generating' };
+      case 4: return { show: true, cls: 'pbar warn', pct, title: 'paused ' + pct + '%' };
+      default: return HIDE;
+    }
+  }
+  const api = { view };
+  if (typeof module === 'object' && module.exports) module.exports.Prog = api;
+  else root.CCProg = api;
+})(this);
+
+// WebGL renderer policy (CON-WEBGL-MEASURE, adopted on the 2026-10-31 measurement: 8 busy
+// panes, Edge CPU 20.1 -> 13.8 percent of one core, main-thread task time 129 -> 60 ms/s,
+// frame time equal). Visible panes only, in grid order, at most CAP contexts (Chromium
+// drops the oldest past ~16); a pane whose context was lost or would not start stays on
+// the DOM renderer.
+(function (root) {
+  'use strict';
+  const CAP = 16;
+  function plan(panes, cap) {
+    const max = Number.isFinite(cap) ? cap : CAP;
+    const want = new Set();
+    for (const p of panes || []) {
+      if (want.size >= max) break;
+      if (p && p.visible && !p.failed) want.add(p.id);
+    }
+    return want;
+  }
+  const api = { CAP, plan };
+  if (typeof module === 'object' && module.exports) module.exports.Gl = api;
+  else root.CCGl = api;
 })(this);
 
 // ---------- status card text (CON-UX-STATUSPANEL; pure, also loaded by tests/statuspanel.test.js) ----------
@@ -474,7 +654,7 @@
     { key: 'w5h', label: '5h', frac: 'unified5h', reset: 'unified5hReset' },
     { key: 'fable', label: 'Fable', frac: 'unified7dFable', reset: 'unified7dFableReset' },
   ];
-  const TOGGLES = [['w7d', '7d'], ['w5h', '5h'], ['fable', 'Fable'], ['acc1', 'Acc 1'], ['acc2', 'Acc 2'], ['acc3', 'Acc 3'], ['api', 'API'], ['extra', 'Extra Usage']];
+  const TOGGLES = [['w7d', '7-day limit'], ['w5h', '5-hour limit'], ['fable', 'Fable limit'], ['acc1', 'Account 1'], ['acc2', 'Account 2'], ['acc3', 'Account 3'], ['api', 'API spend'], ['extra', 'Extra Usage']];
   const NA = '--';
   const num = (v) => typeof v === 'number' && isFinite(v);
   function pct(frac) { return num(frac) ? Math.round(Math.max(0, frac) * 100) + '%' : NA; }
@@ -534,6 +714,14 @@
   // the rest off until switched on). The server sends every key, so this is first paint only.
   const DEFAULT_ON = ['w7d', 'acc1', 'acc2'];
   function isOn(prefs, k) { const v = (prefs || {})[k]; return typeof v === 'boolean' ? v : DEFAULT_ON.includes(k); }
+  // R2-23: the gear lists Account 3 and Extra Usage only with a source behind them, or
+  // while switched on (so what is on can still be turned off).
+  function offered(key, prefs, accounts, extras) {
+    if (isOn(prefs, key)) return true;
+    if (key === 'acc3') return Array.isArray(accounts) && accounts.length > 2;
+    if (key === 'extra') return !!(extras && Array.isArray(extras.accounts) && extras.accounts.some((c) => c && c.extra && num(c.extra.used)));
+    return true;
+  }
   function summary(m, prefs) {
     let best = null;
     for (const a of m.accs) {
@@ -542,7 +730,7 @@
     }
     return best === null ? NA : pct(best);
   }
-  const api = { ACCS, WINS, TOGGLES, NA, pct, left, usd, band, model, summary, isOn };
+  const api = { ACCS, WINS, TOGGLES, NA, pct, left, usd, band, model, summary, isOn, offered };
   if (typeof module === 'object' && module.exports) module.exports.Usage = api;
   else root.CCUsage = api;
 })(this);
@@ -668,6 +856,11 @@
     const t = toggles || {};
     return ((snap && snap.order) || []).filter((id) => t[id] !== false && snap.trackers && snap.trackers[id]);
   }
+  // R2-29: the panel heading says what it holds when that is only the scheduled tasks
+  function heading(snap, toggles) {
+    const ids = shown(snap, toggles);
+    return ids.length === 1 && ids[0] === 'tasks' ? 'Scheduled tasks' : 'Trackers';
+  }
   // collapsed one-liner: the gate summary first, then any tracker not in a calm state
   function summaryLine(snap, toggles) {
     const ids = shown(snap, toggles);
@@ -707,7 +900,7 @@
     v.forEach((x, i) => { if (x !== null) pts.push((n === 1 ? 0 : (i * w) / (n - 1)).toFixed(1) + ',' + (h - (x * h) / 100).toFixed(1)); });
     return pts.join(' ');
   }
-  const api = { shown, summaryLine, gateLines, sparkPoints, clock };
+  const api = { shown, heading, summaryLine, gateLines, sparkPoints, clock };
   if (typeof module === 'object' && module.exports) module.exports.Trk = api;
   else root.CCTrk = api;
 })(this);
@@ -762,20 +955,32 @@
     const failed = (run.steps || []).filter((s) => s.status === 'failed').length;
     return 'Last run ' + new Date(run.endedAt).toLocaleString() + ': ' + n + ' step' + (n === 1 ? '' : 's') + ', ' + (failed ? failed + ' failed, ' : '') + (run.findings || 0) + ' finding' + (run.findings === 1 ? '' : 's') + ', ' + (run.deleted || 0) + ' removed.';
   }
-  // Route line: the kit route against what the two dropdowns ask for.
-  // proxyLabel: the account the proxy pin bills; split onto any other account is refused.
-  function routeText(r, mainLabel, headlessLabel, proxyLabel) {
-    if (mainLabel && headlessLabel && mainLabel !== headlessLabel && headlessLabel !== proxyLabel) return 'Not allowed: split sends headless runs through the proxy, which bills ' + (proxyLabel || 'no configured account') + '. Pick that account or the main account.';
-    const want = mainLabel && headlessLabel ? (mainLabel === headlessLabel ? 'single (both on ' + mainLabel + ')' : 'split (' + mainLabel + ' interactive, ' + headlessLabel + ' headless through the proxy)') : '';
-    if (!r) return want ? 'Asks for: ' + want + '.' : '';
-    if (!r.plugin) return 'Asks for: ' + want + '. Stored only (no plugin applies the kit route).';
-    const k = r.kit || {};
-    if (!k.supported) return 'Asks for: ' + want + '. Kit route not applied: ' + (k.reason || 'unsupported') + '.';
-    if (!k.mode || !k.valid) return 'Asks for: ' + want + '. Kit route NOT SET: every headless run refuses until it is applied (Save applies it).';
-    if (k.mode !== r.desired) return 'Asks for: ' + want + '. Kit route is ' + k.mode + ': Save applies the change.';
-    return 'Kit route: ' + k.mode + (k.mode === 'single' ? ' (headless runs bill the main account)' : ' (headless runs through the proxy)') + '.';
+  // Route line (CON-ROUTE-ACCT): what the LIVE kit route bills, then at most one more
+  // sentence about the headless pick. Only the headless pick sets the route; the main
+  // account never does. pick = { label, proxyLabel, dirty }; r = GET / POST /api/route
+  // (r.refused = the reason a Save was refused).
+  // kit v26 (KIT-ROUTE-ACCOUNTS): any configured account may be listed; a list the kit
+  // can only write as a v2 route file waits until every live tree runs kit v26.
+  const UNAVAIL = 'needs the v2 route file: offered once every live tree runs kit v26 or later';
+  function routeText(r, pick) {
+    const p = pick || {};
+    const k = (r && r.kit) || {};
+    let live = '';
+    if (r && !r.plugin) live = 'Stored only: this choice does not change where background runs go. The setup profile sets that.';
+    else if (r && !k.supported) live = 'Kit route not applied: ' + (k.reason || 'unsupported') + '.';
+    else if (r && (!k.mode || !k.valid)) live = 'Kit route NOT SET: every headless run refuses.';
+    else if (r) {
+      const mode = k.fallbackActive && k.fallback ? k.fallback : k.mode;
+      const list = k.accounts ? ' [' + k.accounts + (k.armed ? ', fallback armed' : '') + ']' : '';
+      live = 'Kit route: ' + k.mode + list + (k.fallbackActive ? ' (fallback to ' + (k.entry ? 'entry ' + k.entry : k.fallback) + ' active)' : '') + ' - headless runs bill ' + (k.bills || 'an unknown account') + (mode === 'split' ? ' (through the proxy).' : ' (directly; bare runs lean).');
+    }
+    let more = '';
+    if (r && r.refused) more = 'Refused: ' + r.refused + '.';
+    else if (p.v2Blocked) more = 'This list ' + UNAVAIL + '.';
+    else if (p.dirty && p.label) more = 'Save applies headless on ' + (p.labels && p.labels.length > 1 ? p.labels.join(' > ') + (p.armed ? ' (fallback on)' : ' (fallback off)') : p.label) + '.';
+    return [live, more].filter(Boolean).join(' ');
   }
-  const api = { costText, totals, stepPct, runPct, lastLine, routeText, isLlm };
+  const api = { costText, totals, stepPct, runPct, lastLine, routeText, isLlm, UNAVAIL };
   if (typeof module === 'object' && module.exports) module.exports.Health = api;
   else root.CCHealth = api;
 })(this);
@@ -878,7 +1083,7 @@
       if (!by.has(id)) by.set(id, []);
       by.get(id).push(row(t));
     }
-    const lab = (id) => (id === '' ? 'Not in a repo' : label.get(id) || id);
+    const lab = (id) => (id === '' ? 'Other tasks on this PC (not from the console or your projects)' : label.get(id) || id);
     const rank = (id) => (id === 'console' ? 0 : id === '' ? 2 : 1);
     return [...by.keys()].sort((a, b) => rank(a) - rank(b) || lab(a).localeCompare(lab(b))).map((id) => ({ id, label: lab(id), rows: by.get(id) }));
   }
@@ -984,6 +1189,7 @@
     const a = (snap && snap.analysis) || {};
     const pg = a.paging || {};
     const cr = a.crashes || { total: 0, wer: 0, byApp: [] };
+    // R3-11: the known-cases list only when some are configured (none in the public build).
     return [
       { id: 'priv', title: 'Private bytes growth (top 10)', empty: 'No growing process yet (needs 3 samples per process).',
         rows: (a.privGrowth || []).map((t) => ({ label: t.name, value: sgn(t.mbPerH) + ' MB/h (r2 ' + t.r2 + ')', title: trendTitle(t, t.privMB + ' MB now, ' + sgn(t.mbPerH) + ' MB/h, fit r2 ' + t.r2) })) },
@@ -997,7 +1203,7 @@
         rows: (cr.byApp || []).map((x) => ({ label: x.app || '(unknown app)', value: (x.crashes | 0) + ((x.crashes | 0) === 1 ? ' crash' : ' crashes') + ', ' + plural(x.hangs | 0, 'hang'), title: x.app })) },
       { id: 'measuring', title: 'Still measuring', empty: 'Nothing listed.',
         rows: (a.measuring || []).filter((m) => !/threshold/i.test(m)).map((m) => ({ label: m, value: '', title: m })) },
-    ];
+    ].filter((s) => s.id !== 'seeds' || s.rows.length);
   }
   const Watch = { head, sections };
 
@@ -1019,6 +1225,9 @@
   const TY = window.CCType;
   const CD = window.CCCard;
   const KY = window.CCKeys;
+  const AT = window.CCAttn;
+  const PG = window.CCProg;
+  const GL = window.CCGl;
   const SD = window.CCSide;
   const SC = window.CCSched;
   const HS = window.CCHSched;
@@ -1052,8 +1261,9 @@
   }
   // Keyed in-place row patching for a workflow box: slots are reused by index and only
   // changed text is written, so a status refresh moves nothing.
-  function drawFlow(box, flow) {
-    const rows = FL.view(flow, flowOpts());
+  // short (status card): the short clock form; the row tooltip keeps the full one.
+  function drawFlow(box, flow, short, opts) {
+    const rows = FL.view(flow, opts || flowOpts());
     const h = flow.height;
     while (box.children.length < h) {
       const r = el('div', 'frow');
@@ -1069,9 +1279,9 @@
       const clk = r ? FL.clockOf(r, now) : '';
       const cls = 'frow' + (r ? ' f-' + r.state : '') + (clk ? ' clk' : '');
       if (row.className !== cls) row.className = cls;
-      const c = r ? FL.cells(r, now) : ['', '', '', '', ''];
+      const c = r ? FL.cells(r, now, short) : ['', '', '', '', ''];
       for (let j = 0; j < 5; j++) if (row.children[j].textContent !== c[j]) row.children[j].textContent = c[j];
-      const t = r ? r.label + (r.step ? '\n' + r.step : '') : '';
+      const t = r ? r.label + (clk ? '\n' + clk : '') + (r.step ? '\n' + r.step : '') : '';
       if (row.title !== t) row.title = t;
     }
   }
@@ -1120,6 +1330,12 @@
   let info = null;
   let settings = null;
   let projects = [];
+  let hiddenProjs = []; // R2-13: GET /api/projects hidden, for Settings > Projects
+  async function reloadProjects() {
+    const pj = await api('GET', '/api/projects');
+    projects = pj.projects;
+    hiddenProjs = pj.hidden || [];
+  }
   let statusSnap = null;
   const views = new Map(); // id -> PaneView
   let order = [];
@@ -1176,9 +1392,8 @@
     const t = settings.theme;
     if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
     else document.documentElement.removeAttribute('data-theme');
-    $('#font-size-label').textContent = settings.fontSize + 'px';
     applyTypeScale(settings.typeScale);
-    document.body.classList.toggle('no-status', !settings.statusPanel);
+    applyStatusPanel();
     $('#statuspanel').style.width = (settings.statusWidth || 380) + 'px';
     for (const v of views.values()) v.applyLook();
   }
@@ -1240,6 +1455,23 @@
     try { localStorage.setItem('cc-inputs-' + id, JSON.stringify(needles)); } catch (e) { /* ignore */ }
   }
 
+  // R2-2: null while the console server answers; else the one line every pane strip and
+  // #status-age carry, and each pane word reads offline, until the events socket is back.
+  const SERVER_GONE = 'Not connected to the console server. If it stays like this, close this window and start Claude Console again.';
+  const SERVER_RESTARTED = 'The console restarted. Close this window and start Claude Console again.';
+  let serverDown = null;
+  function setServerDown(line) {
+    if (serverDown === line) return;
+    serverDown = line;
+    $('#status-age').textContent = statusAgeText();
+    for (const v of views.values()) { v.drawStrip(); v.refreshWord(); }
+  }
+  // R2-32: the hook's permission note says what is wanted, this says how to answer.
+  const PERMISSION_NEXT = ' - answer in the pane: Up/Down, then Enter';
+  // R2-6: a pane shorter than 420 px shows running rows only, up to 2.
+  const SHORT_PANE_PX = 420;
+  const SHORT_SHOW = { running: true, stale: false, failed: false, pending: false, idle: false, done: false };
+
   class PaneView {
     constructor(pinfo, saved) {
       this.id = pinfo.id;
@@ -1298,11 +1530,17 @@
       // What claude's hidden status rows carried: agents / shells / monitors / ctx.
       // Always present in claude panes (empty = '-'); a shell pane never shows it.
       this.statEl = el('span', 'pstat', '-');
+      this.statEl.title = 'Claude\'s input box is hidden. Click to show it.';
       this.statEl.style.display = 'none';
       this.statEl.addEventListener('click', (e) => { e.stopPropagation(); this.peek = !this.peek; this.refreshChromeMode(); });
       // Fixed slots (standard s4): state word + time (R5), project pct + ETA (R8).
       this.wordEl = el('span', 'pword', '-');
       this.progEl = el('span', 'pprog', '-');
+      // CON-OSC-PROGRESS: Claude's OSC 9;4 bar, a 2 px line along the header's bottom edge
+      // (absolute: no layout move); drawn only while the hook state is busy.
+      this.pbarEl = el('span', 'pbar');
+      this.pbarEl.hidden = true;
+      this.oscProg = null;
       const btns = el('span', 'pbtns');
       const mk = (box, label, title, fn, cls) => {
         const b = el('button', cls || null, label);
@@ -1315,7 +1553,7 @@
       mk(btns, 'Min', 'Minimize to the taskbar', () => setMinimized(this.id, true));
       mk(btns, 'X', 'Close (kills the process)', () => closePane(this.id));
       // R7: the rest of the header lives in one '...' menu (reachable on touch).
-      this.menuBtn = mk(btns, '...', 'More: font size, Find, Compose, Restart, pane info', () => this.toggleMenu(), 'more');
+      this.menuBtn = mk(btns, '...', 'More: font size, Find, message box, Restart, pane info', () => this.toggleMenu(), 'more');
       this.menuBtn.setAttribute('aria-haspopup', 'true');
       this.menuBtn.setAttribute('aria-expanded', 'false');
       this.menuEl = el('div', 'pmenu');
@@ -1326,14 +1564,14 @@
       menu(fr, 'A+', 'Larger font (this pane)', () => { this.bumpFont(1); return false; });
       this.menuEl.appendChild(fr);
       menu(this.menuEl, 'Find', 'Search scrollback (Ctrl+Shift+F)', () => { this.toggleSearch(); });
-      menu(this.menuEl, 'Compose', 'Show/hide the prompt composer', () => { this.composer.classList.toggle('collapsed'); });
-      menu(this.menuEl, 'Restart', 'Restart this pane', () => { this.restart(false); });
+      this.composeBtn = menu(this.menuEl, 'Hide message box', 'Show or hide the message box', () => { this.setComposerCollapsed(!this.composer.classList.contains('collapsed')); });
+      menu(this.menuEl, 'Restart', 'End this pane\'s process and start a new session', () => { this.confirmRestart(); });
       this.menuInfo = el('div', 'pm-info', '');
       this.menuEl.appendChild(this.menuInfo);
       for (const b of this.menuEl.querySelectorAll('button')) b.setAttribute('role', 'menuitem');
       this.menuEl.addEventListener('mousedown', (e) => e.stopPropagation());
       this.menuEl.addEventListener('keydown', (e) => { if (e.key === 'Escape') { this.toggleMenu(false); this.menuBtn.focus(); } });
-      head.append(this.dot, this.titleEl, this.infoEl, this.wordEl, this.progEl, this.badge, this.statEl, btns);
+      head.append(this.dot, this.titleEl, this.infoEl, this.wordEl, this.progEl, this.badge, this.statEl, btns, this.pbarEl);
       head.addEventListener('dblclick', () => toggleMax(this.id));
       // Drag by the title bar only (never from a header button, never from the terminal,
       // so xterm keeps its own mouse selection).
@@ -1367,9 +1605,10 @@
 
       // Always-present one-line strip (UI/UX standard section 4): the permission note,
       // else the /done band, else blank. Never inserted or removed, so nothing moves.
-      this.noteEl = el('div', 'pane-strip');
+      // CON-PANEL-COMPACT: blank = no height (class blank); it opens only for a note or the band.
+      this.noteEl = el('div', 'pane-strip blank');
       // Workflow rows (standard section 4): the project's progress files, one fixed row
-      // per task, updated in place; height = max rows seen (cap 6); reset by /done.
+      // per task, updated in place; height = shown rows (cap 6, 0 when none); reset by /done.
       this.flowEl = el('div', 'flow');
       this.flow = FL.create(Date.now());
       this.flowFromStart = true; // widened once to the pane's startedAt below
@@ -1389,16 +1628,28 @@
           ? { matchBackground: '#f2d98c', activeMatchBackground: '#e8a35c', matchOverviewRuler: '#b5651d', activeMatchColorOverviewRuler: '#b5651d' }
           : { matchBackground: '#6b5a2a', activeMatchBackground: '#e8a35c', matchOverviewRuler: '#e8a35c', activeMatchColorOverviewRuler: '#ff9900' },
       });
+      // CON-SCROLL-FIND: every find goes through here, so a match always ends up in the
+      // rows the operator can see (not in the composer-only crop below the clip edge)
+      // and a miss says so instead of leaving the count blank.
+      const find = (prev, extra) => {
+        const q = this.searchInput.value;
+        const o = Object.assign(sopts(), extra || {});
+        const hit = q ? (prev ? this.search.findPrevious(q, o) : this.search.findNext(q, o)) : false;
+        if (!q) this.searchCount.textContent = '';
+        else if (!hit) this.searchCount.textContent = 'no match';
+        else this.revealMatch();
+        return hit;
+      };
+      this.find = find;
       this.searchInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
-          if (e.shiftKey) this.search.findPrevious(this.searchInput.value, sopts());
-          else this.search.findNext(this.searchInput.value, sopts());
+          find(e.shiftKey);
         } else if (e.key === 'Escape') this.toggleSearch(false);
       });
-      this.searchInput.addEventListener('input', () => this.search.findNext(this.searchInput.value, Object.assign(sopts(), { incremental: true })));
-      sNext.addEventListener('click', () => this.search.findNext(this.searchInput.value, sopts()));
-      sPrev.addEventListener('click', () => this.search.findPrevious(this.searchInput.value, sopts()));
+      this.searchInput.addEventListener('input', () => find(false, { incremental: true }));
+      sNext.addEventListener('click', () => find(false));
+      sPrev.addEventListener('click', () => find(true));
       sClose.addEventListener('click', () => this.toggleSearch(false));
 
       // The terminal sits in a clipping wrapper: in a composer-only claude pane the pty
@@ -1412,8 +1663,10 @@
       const exitBar = el('div', 'pane-exit');
       this.exitText = el('span', null, 'Process exited.');
       const rb = el('button', 'small', 'Restart fresh');
+      rb.title = 'New session in this folder';
       rb.addEventListener('click', () => this.restart(false));
       this.resumeBtn = el('button', 'small', 'Resume conversation');
+      this.resumeBtn.title = 'Continue the same conversation';
       this.resumeBtn.addEventListener('click', () => this.restart(true));
       const cb = el('button', 'small', 'Close');
       cb.addEventListener('click', () => closePane(this.id));
@@ -1422,10 +1675,12 @@
       // Composer
       this.composer = el('div', 'composer');
       this.ta = el('textarea');
-      this.ta.placeholder = 'Prompt composer - Enter sends (empty sends Enter), Shift+Enter: new line. Alt+Up/Down: history. Esc: back to terminal.';
+      this.ta.placeholder = 'Message box - Enter sends (empty sends Enter), Shift+Enter: new line. Alt+Up/Down: history. Esc: back to terminal.';
       this.ta.rows = 1;
       this.ta.addEventListener('keydown', (e) => this.composerKey(e));
-      this.ta.addEventListener('input', () => { this.growComposer(); this.slashUpdate(); });
+      this.ta.addEventListener('input', () => { this.pruneAttachChips(); this.growComposer(); this.slashUpdate(); });
+      // R2-15: a /done command added since the last look shows its chip again.
+      this.ta.addEventListener('focus', () => { if (this.isClaudePane()) this.slashLoad(); });
       this.ta.addEventListener('click', () => this.slashUpdate());
       this.ta.addEventListener('keyup', (e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') this.slashUpdate(); });
       this.ta.addEventListener('blur', () => this.slashClose());
@@ -1465,17 +1720,16 @@
       // CON-UX-KEYS: the key strip is drawn by renderChips() from Settings (shown keys).
       const keyBox = el('span', 'crow');
       this.keyBox = keyBox;
-      const grow = el('span', 'grow');
       const sendBtn = el('button', 'primary', 'Send');
       sendBtn.title = 'Send (Enter; Shift+Enter is a new line)';
       sendBtn.addEventListener('click', () => this.sendComposer());
       const attachBtn = el('button', 'attach-btn', 'Attach');
       attachBtn.title = 'Attach files: their saved path goes into the prompt (or drop / paste files and images onto the pane)';
       attachBtn.addEventListener('click', () => this.fileInput.click());
-      crow.append(this.chipBox, keyBox, grow, attachBtn);
-      // Send sits beside the text box, so the key row stays one line at iPad width.
+      crow.append(this.chipBox, keyBox);
+      // Send and Attach sit beside the text box, so they take no row of their own (R2-6).
       const trow = el('div', 'trow');
-      trow.append(this.ta, sendBtn);
+      trow.append(this.ta, attachBtn, sendBtn);
       this.composer.append(this.slashEl, this.attachRow, trow, crow, this.fileInput);
 
       root.append(head, this.menuEl, this.noteEl, this.flowEl, this.searchBar, this.termWrap, exitBar, this.composer);
@@ -1491,14 +1745,21 @@
         fontSize, fontFamily: settings.fontFamily, lineHeight: settings.lineHeight || 1.2,
         scrollback: settings.scrollback || 10000, cursorBlink: true, allowProposedApi: true,
         theme: THEMES[effTheme()], macOptionIsMeta: true,
+        // CON-SCROLL-CONPTY: how the pane's ConPTY treats reflow and grown rows (server)
+        windowsPty: this.info.windowsPty || undefined,
       });
       this.fit = new window.FitAddon.FitAddon();
       this.search = new window.SearchAddon.SearchAddon();
       this.term.loadAddon(this.fit);
       this.term.loadAddon(this.search);
       try { this.term.loadAddon(new window.WebLinksAddon.WebLinksAddon()); } catch (e) { /* optional */ }
+      try {
+        const pa = new window.ProgressAddon.ProgressAddon();
+        this.term.loadAddon(pa);
+        pa.onChange((st) => { this.oscProg = st; this.drawProg(); });
+      } catch (e) { /* optional: the hook state still drives the header */ }
       this.search.onDidChangeResults && this.search.onDidChangeResults((r) => {
-        this.searchCount.textContent = r && r.resultCount ? (r.resultIndex + 1) + '/' + r.resultCount : '';
+        this.searchCount.textContent = r && r.resultCount ? (r.resultIndex + 1) + '/' + r.resultCount : (this.searchInput.value ? 'no match' : '');
       });
       this.term.open(this.termEl);
       this.term.attachCustomKeyEventHandler((e) => {
@@ -1515,6 +1776,7 @@
         }
         if (e.ctrlKey && (e.key === 'v' || e.key === 'V')) return false; // let the browser paste event through
         if (e.ctrlKey && e.altKey && (e.key === 'b' || e.key === 'B')) return false; // sidebar toggle (window handler)
+        if (AT.isJumpKey(e)) return false; // CON-ATTENTION-PANEL jump (window handler)
         // Composer-only pane: typing lands in the composer, never in claude's hidden box.
         // Enter, Esc, arrows, Tab and Ctrl+keys still go to claude.
         if (this.compactActive() && !this.composer.classList.contains('collapsed') && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
@@ -1539,10 +1801,15 @@
         this.ta.focus();
       }, true);
       this.term.onScroll(() => this.applyMask());
-      this.term.onData((d) => { this.trackTyped(d); this.sendRaw(d); });
-      this.term.onResize(({ cols, rows }) => { this.wsSend({ t: 'resize', cols, rows }); this.scheduleChrome(); });
+      // CON-SCROLL-CONPTY: focus reports (the bundled ConPTY asks for them) are not typing
+      // CON-SCROLL-REPLAY: queries in the replayed ring (DA, cursor report, colour) were
+      // answered long ago; xterm's answers during a replay would be typed into the CLI.
+      this.term.onData((d) => { if (this.replaying) return; if (/^(?:\x1b\[[IO])+$/.test(d)) { this.wsSend({ t: 'in', d }); return; } this.trackTyped(d); this.sendRaw(d); });
+      // CON-SCROLL-REPLAY: the replay steps through the sizes the output was written at;
+      // those steps are local and never reach the pty.
+      this.term.onResize(({ cols, rows }) => { if (this.replaying) return; this.wsSend({ t: 'resize', cols, rows }); this.scheduleChrome(); });
       this.term.textarea && this.term.textarea.addEventListener('focus', () => setFocused(this.id));
-      this.ro = new ResizeObserver(() => this.scheduleFit());
+      this.ro = new ResizeObserver(() => { this.paneSized(); this.scheduleFit(); });
       this.ro.observe(this.termWrap);
       this.renderChips();
       this.update(this.info);
@@ -1563,20 +1830,28 @@
 
     // R5 state word (minutes only, so it changes at most once a minute).
     refreshWord() {
+      if (serverDown) {
+        if (this.wordEl.textContent !== 'offline') this.wordEl.textContent = 'offline';
+        this.wordEl.className = 'pword v-offline';
+        this.wordEl.title = serverDown;
+        return;
+      }
       const vs = vstate(this.info);
       let w = CH.paneWord(vs, VWORD[vs] || vs, this.info, Date.now());
       if (vs === 'failed' && this.info.exitCode !== null && this.info.exitCode !== undefined) w = 'failed (' + this.info.exitCode + ')';
       const cls = 'pword v-' + vs;
       if (this.wordEl.textContent !== w) this.wordEl.textContent = w;
       if (this.wordEl.className !== cls) this.wordEl.className = cls;
-      const t = this.info.tool && vs === 'running' ? 'Running tool ' + this.info.tool : VWORD[vs] || vs;
+      const t = VWORD[vs] || vs;
       if (this.wordEl.title !== t) this.wordEl.title = t;
     }
 
     // R8: the project's top running progress item, '-' when none.
     setProgress(items) {
       const t = this.info.projectId ? FL.top(items) : null;
-      const text = t ? t.text : '-';
+      // CON-PANEL-COMPACT: the header slot shows the short clock (one line); the full
+      // KIT-ETA-REMAIN form is in the tooltip and in the pane's workflow row.
+      const text = t ? t.short || t.text : '-';
       const cls = 'pprog' + (t ? ' ' + t.cls : '');
       if (this.progEl.textContent !== text) this.progEl.textContent = text;
       if (this.progEl.className !== cls) this.progEl.className = cls;
@@ -1585,23 +1860,29 @@
     }
 
     // Quick chips (ticked ones) and the key strip (shown keys), both from Settings.
+    // R2-16: claude's words and claude's keys are for claude panes. R2-15: /done only where
+    // the pane's slash catalog has it, so an unknown command is never offered.
     renderChips() {
+      const isClaude = this.isClaudePane();
+      if (isClaude && !this.slashRows) this.slashLoad();
       this.chipBox.textContent = '';
-      for (const c of KY.normalizeChips(settings.quickChips)) {
-        if (!c.on) continue;
+      for (const c of isClaude ? KY.normalizeChips(settings.quickChips) : []) {
+        if (!c.on || (c.text === '/done' && !this.hasDoneCmd)) continue;
         const b = el('button', null, c.text);
         b.title = 'Send "' + c.text + '" + Enter';
-        b.addEventListener('click', () => this.sendText(c.text));
+        b.addEventListener('click', () => { if (this.canSend(false)) this.sendText(c.text); });
         this.chipBox.appendChild(b);
       }
       this.keyBox.textContent = '';
       const show = KY.normalizeStrip(settings.keyStrip);
+      const all = isPhone() || this.allKeysOverride;
       for (const k of KY.KEYS) {
-        if (!show[k.id]) continue;
+        if (!isClaude && (k.id === 'ctrlx' || k.id === 'stab')) continue;
+        if (!show[k.id] && !all) continue;
         const b = el('button', 'key', k.label);
         b.title = k.title;
         b.dataset.key = k.id;
-        b.addEventListener('click', () => { this.sendKeys(k.seq); this.focusInput(); });
+        b.addEventListener('click', () => { if (this.canSend(false)) this.sendKeys(k.seq); this.focusInput(); });
         this.keyBox.appendChild(b);
       }
     }
@@ -1610,6 +1891,52 @@
     // the CLI reads two key presses, not one pasted string.
     sendKeys(seq) {
       seq.forEach((s, i) => { if (i === 0) this.sendRaw(s); else setTimeout(() => this.sendRaw(s), 60 * i); });
+    }
+
+    isClaudePane() {
+      return this.info.kind === 'claude' || this.compactOverride;
+    }
+
+    // R2-5 ruling: under 400 px the progress slot and the blank badge collapse.
+    // From 400 to 599 px they stay, and the running text takes its own header line.
+    // R2-6: a short pane's workflow strip narrows to its running rows.
+    paneSized() {
+      const w = this.root.offsetWidth;
+      if (!w) return; // hidden: keep what it had
+      this.root.classList.toggle('pane-narrow', w < 400);
+      this.root.classList.toggle('pane-mid', w >= 400 && w < 600);
+      const short = this.root.offsetHeight < SHORT_PANE_PX;
+      if (short !== !!this.flowShort) {
+        this.flowShort = short;
+        const o = this.flowOptsNow();
+        this.flow.height = FL.view(this.flow, o).length;
+        drawFlow(this.flowEl, this.flow, false, o);
+        this.scheduleFit();
+      }
+    }
+
+    flowOptsNow() {
+      const o = flowOpts();
+      return this.flowShort ? { cap: Math.min(2, o.cap), show: SHORT_SHOW } : o;
+    }
+
+    setComposerCollapsed(on) {
+      this.composer.classList.toggle('collapsed', on);
+      this.composeBtn.textContent = on ? 'Show message box' : 'Hide message box';
+      this.syncTermTab();
+    }
+
+    // R2-9: in a composer-only pane Tab goes header buttons, then composer; xterm's hidden
+    // textarea would keep it for good. The terminal stays reachable by mouse and by Esc.
+    syncTermTab() {
+      const t = this.term && this.term.textarea;
+      if (t) t.tabIndex = this.compactActive() && !this.composer.classList.contains('collapsed') ? -1 : 0;
+    }
+
+    // R2-32: Restart ends a running process, so it asks like X does.
+    async confirmRestart() {
+      if (this.info.state !== 'exited' && !(await askConfirm({ title: 'Restart pane', what: 'Restart "' + (this.info.title || this.id) + '"? This ends its process and starts a new session.', go: 'Restart', danger: true }))) return;
+      this.restart(false);
     }
 
     applyLook() {
@@ -1641,6 +1968,7 @@
     // crop * cell-height taller than the wrapper, so FitAddon yields visible + crop rows
     // and the extra rows render below the wrapper's clipped edge.
     doFit() {
+      if (this.replaying) return; // the replay's own end fits
       if (this.root.classList.contains('hidden') || !this.termWrap.offsetWidth) return;
       for (let pass = 0; pass < 2; pass++) {
         const ch = this.cellHeight();
@@ -1689,12 +2017,8 @@
       const buf = this.term.buffer.active;
       let ch = null;
       if (isClaude && buf.type === 'normal') {
-        const lines = [];
-        for (let y = 0; y < this.term.rows; y++) {
-          const l = buf.getLine(buf.baseY + y);
-          lines.push(l ? l.translateToString(true) : '');
-        }
-        ch = CH.findChrome(lines);
+        const { lines, above } = this.liveLines();
+        ch = CH.findChromeLive(lines, above);
       }
       this.chrome = ch;
       if (isClaude && ch) {
@@ -1705,6 +2029,9 @@
         this.statEl.style.display = '';
       } else if (!isClaude) {
         this.statEl.style.display = 'none';
+      } else if (this.statEl.textContent === '-') {
+        // R2-10: an empty pill still says what a click on it does.
+        this.statEl.title = this.compactActive() ? 'Claude\'s input box is hidden. Click to show it.' : this.peek ? 'Claude\'s input box is shown. Click to hide it.' : 'Claude\'s input box is shown.';
       }
       const want = this.compactActive() ? CH.planCrop(ch, this.crop, Math.max(0, Math.min(40, this.term.rows - 4))) : 0;
       this.setCropWant(want);
@@ -1748,6 +2075,19 @@
       this.maskEl.style.display = 'block';
     }
 
+    // CON-SCROLL-FIND: the search addon only scrolls when a match is outside the xterm
+    // viewport, and that viewport includes the crop rows hidden below the clip edge.
+    // Centre the match in the visible rows when it is not inside them.
+    revealMatch() {
+      const sel = this.term.getSelectionPosition();
+      if (!sel) return;
+      const buf = this.term.buffer.active;
+      const vis = Math.max(1, this.visibleRows);
+      const y = sel.start.y;
+      if (y < buf.viewportY || y >= buf.viewportY + vis) this.term.scrollToLine(Math.max(0, Math.min(buf.baseY, y - Math.floor(vis / 2))));
+      this.applyMask();
+    }
+
     toggleSearch(force) {
       const open = force === undefined ? !this.searchBar.classList.contains('open') : force;
       this.searchBar.classList.toggle('open', open);
@@ -1767,8 +2107,10 @@
       this.ws = ws;
       ws.onopen = () => {
         this.retry = 0;
+        this.sendNote = '';
+        this.drawStrip();
         this.scheduleFit();
-        setTimeout(() => this.wsSend({ t: 'resize', cols: this.term.cols, rows: this.term.rows }), 120);
+        setTimeout(() => { if (!this.replaying) this.wsSend({ t: 'resize', cols: this.term.cols, rows: this.term.rows }); }, 120);
       };
       ws.onmessage = (ev) => {
         let m;
@@ -1776,10 +2118,11 @@
         if (m.t === 'replay') {
           this.resetInputMarks();
           this.term.reset();
-          if (m.d) this.term.write(m.d, () => { this.scheduleScan(); this.scheduleChrome(); });
+          this.replay(Array.isArray(m.segs) ? m.segs : (m.d ? [{ d: m.d }] : []));
           if (m.info) this.update(m.info);
         } else if (m.t === 'out') {
           this.lastOut = Date.now();
+          if (this.replaying) { this.heldOut.push(m.d); return; }
           this.term.write(m.d, () => { this.scheduleScan(); this.scheduleChrome(); });
         } else if (m.t === 'exit') {
           this.update(Object.assign({}, this.info, { state: 'exited', exitCode: m.code }));
@@ -1790,6 +2133,38 @@
         this.retry = Math.min(this.retry + 1, 6);
         setTimeout(() => { if (!this.closing && views.has(this.id)) this.connect(); }, 500 * this.retry);
       };
+    }
+
+    // CON-SCROLL-REPLAY: rebuild the pane from the server ring one size segment at a
+    // time (the terminal is resized to each segment's pty size first, so wrapping, reflow
+    // and claude's cursor moves land as they did live), then fit to the pane and tell
+    // the pty. Live output that arrives meanwhile is held and written after it.
+    replay(segs) {
+      const run = (this.replayRun || 0) + 1;
+      this.replayRun = run;
+      this.replaying = true;
+      this.heldOut = [];
+      let i = 0;
+      const next = () => {
+        if (this.replayRun !== run) return;
+        if (i >= segs.length) {
+          this.replaying = false;
+          const held = this.heldOut.join('');
+          this.heldOut = [];
+          this.doFit();
+          this.wsSend({ t: 'resize', cols: this.term.cols, rows: this.term.rows });
+          if (held) this.term.write(held);
+          this.term.write('', () => { this.scheduleScan(); this.scheduleChrome(); });
+          return;
+        }
+        const g = segs[i++] || {};
+        const c = Math.max(10, Math.min(500, g.cols | 0));
+        const r = Math.max(4, Math.min(300, g.rows | 0));
+        if (g.cols && g.rows && (c !== this.term.cols || r !== this.term.rows)) this.term.resize(c, r);
+        if (g.d) this.term.write(g.d, next);
+        else next();
+      };
+      next();
     }
 
     wsSend(obj) {
@@ -1812,6 +2187,8 @@
     sendText(text) {
       this.markInput(text);
       const run = () => {
+        // R2-2: a queued send whose socket died meanwhile goes back to the box, not nowhere.
+        if (!this.ws || this.ws.readyState !== 1) { this.restoreUnsent(text); return undefined; }
         if (text.includes('\n')) {
           this.term.paste(text); // bracketed paste when the app enabled it
         } else {
@@ -1832,12 +2209,20 @@
       if (!this.term) return null;
       const buf = this.term.buffer.active;
       if (buf.type !== 'normal') return null;
+      const { lines, above } = this.liveLines();
+      return CH.inputText(lines, CH.findChromeLive(lines, above), above);
+    }
+
+    // The screen plus up to 40 scrollback rows above it (a tall input box can start there).
+    liveLines() {
+      const buf = this.term.buffer.active;
+      const above = Math.min(buf.baseY, 40);
       const lines = [];
-      for (let y = 0; y < this.term.rows; y++) {
+      for (let y = -above; y < this.term.rows; y++) {
         const l = buf.getLine(buf.baseY + y);
         lines.push(l ? l.translateToString(true) : '');
       }
-      return CH.inputText(lines, CH.findChrome(lines));
+      return { lines, above };
     }
 
     // Resolve once output has been quiet for `quiet` ms (at least `min` ms from now,
@@ -1966,6 +2351,10 @@
         e.style.fontFamily = o.fontFamily;
         e.style.fontSize = o.fontSize + 'px';
         e.style.lineHeight = e.style.height;
+        // R2-4: bold text can measure wider than its cells; the receipt never loses a letter.
+        span.style.letterSpacing = '';
+        const over = span.getBoundingClientRect().width - e.clientWidth;
+        if (e.clientWidth && over > 0) span.style.letterSpacing = (-over / DONE_TEXT.length) + 'px';
       });
       this.doneDecos.push({ marker, deco, col });
     }
@@ -2063,7 +2452,28 @@
       this.userDecos.push({ marker, deco });
     }
 
+    // R2-2: can a keystroke reach the process right now? If not the strip says why, and the
+    // caller keeps whatever was typed.
+    canSend(kept) {
+      let why = '';
+      if (!this.ws || this.ws.readyState !== 1) why = 'Not connected.' + (kept ? ' Your text is kept; press Enter to send it once the pane reconnects.' : '');
+      else if (this.info.state === 'exited') why = 'This pane\'s process has ended.' + (kept ? ' Your text is kept; Restart fresh starts a new session.' : ' Restart fresh starts a new session.');
+      if (!why) return true;
+      this.sendNote = why;
+      this.drawStrip();
+      return false;
+    }
+
+    restoreUnsent(text) {
+      if (!this.ta.value.includes(text)) {
+        this.ta.value = this.ta.value ? text + '\n' + this.ta.value : text;
+        this.growComposer();
+      }
+      this.canSend(true);
+    }
+
     sendComposer() {
+      if (!this.canSend(!!this.ta.value.trim())) return;
       const text = this.ta.value.replace(/\r\n/g, '\n');
       if (!text.trim()) {
         this.sendRaw('\r');
@@ -2086,6 +2496,7 @@
     // composing: that Enter commits the composition.
     composerKey(e) {
       if (e.isComposing || e.keyCode === 229) return;
+      if (e.ctrlKey && e.shiftKey && (e.key === 'F' || e.key === 'f')) { e.preventDefault(); this.toggleSearch(true); return; }
       if (this.slashOpen() && this.slashKey(e)) return;
       if (e.key === 'Enter' && !e.shiftKey && !e.altKey) {
         e.preventDefault();
@@ -2134,7 +2545,13 @@
       if (this.slashRows && Date.now() - this.slashAt < 30000) return Promise.resolve(this.slashRows);
       if (this.slashLoading) return this.slashLoading;
       this.slashLoading = api('GET', '/api/commands?pane=' + encodeURIComponent(this.id))
-        .then((r) => { this.slashRows = r.commands || []; this.slashAt = Date.now(); return this.slashRows; })
+        .then((r) => {
+          this.slashRows = r.commands || [];
+          this.slashAt = Date.now();
+          const has = this.slashRows.some((c) => String(c.name).toLowerCase() === 'done');
+          if (has !== !!this.hasDoneCmd) { this.hasDoneCmd = has; this.renderChips(); }
+          return this.slashRows;
+        })
         .catch(() => this.slashRows || [])
         .finally(() => { this.slashLoading = null; });
       return this.slashLoading;
@@ -2261,9 +2678,14 @@
     // Re-apply the composer-only mode (setting changed, peek toggled, pane kind known).
     refreshChromeMode() {
       const on = this.compactActive();
-      this.ta.placeholder = on
-        ? 'Message claude - Enter sends, Shift+Enter: new line. Empty box: Up/Down, Ctrl+C go to claude; Esc, Shift+Tab always. Alt+Up/Down: history.'
-        : 'Prompt composer - Enter sends (empty sends Enter), Shift+Enter: new line. Alt+Up/Down: history. Esc: back to terminal.';
+      // R2-21: the placeholder fits a pane; the manual is the tooltip.
+      this.ta.placeholder = this.isClaudePane()
+        ? 'Message claude (Enter sends, Shift+Enter new line)'
+        : 'Type a command (Enter sends). Ctrl+Alt+Left/Right moves to another pane.';
+      this.ta.title = on
+        ? 'Empty box: Up/Down, Ctrl+C go to claude; Esc, Shift+Tab always. Alt+Up/Down: history.'
+        : 'Empty box: Enter sends Enter. Alt+Up/Down: history. Esc: back to terminal.';
+      this.syncTermTab();
       this.root.classList.toggle('compact-cli', on);
       this.detectChrome();
     }
@@ -2297,8 +2719,15 @@
     }
 
     attachFiles(files) {
-      if (this.composer.classList.contains('collapsed')) this.composer.classList.remove('collapsed');
+      if (this.composer.classList.contains('collapsed')) this.setComposerCollapsed(false);
       return Promise.all(files.map((f) => this.uploadOne(f)));
+    }
+
+    // R2-25: a chip goes when its path has left the text.
+    pruneAttachChips() {
+      for (const chip of [...this.attachRow.children]) {
+        if (chip.inserted && !this.ta.value.includes(chip.inserted.trim())) chip.remove();
+      }
     }
 
     addAttachChip(name) {
@@ -2369,13 +2798,15 @@
         this.update(i);
         if (!this.ws || this.ws.readyState !== 1) this.connect();
       } catch (e) {
-        alert('Restart failed: ' + e.message);
+        showPaneError('Restart failed', e.message);
       }
     }
 
     update(i) {
       const prevUnseen = this.info && this.info.unseen;
+      const prevWp = this.info && JSON.stringify(this.info.windowsPty || null);
       this.info = Object.assign({}, this.info, i);
+      if (this.term && i && 'windowsPty' in i && JSON.stringify(i.windowsPty || null) !== prevWp) this.term.options.windowsPty = i.windowsPty || {};
       const p = this.info;
       this.titleEl.textContent = p.title || p.kind;
       const acct = p.kind === 'claude' ? (info.accounts.find((a) => a.id === p.account) || {}).label || p.account : p.shell;
@@ -2415,32 +2846,81 @@
         this.clearedLastSeen = !!p.clearedLast;
         saveLayout();
       }
-      const note = p.state === 'attention' && p.note ? p.note : '';
       const dn = p.done || null;
       // DONE closes the session: its workflow rows fold into the band.
       if (dn && dn.kind === 'done' && this.flow.rows.length) {
-        this.flow = FL.create(Date.now());
+        this.flow = FL.create(Date.now(), { boardAfter: true });
         drawFlow(this.flowEl, this.flow);
       }
-      this.noteEl.textContent = note || doneText(dn);
-      this.noteEl.className = 'pane-strip' + (note ? ' note' : dn ? ' ' + dn.kind : '');
+      this.drawStrip();
       this.root.classList.toggle('is-done', !!dn && dn.kind === 'done');
       this.root.classList.toggle('is-failed', !!dn && dn.kind === 'failed');
       const need = settings.idleBadge && p.unseen && p.state === 'attention';
       this.badge.textContent = need ? 'needs you' : '';
       this.badge.classList.toggle('blank', !need);
       if (p.unseen && !prevUnseen) maybeNotify(this);
+      this.drawProg();
       renderTaskbar();
       renderProjects();
       updateTitle();
+      renderAttn();
+    }
+
+    // The one strip: not-connected first (a typed prompt depends on it), then the
+    // permission note, then the /done band.
+    drawStrip() {
+      const p = this.info;
+      if (this.sendNote && p.state !== 'exited' && this.ws && this.ws.readyState === 1) this.sendNote = '';
+      const warn = serverDown || this.sendNote || '';
+      let note = p.state === 'attention' && p.note ? p.note : '';
+      if (note && /^Claude needs your permission/.test(note)) note += PERMISSION_NEXT;
+      const dn = p.done || null;
+      const stripText = warn || note || doneText(dn);
+      const stripCls = 'pane-strip' + (warn || note ? ' note' : dn ? ' ' + dn.kind : '') + (stripText ? '' : ' blank');
+      const stripMoved = this.noteEl.className !== stripCls || this.noteEl.textContent !== stripText;
+      this.noteEl.textContent = stripText;
+      this.noteEl.className = stripCls;
+      if (stripMoved && this.scheduleFit) this.scheduleFit();
+    }
+
+    attachGl() {
+      if (this.gl || this.glFailed || !window.WebglAddon) return;
+      try {
+        const a = new window.WebglAddon.WebglAddon();
+        a.onContextLoss(() => { this.glFailed = true; this.detachGl(); });
+        this.term.loadAddon(a);
+        this.gl = a;
+      } catch (e) {
+        this.glFailed = true; // no WebGL2 here: the DOM renderer stays
+        this.gl = null;
+      }
+    }
+
+    detachGl() {
+      const a = this.gl;
+      this.gl = null;
+      if (a) { try { a.dispose(); } catch (e) { /* already gone */ } }
+    }
+
+    drawProg() {
+      const pv = PG.view(this.oscProg, this.info.state);
+      if (this.pbarEl.hidden === !pv.show && this.pbarEl.className === pv.cls) {
+        if (pv.pct !== null) this.pbarEl.style.width = pv.pct + '%';
+        return;
+      }
+      this.pbarEl.hidden = !pv.show;
+      this.pbarEl.className = pv.cls;
+      this.pbarEl.title = pv.title;
+      this.pbarEl.style.width = pv.pct === null ? '' : pv.pct + '%';
     }
 
     // Claude panes only: the project's progress items, patched into the fixed rows.
-    updateFlow(items) {
+    updateFlow(items, board) {
       if (this.info.kind !== 'claude' && !this.compactOverride) return;
       const h0 = this.flow.height;
-      FL.update(this.flow, items, flowOpts());
-      drawFlow(this.flowEl, this.flow);
+      const o = this.flowOptsNow();
+      FL.update(this.flow, items, o, board || null);
+      drawFlow(this.flowEl, this.flow, false, o);
       if (this.flow.height !== h0) this.scheduleFit();
     }
 
@@ -2486,12 +2966,43 @@
       maximizedId = null;
       setFocused(v.id);
       setTimeout(() => v.focusInput(), 50);
+      // R1-11: the server just listed this folder; the row shows without a rescan
+      if (pinfo.listed) reloadProjects().then(() => { renderProjects(); pollStatus(); }).catch(() => {});
+      // R1-1: a claude pane that opened answers the footer's "not installed yet"
+      if (pinfo.kind === 'claude' && info && !info.claudeFound) { info.claudeFound = true; renderFoot(); }
       return v;
     } catch (e) {
       if (o && o.onError) o.onError(e); // CON-AUDIT UX-A20: the caller says it in place
-      else alert('Could not open pane: ' + e.message);
+      else showPaneError('Could not open pane', e.message);
       return null;
     }
+  }
+
+  // R1-15: the console's own dialog, not a blocking browser alert. An install command in
+  // the message goes in a box of its own, to select or copy.
+  function showPaneError(title, message) {
+    const dlg = $('#dlg-paneerr');
+    const m = /^(.*?)(irm \S+ \| iex)\s*(.*)$/.exec(String(message));
+    $('#pe-title').textContent = title;
+    $('#pe-what').textContent = m ? m[1].trim() : String(message);
+    $('#pe-cmd-row').hidden = !m;
+    $('#pe-cmd').value = m ? m[2] : '';
+    $('#pe-after').textContent = m ? m[3] : '';
+    $('#pe-after').hidden = !(m && m[3]);
+    $('#pe-copy').textContent = 'Copy';
+    if (!dlg.open) dlg.showModal();
+  }
+
+  function wirePaneError() {
+    $('#pe-cmd').addEventListener('focus', () => $('#pe-cmd').select());
+    $('#pe-copy').addEventListener('click', async () => {
+      const box = $('#pe-cmd');
+      box.focus();
+      box.select();
+      let ok = false;
+      try { await navigator.clipboard.writeText(box.value); ok = true; } catch (e) { try { ok = document.execCommand('copy'); } catch (e2) { ok = false; } }
+      $('#pe-copy').textContent = ok ? 'Copied' : 'Press Ctrl+C';
+    });
   }
 
   function ensureView(pinfo, saved) {
@@ -2518,6 +3029,60 @@
     if (focusedId === id) focusedId = null;
     relayout();
     saveLayout();
+    renderAttn();
+  }
+
+  // ---------- attention list (CON-ATTENTION-PANEL) ----------
+  // Top-bar "? N" button: one line per pane that needs you or waits unread, needs-you
+  // first then oldest first; a click (or Ctrl+Alt+U for the newest unread) jumps there.
+  function attnPanes() {
+    return [...views.values()].map((v) => v.info);
+  }
+  function renderAttn() {
+    const btn = document.getElementById('btn-attn');
+    const box = document.getElementById('attn-list');
+    if (!btn || !box) return;
+    const l = AT.list(attnPanes());
+    const t = AT.buttonText(l.length);
+    if (btn.textContent !== t) btn.textContent = t;
+    btn.classList.toggle('has', l.length > 0);
+    btn.classList.toggle('needs', l.some((x) => x.kind === 'needs'));
+    if (!box.classList.contains('open')) return;
+    const now = Date.now();
+    box.textContent = '';
+    if (!l.length) box.appendChild(el('div', 'pm-info', 'Nothing needs you'));
+    for (const x of l) {
+      const b = el('button', 'attn-row ' + x.kind + (x.unseen ? ' unseen' : ''), AT.rowText(x, now));
+      b.type = 'button';
+      b.setAttribute('role', 'menuitem');
+      b.dataset.id = x.id;
+      b.addEventListener('click', () => jumpTo(x.id));
+      box.appendChild(b);
+    }
+    box.appendChild(el('div', 'pm-info', 'Ctrl+Alt+U: newest unread'));
+  }
+  function setAttnOpen(on) {
+    const btn = document.getElementById('btn-attn');
+    const box = document.getElementById('attn-list');
+    if (!btn || !box) return;
+    box.classList.toggle('open', on);
+    btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+    renderAttn();
+    if (on) { const f = box.querySelector('button'); if (f) f.focus(); }
+  }
+  function jumpTo(id) {
+    const v = views.get(id);
+    setAttnOpen(false);
+    if (!v) return false;
+    if (v.minimized) setMinimized(id, false);
+    setFocused(id);
+    if (maximizedId && maximizedId !== id) toggleMax(id); // max mode shows the target
+    v.focusInput();
+    return true;
+  }
+  function jumpNewest() {
+    const id = AT.newestUnread(attnPanes());
+    return id ? jumpTo(id) : false;
   }
 
   async function closePane(id) {
@@ -2740,6 +3305,23 @@
   const phoneMq = window.matchMedia ? window.matchMedia('(max-width: 760px)') : null;
   const isPhone = () => !!(phoneMq && phoneMq.matches);
   let phoneOff = new Set();
+  // R2-7 + R2-1: at 1100 px or under the status panel is a drawer. It starts closed and
+  // its state lives in this window only: settings.statusPanel stays the desktop choice.
+  const statusDrawerMq = window.matchMedia ? window.matchMedia('(max-width: 1100px)') : null;
+  const statusIsDrawer = () => !!(statusDrawerMq && statusDrawerMq.matches);
+  let statusDrawerOpen = false;
+  function applyStatusPanel() {
+    document.body.classList.toggle('no-status', !(statusIsDrawer() ? statusDrawerOpen : settings.statusPanel));
+  }
+  function toggleStatus() {
+    if (!statusIsDrawer()) return saveSettings({ statusPanel: !settings.statusPanel }).then(relayout);
+    statusDrawerOpen = !statusDrawerOpen;
+    if (statusDrawerOpen && isPhone()) applySidebar(true); // one drawer at a time, nothing saved
+    applyStatusPanel();
+    relayout();
+    if (statusDrawerOpen) pollTrackers(true); // closed drawers do not poll
+    return null;
+  }
   function relayout() {
     const grid = $('#grid');
     let vis = order.filter((id) => views.has(id) && !views.get(id).minimized);
@@ -2766,8 +3348,21 @@
       if (shown) v.scheduleFit();
     }
     $('#empty').classList.toggle('hidden', n > 0);
+    syncGl(vis);
     renderTaskbar();
     renderProjects();
+  }
+
+  // CON-WEBGL-MEASURE: the WebGL renderer on visible panes only (GL.plan); hidden or
+  // minimized panes give their context back; a lost context falls back to DOM for good.
+  function syncGl(vis) {
+    if (!window.WebglAddon) return;
+    const shown = new Set(vis || []);
+    const want = GL.plan(order.filter((id) => views.has(id)).map((id) => ({ id, visible: shown.has(id), failed: views.get(id).glFailed })));
+    for (const [id, v] of views) {
+      if (want.has(id) && !v.gl) v.attachGl();
+      else if (!want.has(id) && v.gl) v.detachGl();
+    }
   }
 
   function renderTaskbar() {
@@ -2807,9 +3402,9 @@
       it.addEventListener('click', (e) => reopenDormant(entry, canResume && !e.shiftKey));
       box.appendChild(it);
     }
-    // Counts only (no sentence swaps): "<n> min / <m> closed", '-' when empty.
+    // Counts only (no sentence swaps): "<n> minimized / <m> closed", '-' when both zero.
     const nMin = order.filter((id) => views.has(id) && views.get(id).minimized).length;
-    $('.tb-label').textContent = nMin || dormant.length ? nMin + ' min / ' + dormant.length + ' closed' : '-';
+    $('.tb-label').textContent = nMin || dormant.length ? nMin + ' minimized / ' + dormant.length + ' closed' : '-';
   }
 
   function updateTitle() {
@@ -3419,6 +4014,30 @@
     saveGroups(gs); // a tool dropped outside the groups goes back under its project
   }
 
+  // R2-8: a clickable row or card is a keyboard stop. Enter or Space runs its click
+  // (Shift carries over, as on a mouse); fk names the row so a list rebuild can give
+  // focus back. o.target: what the click lands on; o.menu: the ContextMenu / Shift+F10 action.
+  function keyRow(row, fk, o) {
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
+    if (fk) row.dataset.fk = fk;
+    row.addEventListener('keydown', (e) => {
+      if (e.target !== row) return; // a button inside the row handles its own keys
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        const t = (o && o.target && o.target()) || row;
+        t.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: e.shiftKey }));
+      } else if (o && o.menu && (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10'))) {
+        e.preventDefault();
+        // Windows also sends a contextmenu event at key up: the action already ran
+        const swallow = (x) => { x.preventDefault(); x.stopPropagation(); };
+        window.addEventListener('contextmenu', swallow, { capture: true, once: true });
+        setTimeout(() => window.removeEventListener('contextmenu', swallow, true), 1000);
+        o.menu();
+      }
+    });
+  }
+
   function toolRow(t, gid, child) {
     const row = el('li', 'tool-row' + (t.available ? '' : ' missing') + (gid ? ' in-group' : '') + (child ? '' : ' grouped-tool'));
     row.dataset.tool = t.id;
@@ -3438,17 +4057,18 @@
     act.appendChild(more);
     row.appendChild(act);
     sideDraggable(row, 't:' + t.id);
+    keyRow(row, 't:' + t.id);
     return row;
   }
 
-  // CON-BOARD-LINK: "Status board" quick link under a project that has one. The
-  // server resolves and re-validates the URL and opens it in the default browser
-  // (the --app window's own Edge profile is not signed in to claude.ai).
+  // CON-BOARD-LOCAL: "Status board" quick link under a project whose tree has the kit
+  // v23 local board page. The server resolves the file from the project and opens it in
+  // the default browser; the page never sends a path.
   function boardRow(p, url, gid) {
     const row = el('li', 'tool-row board-row' + (gid ? ' in-group' : ''));
     row.dataset.anchor = 'p:' + p.id;
     row.appendChild(el('span', 'tool-name', 'Status board'));
-    row.title = 'Open the ' + p.name + ' status board in the browser\n' + url;
+    row.title = 'Open the ' + p.name + ' local status board in the browser\n' + url;
     row.addEventListener('click', async (e) => {
       e.stopPropagation();
       row.classList.remove('err');
@@ -3461,6 +4081,7 @@
       }
       setTimeout(() => row.classList.remove('busy'), 800);
     });
+    keyRow(row, 'b:' + p.id);
     return row;
   }
 
@@ -3470,7 +4091,7 @@
     const li = el('li', 'subcat-row' + (open ? ' open' : '') + (gid ? ' in-group' : ''));
     li.dataset.sub = cat;
     li.dataset.anchor = 'p:' + p.id;
-    const tg = el('button', 'tool-toggle', open ? '-' : '+');
+    const tg = el('button', 'tool-toggle', open ? 'v' : '^');
     tg.type = 'button';
     tg.setAttribute('aria-expanded', open ? 'true' : 'false');
     const key = p.id + ':' + cat;
@@ -3478,6 +4099,7 @@
     li.append(tg, el('span', 'sub-name', SD.LABEL[cat]), el('span', 'pmeta sub-sum', sum || ''));
     li.title = (open ? 'Hide ' : 'Show ') + p.name + ' ' + SD.LABEL[cat].toLowerCase() + (sum ? '\n' + sum : '');
     li.addEventListener('click', (e) => { e.stopPropagation(); toggleSubOpen(key); });
+    keyRow(li, 's:' + key);
     return li;
   }
 
@@ -3486,15 +4108,22 @@
     const ul = $('#project-list');
     if (!ul) return;
     if (listDrag) { listRenderPending = true; return; } // never rebuild under a drag
+    // R2-8: the list is rebuilt on every status poll; keyboard focus stays on its row
+    const act = document.activeElement;
+    const actRow = act && ul.contains(act) ? act.closest('li[data-fk]') : null;
+    const refocus = actRow && { fk: actRow.dataset.fk, btn: [...actRow.querySelectorAll('button')].indexOf(act) };
     ul.textContent = '';
     const rail = $('#rail-projects');
     if (rail) rail.textContent = '';
     const openSet = openToolSet();
     const gs = groupsNow();
     const placed = new Set();
-    for (const g of gs) for (const it of g.items) placed.add(it);
     const byId = new Map(projects.map((p) => [p.id, p]));
     const toolById = new Map(tools.map((t) => [t.id, t]));
+    // CON-HOM-NEST: a project tool dragged into the group its own project sits in nests
+    // under that project (one entry per project), not as a loose row of the group.
+    const nested = (g, it) => it[0] === 't' && toolById.has(it.slice(2)) && g.items.includes('p:' + toolById.get(it.slice(2)).projectId);
+    for (const g of gs) for (const it of g.items) if (!nested(g, it)) placed.add(it);
     const railRows = [];
 
     const projectRow = (p, gid) => {
@@ -3510,20 +4139,18 @@
       dot.dataset.g = VGLYPH[pvs];
       dot.title = pd ? doneText(pd) : best ? VWORD[pvs] : 'no pane';
       const name = el('span', 'pname', p.name + (p.retired ? ' (retired)' : ''));
-      const meta = el('span', 'pmeta');
-      const bits = [];
-      if (mine.length) bits.push(mine.length + ' open');
-      if (sp && sp.git && sp.git.dirty) bits.push('+' + sp.git.dirty);
-      meta.textContent = bits.join(' ');
+      // CON-PANEL-NARROW: no count / git summary on the row (the status card has it);
+      // the name keeps the whole width, one line, ellipsis + full name on hover.
+      name.title = p.name;
       const unseen = mine.filter((v) => v.info.unseen).length;
       const kids = tools.filter((t) => t.projectId === p.id && !placed.has('t:' + t.id));
       const board = sp && sp.board ? sp.board : null;
       // CON-UX-SUBCAT: child kinds (pins = local model + chat rows, stack, tools)
-      const hv = null; const hasLm = false; const hasChat = false; // no stack / pin rows ship
-      const cl = SD.cats({ pins: hasLm || hasChat, stack: !!hv, tools: !!(kids.length || board) });
+      const hv = null; const hasLm = false; const hasChat = false; const hasPanel = false; // no stack / pin rows ship
+      const cl = SD.cats({ pins: hasLm || hasChat, stack: !!hv, tools: !!(kids.length || board || hasPanel) });
       const expanded = cl.length > 0 && openSet.has(p.id);
       if (cl.length) {
-        const tg = el('button', 'tool-toggle', expanded ? '-' : '+');
+        const tg = el('button', 'tool-toggle', expanded ? 'v' : '^');
         tg.title = (expanded ? 'Hide ' : 'Show ') + p.name + (board ? ' status board link' + (kids.length || hv ? ',' : '') : '') + (kids.length ? ' tools (' + kids.map((t) => t.label).join(', ') + ')' : '') + (hv ? (kids.length ? ' and' : '') + ' stack status' : '') + (hasLm || hasChat ? (kids.length || hv || board ? ',' : '') + ' local model + chat' : '');
         tg.setAttribute('aria-expanded', expanded ? 'true' : 'false');
         tg.addEventListener('click', (e) => { e.stopPropagation(); toggleToolsOpen(p.id); });
@@ -3532,10 +4159,13 @@
         li.appendChild(el('span', 'tool-toggle-pad'));
       }
       li.append(dot, name);
-      if (unseen && settings.idleBadge) li.appendChild(el('span', 'badge', String(unseen)));
-      li.append(meta);
-      li.title = p.dir + '\nClick: claude here (focuses an open one). Shift+click: always a new claude pane. Right-click: new pane here (claude or shell). Drag into or out of a group.';
-      li.addEventListener('contextmenu', (e) => { e.preventDefault(); showNewDialog(p.id); });
+      if (unseen && settings.idleBadge) {
+        const ub = el('span', 'badge', String(unseen));
+        ub.title = unseen + ' pane(s) waiting unread';
+        li.appendChild(ub);
+      }
+      li.title = p.dir + '\nClick: claude here (focuses an open one). Shift+click: always a new claude pane. Right-click: a shell here (the dialog also offers claude). Drag into or out of a group.';
+      li.addEventListener('contextmenu', (e) => { e.preventDefault(); showNewDialog(p.id, 'shell'); });
       li.dataset.lid = p.id;
       if (gid) li.dataset.gid = gid;
       sideDraggable(li, 'p:' + p.id);
@@ -3543,6 +4173,7 @@
         const shift = e.shiftKey;
         if (p.retired && !(await askConfirm({ title: 'Retired project', what: p.name + ' is retired. Open a claude pane there anyway?', go: 'Open' }))) return;
         const existing = mine.find((v) => v.info.kind === 'claude');
+        if (isPhone() && !document.body.classList.contains('no-sidebar')) toggleSidebar(true);
         if (existing && !shift) {
           if (existing.minimized) setMinimized(existing.id, false);
           else setFocused(existing.id);
@@ -3550,9 +4181,9 @@
           return;
         }
         openPane({ kind: 'claude', projectId: p.id });
-        if (isPhone() && !document.body.classList.contains('no-sidebar')) toggleSidebar(true);
       };
       li.addEventListener('click', open);
+      keyRow(li, 'p:' + p.id, { menu: () => showNewDialog(p.id, 'shell') });
       ul.appendChild(li);
       // CON-UX-SUBCAT: children only while the project is open; with several kinds,
       // each kind under its own header and only while that header is open.
@@ -3578,16 +4209,17 @@
       rd.dataset.g = VGLYPH[pvs];
       r.appendChild(rd);
       // Collapsed rail: the stack rollup rides on the dot only when a service failed.
-      r.title = (hv && hv.bad ? hv.head + '\n' : '') + p.name + (p.retired ? ' (retired)' : '') + (pd ? ' - ' + doneText(pd) : best ? ' - ' + VWORD[pvs] : '') + (bits.length ? ' - ' + bits.join(' ') : '') + '\nClick: claude here (focuses an open one). Shift+click: always a new claude pane.';
+      r.title = (hv && hv.bad ? hv.head + '\n' : '') + p.name + (p.retired ? ' (retired)' : '') + (pd ? ' - ' + doneText(pd) : best ? ' - ' + VWORD[pvs] : '') + '\nClick: claude here (focuses an open one). Shift+click: always a new claude pane.';
       r.addEventListener('click', open);
       railRows.push(r);
     };
 
     for (const g of gs) {
-      const members = g.items.filter((it) => (it[0] === 'p' ? byId.has(it.slice(2)) : toolById.has(it.slice(2))));
+      const members = g.items.filter((it) => (it[0] === 'p' ? byId.has(it.slice(2)) : toolById.has(it.slice(2)) && !nested(g, it)));
       const head = el('li', 'group-row' + (g.open ? ' open' : ''));
       head.dataset.gid = g.id;
-      const tg = el('button', 'tool-toggle', g.open ? '-' : '+');
+      head.dataset.fk = 'g:' + g.id; // not a stop itself: its caret is
+      const tg = el('button', 'tool-toggle', g.open ? 'v' : '^');
       tg.title = (g.open ? 'Collapse' : 'Expand') + ' the group ' + g.name;
       tg.setAttribute('aria-expanded', g.open ? 'true' : 'false');
       tg.addEventListener('click', (e) => { e.stopPropagation(); toggleGroup(g.id); });
@@ -3635,6 +4267,7 @@
       ul.appendChild(r);
     }
     const add = el('li', 'group-add');
+    add.dataset.fk = 'add';
     const bAdd = el('button', 'small', '+ Group');
     bAdd.title = 'New group: name it, then drag projects or tools onto it';
     bAdd.addEventListener('click', (e) => { e.stopPropagation(); newGroup(); });
@@ -3644,15 +4277,46 @@
     add.append(bAdd, bTool);
     ul.appendChild(add);
     if (rail) for (const r of railRows) rail.appendChild(r);
-    const foot = $('#side-foot');
-    if (foot && info) {
-      // Diagnostic only when something is wrong (declutter, R11); the Settings info
-      // line carries the full text. The slot stays, '-' when healthy.
-      const bad = [];
-      if (!info.claudeFound) bad.push('claude: NOT FOUND');
-      if (!info.hooks) bad.push('hooks off');
-      foot.textContent = bad.length ? bad.join(' | ') : '-';
+    if (refocus) {
+      const row = [...ul.children].find((x) => x.dataset.fk === refocus.fk);
+      const back = row && (refocus.btn >= 0 ? row.querySelectorAll('button')[refocus.btn] : row);
+      if (back) back.focus({ preventScroll: true });
     }
+    renderFoot();
+  }
+
+  // Diagnostic only when something is wrong (declutter, R11); the Settings info line
+  // carries the full text. The slot stays, '-' when healthy. R2-27: a rescan's result sits
+  // here for 5 s, in front of any diagnostic rather than instead of it.
+  let footNote = '';
+  let footTimer = null;
+  function renderFoot() {
+    const foot = $('#side-foot');
+    if (!foot || !info) return;
+    const bits = footNote ? [footNote] : [];
+    if (!info.claudeFound) bits.push('Claude Code not installed yet');
+    if (!info.hooks) bits.push('hooks off');
+    foot.textContent = bits.length ? bits.join(' | ') : '-';
+  }
+  function setFootNote(t) {
+    footNote = t;
+    clearTimeout(footTimer);
+    footTimer = setTimeout(() => { footNote = ''; renderFoot(); }, 5000);
+    renderFoot();
+  }
+  // R1-1: the server resolves claude at each read, so the footer clears once it is
+  // installed, with no restart. Asked only while it is missing, at most every 30 s.
+  let claudeAskAt = 0;
+  function recheckClaude(force) {
+    if (!info || info.claudeFound) return Promise.resolve();
+    if (!force && Date.now() - claudeAskAt < 30000) return Promise.resolve();
+    claudeAskAt = Date.now();
+    return api('GET', '/api/info').then((i) => {
+      if (!i.claudeFound) return;
+      info.claudeFound = true;
+      info.claudePath = i.claudePath;
+      renderFoot();
+    }).catch(() => {});
   }
 
   // ---------- status panel ----------
@@ -3724,6 +4388,11 @@
     fitUsage();
   }
 
+  function syncUsageOffers() {
+    const cr = statusSnap && statusSnap.credits;
+    for (const cb of document.querySelectorAll('#us-pop input[data-key]')) cb.parentElement.hidden = !US.offered(cb.dataset.key, usagePrefs, info && info.accounts, cr);
+  }
+
   async function saveUsagePrefs(patch) {
     usagePrefs = Object.assign({}, usagePrefs, patch);
     prefSet('cc-usage-prefs', JSON.stringify(usagePrefs));
@@ -3737,6 +4406,7 @@
 
   function renderUsage(snap) {
     const s = snap || statusSnap;
+    syncUsageOffers();
     usageModel = US.model(s && s.quota, info && info.accounts, Date.now(), s && s.credits);
     for (const a of usageModel.accs) {
       const box = $('#us-slots .us-acc[data-slot="' + a.slot + '"]');
@@ -3912,16 +4582,31 @@
 
   // "status stale NNs" only past 15 s; the slot keeps '-' otherwise (no ticker).
   function statusAgeText() {
+    if (serverDown) return serverDown;
     if (!statusSnap) return '-';
     const s = Math.round((Date.now() - statusSnap.at) / 1000);
     return s > 15 ? 'status stale ' + s + 's' : '-';
   }
 
+  function gitBadge(git) {
+    if (!git) return null;
+    if (git.error) return { text: 'git error', title: 'git status could not be read for this repo' };
+    const bits = [];
+    const why = [];
+    if (git.dirty) { bits.push(git.dirty + ' uncommitted'); why.push(git.dirty + ' file' + (git.dirty === 1 ? '' : 's') + ' changed or new, not committed'); }
+    if (git.ahead) { bits.push(git.ahead + ' unpushed'); why.push(git.ahead + ' commit' + (git.ahead === 1 ? '' : 's') + ' not pushed to its remote'); }
+    if (!bits.length) return null;
+    return { text: bits.join(' '), title: 'Branch ' + (git.branch || '?') + ': ' + why.join('; ') + '.' };
+  }
+
   function cardBody(p, open) {
     const out = [];
     const h = el('h4');
-    h.appendChild(el('span', null, (open ? '- ' : '+ ') + p.name));
-    if (p.handoff && p.handoff.session !== null && p.handoff.session !== undefined) h.appendChild(el('span', 'muted small', 'S' + p.handoff.session));
+    // CON-PANEL-ONELINE: one header line; a long name ellipsizes (full name on hover)
+    const nm = el('span', 'card-name', (open ? 'v ' : '^ ') + p.name);
+    nm.title = p.name;
+    h.appendChild(nm);
+    if (p.handoff && p.handoff.session !== null && p.handoff.session !== undefined) { const sn = el('span', 'muted small', 'S' + p.handoff.session); sn.title = 'Session ' + p.handoff.session; h.appendChild(sn); }
     const hl = p.headless;
     // Headless: '*' + lanes while live (its own token); halted / backoff / limit as a
     // word with the '=' glyph (R9), never only "active".
@@ -3939,12 +4624,18 @@
     const pd = projectDone(p.id, p);
     if (pd) h.appendChild(el('span', 'done-mark ' + pd.kind, pd.kind === 'done' ? '[+] DONE S' + pd.session : '[x] /done failed'));
     h.appendChild(el('span', 'grow'));
-    if (p.git) {
-      const g = p.git.error ? 'git err' : (p.git.branch || '?') + (p.git.dirty ? ' +' + p.git.dirty : ' clean') + (p.git.ahead ? ' ^' + p.git.ahead : '');
-      h.appendChild(el('span', 'muted small', g));
-    }
+    // CON-PANEL-ONELINE: git shows only when there is something to act on, in words
+    // (was "main clean" / "master +1" / "^13": branch, dirty count, commits ahead).
+    const gb = gitBadge(p.git);
+    if (gb) { const s = el('span', 'muted small git-badge', gb.text); s.title = gb.title; h.appendChild(s); }
     h.style.cursor = 'pointer';
     out.push(h);
+    // Workflow rows: same grammar and memory as the pane strip; fixed height.
+    let fl = cardFlows.get(p.id);
+    if (!fl) { fl = FL.create(pageStart); cardFlows.set(p.id, fl); }
+    FL.update(fl, p.progress ? p.progress.items : [], flowOpts(), p.checklist || null);
+    // R2-17: a running row below says it already; the line does not repeat it.
+    const rowsRun = FL.view(fl, flowOpts()).some((r) => r && r.state === 'running');
     // Declutter (R11): counts only when non-zero, no ages (they tick).
     // CON-UX-STATUSPANEL: 'inbox M new' (newest kind + subject on hover), no raw names.
     const kv = [];
@@ -3953,23 +4644,19 @@
     if (p.progress) {
       const running = p.progress.items.filter((x) => x.status === 'running' && !x.stale).length;
       const stale = p.progress.items.filter((x) => x.stale).length;
-      if (running) kv.push(running + ' running');
+      if (running && !rowsRun) kv.push(running + ' running');
       // CON-ETA-REMAIN: the top running item's started / Remain text on the same line
-      const tp = running ? FL.top(p.progress.items) : null;
-      if (tp && tp.clock) { const s = el('span', 'kv-eta', tp.text); s.title = tp.title; kv.push(s); }
+      const tp = running && !rowsRun ? FL.top(p.progress.items) : null;
+      if (tp && tp.clock) { const s = el('span', 'kv-eta', tp.short || tp.text); s.title = tp.title; kv.push(s); }
       if (stale) kv.push(stale + ' STALE');
     }
-    if (p.handoff) kv.push(p.handoff.file);
-    const kvEl = el('div', 'kv');
-    kv.forEach((x, i) => { if (i) kvEl.append(' | '); kvEl.append(x); });
-    if (!kv.length) kvEl.textContent = '-';
-    out.push(kvEl);
-    // Workflow rows: same grammar and memory as the pane strip; fixed height.
-    let fl = cardFlows.get(p.id);
-    if (!fl) { fl = FL.create(pageStart); cardFlows.set(p.id, fl); }
-    FL.update(fl, p.progress ? p.progress.items : [], flowOpts());
+    if (kv.length) {
+      const kvEl = el('div', 'kv');
+      kv.forEach((x, i) => { if (i) kvEl.append(' | '); kvEl.append(x); });
+      out.push(kvEl);
+    }
     const box = el('div', 'flow');
-    drawFlow(box, fl);
+    drawFlow(box, fl, true);
     out.push(box);
     // CON-UX-STATUSPANEL: one 'Next:' line, ellipsis at the card width; the full block
     // on hover and on click (toggles in place). No next-action block = nothing.
@@ -3977,7 +4664,7 @@
     if (nx) {
       const full = CD.nextBlock(p.handoff.nextAction).join('\n');
       const n = el('div', 'next' + (nextOpen.has(p.id) ? ' open' : ''), 'Next: ' + (nextOpen.has(p.id) ? full : nx));
-      n.title = full + '\n\nClick: ' + (nextOpen.has(p.id) ? 'one line' : 'show the full block');
+      n.title = p.handoff.file + '\n' + full + '\n\nClick: ' + (nextOpen.has(p.id) ? 'one line' : 'show the full block');
       n.dataset.pid = p.id;
       out.push(n);
     }
@@ -3991,7 +4678,7 @@
     // Pane strips follow their project's progress even while a list drag is held.
     for (const v of views.values()) {
       const sp = v.info.projectId && s.projects.find((x) => x.id === v.info.projectId);
-      v.updateFlow(sp && sp.progress ? sp.progress.items : []);
+      v.updateFlow(sp && sp.progress ? sp.progress.items : [], sp ? sp.checklist : null);
       v.setProgress(sp && sp.progress ? sp.progress.items : []);
     }
     renderUsage(s);
@@ -4022,7 +4709,9 @@
           try { localStorage.setItem('cc-expanded', JSON.stringify([...expanded])); } catch (e2) { /* ignore */ }
           renderStatus();
         });
+        keyRow(card, null, { target: () => card.querySelector('h4') });
       }
+      card.setAttribute('aria-expanded', expanded.has(p.id) ? 'true' : 'false');
       have.delete(p.id);
       const hl = p.headless;
       const cls = 'card' + (p.retired ? ' retired' : '') + (hl && hl.active ? ' headless-active' : '');
@@ -4073,7 +4762,8 @@
     if (!box) return;
     const tog = settings.trackers || {};
     $('#trk-toggle').setAttribute('aria-expanded', trkOpen ? 'true' : 'false');
-    box.querySelector('.trk-caret').textContent = trkOpen ? '-' : '+';
+    box.querySelector('.trk-caret').textContent = trkOpen ? 'v' : '^';
+    box.querySelector('.trk-title').textContent = trkSnap ? TK.heading(trkSnap, tog) : 'Trackers';
     box.classList.toggle('collapsed', !trkOpen);
     $('#trk-sum').textContent = trkErr ? 'trackers unavailable: ' + trkErr : trkSnap ? TK.summaryLine(trkSnap, tog) : 'loading';
     const body = $('#trk-body');
@@ -4179,8 +4869,9 @@
     try {
       statusSnap = await api('GET', '/api/status');
       renderStatus();
+      recheckClaude(false);
     } catch (e) {
-      $('#status-age').textContent = 'status error: ' + e.message;
+      if (!serverDown) $('#status-age').textContent = 'status error: ' + e.message;
     }
   }
 
@@ -4201,7 +4892,16 @@
   // /api/fs/list (read-only). Clicking or tapping a folder opens it and makes it the
   // pane's working folder (and clears the project choice); typing a path still works,
   // Enter in the path box browses there. Alt+Up / Up goes to the parent.
+  // R2-12: the picker folds under "Use another folder", whose line names the folder Open
+  // will use. Open stays disabled while nothing is chosen.
   const fp = { path: null, parent: null, seq: 0, drives: [] };
+
+  function newSync() {
+    const pr = projects.find((x) => x.id === $('#new-project').value);
+    const where = pr ? pr.dir : $('#new-cwd').value.trim();
+    $('#new-opens').textContent = where ? 'Opens in: ' + where : '';
+    $('#new-open').disabled = !where;
+  }
 
   function fpNote(text, bad) {
     const n = $('#fp-note');
@@ -4260,6 +4960,7 @@
       if (pick) {
         $('#new-cwd').value = res.path;
         $('#new-project').value = '';
+        newSync();
       }
     } catch (e) {
       if (my === fp.seq) fpNote(e.message, true);
@@ -4285,6 +4986,11 @@
       const v = $('#new-cwd').value.trim();
       if (v) fpBrowse(v, true);
     });
+    // A typed path is the choice, as a clicked folder is: Open must use what the line says.
+    $('#new-cwd').addEventListener('input', () => {
+      if ($('#new-cwd').value.trim()) $('#new-project').value = '';
+      newSync();
+    });
     $('#new-folder').addEventListener('keydown', (e) => {
       if (e.altKey && e.key === 'ArrowUp') {
         e.preventDefault();
@@ -4299,19 +5005,25 @@
     });
     $('#new-project').addEventListener('change', () => {
       const pr = projects.find((x) => x.id === $('#new-project').value);
-      if (pr && pr.dir) {
-        $('#new-cwd').value = '';
-        fpBrowse(pr.dir, false);
-      }
+      $('#new-cwd').value = '';
+      $('#new-other').open = !pr;
+      if (pr && pr.dir) fpBrowse(pr.dir, false);
+      else if (!fp.path && fp.drives.length) fpBrowse(fp.drives[0], false);
+      newSync();
     });
   }
 
   function showNewDialog(projectId, kind) {
     const dlg = $('#dlg-new');
-    fillSelect($('#new-project'), [{ id: '', label: '(none - console folder)' }].concat(projects.map((p) => ({ id: p.id, label: p.name + (p.retired ? ' (retired)' : '') }))), projectId || '');
+    // R2-12: the asked-for project, else the focused pane's, else the first
+    const fv = focusedId && views.get(focusedId);
+    const dflt = [projectId, fv && fv.info.projectId, (projects.find((x) => !x.retired) || {}).id].find((id) => id && projects.some((x) => x.id === id)) || '';
+    fillSelect($('#new-project'), [{ id: '', label: 'Choose a folder below' }].concat(projects.map((p) => ({ id: p.id, label: p.name + (p.retired ? ' (retired)' : '') }))), dflt);
     $('#new-cwd').value = '';
     fpNote('');
-    const pr = projectId ? projects.find((x) => x.id === projectId) : null;
+    const pr = dflt ? projects.find((x) => x.id === dflt) : null;
+    $('#new-other').open = !pr;
+    newSync();
     fpOpen(pr && pr.dir ? pr.dir : null);
     fillSelect($('#new-account'), info.accounts, settings.defaultAccount);
     fillSelect($('#new-shell'), info.shells, settings.defaultShell);
@@ -4322,10 +5034,11 @@
     dlg.showModal();
   }
 
-  // ---------- remove a project listing (CON-7) ----------
-  // Settings lists every project with a Remove action. The confirm dialog keeps its
-  // Remove button disabled until the exact phrase is typed; the server hides the
-  // listing (data/console.local.json) and never touches the folder. Live panes block it.
+  // ---------- hide a project listing (CON-7, R2-13) ----------
+  // Settings lists every project with a Hide action. The confirm dialog keeps its Hide
+  // button disabled until the exact phrase is typed; the server hides the listing
+  // (data/console.local.json) and never touches the folder. Live panes block it. Hidden
+  // projects stay listed below with Show, the way back.
   const RM_PHRASE = 'DELETE PROJECT';
   let rmTarget = null;
 
@@ -4341,12 +5054,44 @@
       li.dataset.pid = p.id;
       const txt = el('span', 'sp-text');
       txt.append(el('span', 'sp-name', p.name + (p.retired ? ' (retired)' : '')), el('span', 'sp-dir muted small', p.dir));
-      const b = el('button', 'small danger', 'Remove');
+      const b = el('button', 'small danger', 'Hide');
       b.type = 'button';
-      b.title = 'Remove ' + p.name + ' from the console (files on disk are not touched)';
+      b.title = 'Hide ' + p.name + ' from the console (files on disk are not touched)';
       b.addEventListener('click', () => showRemove(p));
       li.append(txt, b);
       ul.appendChild(li);
+    }
+    const hl = $('#set-hidden');
+    hl.textContent = '';
+    hl.hidden = !hiddenProjs.length;
+    for (const h of hiddenProjs) {
+      const li = el('li');
+      li.dataset.hid = h.id;
+      const txt = el('span', 'sp-text');
+      txt.append(el('span', 'sp-name', 'Hidden: ' + h.name));
+      const b = el('button', 'small', 'Show');
+      b.type = 'button';
+      b.title = 'List ' + h.name + ' in the console again';
+      b.addEventListener('click', () => showHidden(h, li));
+      li.append(txt, b);
+      hl.appendChild(li);
+    }
+  }
+
+  async function showHidden(h, li) {
+    const b = li.querySelector('button');
+    b.disabled = true;
+    try {
+      const r = await api('POST', '/api/projects/' + encodeURIComponent(h.id) + '/show', {});
+      projects = r.projects || projects;
+      hiddenProjs = r.hidden || [];
+      renderProjects();
+      renderSettingsProjects();
+      pollStatus();
+    } catch (e) {
+      b.disabled = false;
+      b.title = e.message;
+      li.querySelector('.sp-name').textContent = 'Hidden: ' + h.name + ' (could not show: ' + e.message + ')';
     }
   }
 
@@ -4354,18 +5099,24 @@
     const live = rmTarget ? livePanesOf(rmTarget.id) : 0;
     const ok = $('#rm-phrase').value === RM_PHRASE;
     $('#rm-go').disabled = !ok || live > 0 || !rmTarget;
+    $('#rm-phrase-row').hidden = live > 0; // no phrase to type while it could not act
   }
 
   function showRemove(p) {
     rmTarget = p;
-    $('#rm-what').textContent = 'Remove "' + p.name + '" (' + p.dir + ') from the console?';
+    $('#rm-what').textContent = 'Hide "' + p.name + '" from the console? Files on disk are not touched. Show it again from Settings > Projects.';
+    $('#rm-what').title = p.dir;
+    // Hiding goes by name, so a second folder of the same name goes with it.
+    const same = projects.filter((x) => x.name === p.name).length - 1;
+    $('#rm-same').textContent = same > 0 ? same + ' other listed project' + (same === 1 ? ' has' : 's have') + ' this name and will hide with it; Show brings them back together.' : '';
+    $('#rm-same').hidden = !same;
     $('#rm-phrase').value = '';
     const live = livePanesOf(p.id);
-    $('#rm-note').textContent = live ? 'It has ' + live + ' open pane' + (live === 1 ? '' : 's') + '. Close ' + (live === 1 ? 'it' : 'them') + ' first.' : '';
+    $('#rm-note').textContent = live ? 'Close its ' + live + ' open pane' + (live === 1 ? '' : 's') + ' first.' : '';
     rmSync();
     $('#dlg-remove').returnValue = '';
     $('#dlg-remove').showModal();
-    $('#rm-phrase').focus();
+    if (!live) $('#rm-phrase').focus();
   }
 
   async function doRemove() {
@@ -4376,6 +5127,7 @@
       const r = await api('DELETE', '/api/projects/' + encodeURIComponent(rmTarget.id));
       projects = r.projects || projects.filter((x) => x.id !== rmTarget.id);
       try { settings = await api('GET', '/api/settings'); } catch (e) { /* keep */ }
+      await reloadProjects().catch(() => {});
       rmTarget = null;
       $('#dlg-remove').close('done');
       renderProjects();
@@ -4403,21 +5155,52 @@
   function refreshProfileLine() {
     const ln = $('#prof-line');
     if (!ln) return Promise.resolve(null);
-    return api('GET', '/api/profile').then((s) => { ln.textContent = s.available ? s.status.line : (s.reason || 'No setup profile in this build.'); return s; }).catch(() => { ln.textContent = 'Setup profile unavailable.'; return null; });
+    return api('GET', '/api/profile').then((s) => {
+      ln.textContent = s.available ? s.status.line : (s.reason || 'No setup profile in this build.');
+      return s;
+    }).catch(() => { ln.textContent = 'Setup profile unavailable.'; return null; });
   }
   window.CCSettingsProfile = refreshProfileLine;
+  // R3-14: Settings > Machine is one line and one button; Read machine, the file and
+  // Delete live in the machine advisor (profile.js).
+  function machLine(r) {
+    if (!r || !r.scanned) return 'Machine: not read yet.';
+    return 'Machine: read ' + String(r.scanned).slice(0, 10) + ': ' + (r.line || 'no details');
+  }
+  function refreshMachineRead() {
+    return api('GET', '/api/machine/read').then((r) => {
+      $('#mach-line').textContent = machLine(r);
+      return r;
+    }).catch(() => { $('#mach-line').textContent = 'Machine: read unavailable.'; return null; });
+  }
+  let themeAtOpen = null; // R3-30: the theme select saves at once, so Cancel puts this back
   function showSettings() {
     renderSettingsProjects();
     refreshProfileLine();
+    refreshMachineRead();
     const f = $('#form-settings');
     fillSelect($('#set-account'), info.accounts, settings.defaultAccount);
+    // R3-9: a one-account box has nothing to pick
+    $('#set-acct-row').hidden = info.accounts.length < 2;
+    $('#set-acct-one').hidden = info.accounts.length >= 2;
+    themeAtOpen = settings.theme || 'system';
     // v19.1 B: unset headless = preselect the proxy account (split as designed); nothing
     // is applied until the operator changes a pick and saves.
+    // kit v26 KIT-ROUTE-ACCOUNTS: an ordered list of 1-3 accounts (any configured one,
+    // the interactive account included) + the fallback switch. Prefill: the saved list,
+    // else the LIVE route (CON-ROUTE-FALLBACK: a Save keeps its order and switch), else
+    // the proxy-pin account.
     const hl = settings.headlessAccount || (info.accounts.find((a) => a.headlessProxy) || info.accounts.find((a) => a.id !== settings.defaultAccount) || info.accounts[0] || {}).id;
-    fillSelect($('#set-headless'), info.accounts, hl);
-    acctDirty = false;
+    fillHeadless(settings.headlessAccounts || [hl], typeof settings.headlessFallback === 'boolean' ? settings.headlessFallback : null);
+    hlDirty = false;
     refreshRouteLine(null);
-    api('GET', '/api/route').then(refreshRouteLine).catch(() => {});
+    api('GET', '/api/route').then((r) => {
+      if (!hlDirty && r && r.live && !settings.headlessAccounts) {
+        const ids = (r.live.ids || []).filter(Boolean);
+        if (ids.length) fillHeadless(ids, typeof settings.headlessFallback === 'boolean' ? settings.headlessFallback : !!r.live.armed);
+      } else if (!hlDirty && r && r.live && typeof settings.headlessFallback !== 'boolean') $('#set-headless-fallback').checked = !!r.live.armed;
+      refreshRouteLine(r);
+    }).catch(() => {});
     api('GET', '/api/health').then((h) => { healthSnap = h; $('#health-last').textContent = HL.lastLine(h.running || h.last); }).catch(() => { $('#health-last').textContent = 'Health check unavailable.'; });
     loadHealthSched();
     fillSelect($('#set-shell'), info.shells, settings.defaultShell);
@@ -4491,20 +5274,29 @@
   function fillTypeForm(scale) {
     const f = $('#form-settings');
     const s = TY.normalize(scale);
-    f.elements['ts-base'].value = s.base;
     for (const lv of TY.LEVELS) f.elements['ts-' + lv].value = s[lv];
   }
   function readTypeForm() {
     const f = $('#form-settings');
     const v = (n) => { const x = parseFloat(f.elements[n].value); return Number.isFinite(x) ? x : null; };
-    const out = { base: v('ts-base') };
+    const out = {};
     for (const lv of TY.LEVELS) out[lv] = v('ts-' + lv);
     return TY.normalize(out);
   }
   function wireTypeForm() {
     $('#set-type').addEventListener('input', () => applyTypeScale(readTypeForm()));
     $('#ts-reset').addEventListener('click', () => { fillTypeForm(TY.DEFAULTS); applyTypeScale(TY.DEFAULTS); });
-    $('#dlg-settings').addEventListener('close', () => { if ($('#dlg-settings').returnValue !== 'ok') applyTypeScale(settings.typeScale); });
+    $('#dlg-settings').addEventListener('close', () => {
+      if ($('#dlg-settings').returnValue === 'ok') return;
+      applyTypeScale(settings.typeScale);
+      if ((settings.theme || 'system') !== themeAtOpen) {
+        settings = Object.assign({}, settings, { theme: themeAtOpen });
+        applyTheme();
+        saveSettings({ theme: themeAtOpen }).catch(() => {});
+      }
+    });
+    // R3-27: a bad number inside the closed Fine-tune block must not stop Save unseen.
+    $('#form-settings').addEventListener('invalid', (e) => { const d = e.target.closest('details'); if (d) d.open = true; }, true);
   }
 
   function setHideCliChrome(on) {
@@ -4516,6 +5308,7 @@
   function wireDialogs() {
     wireFolderPicker();
     wireRemove();
+    wirePaneError();
     wireToolEdit();
     wireGroupEdit();
     wireTypeForm();
@@ -4531,6 +5324,7 @@
     $('#new-kind').addEventListener('change', () => { $('#dlg-new').className = 'kind-' + $('#new-kind').value; });
     $('#dlg-new').addEventListener('close', () => {
       if ($('#dlg-new').returnValue !== 'ok') return;
+      $('#dlg-new').returnValue = ''; // one Open, one pane: a late close event of an earlier cancel reads this too
       const pid = $('#new-project').value;
       const kind = $('#new-kind').value;
       const req = { kind, args: splitArgs($('#new-args').value) };
@@ -4554,7 +5348,9 @@
         lineHeight: Math.max(1, Math.min(2, parseFloat(f.lineHeight.value) || 1.2)),
         scrollback: Math.max(1000, Math.min(100000, parseInt(f.scrollback.value, 10) || 10000)),
         defaultAccount: f.defaultAccount.value,
-        headlessAccount: acctDirty || settings.headlessAccount ? f.headlessAccount.value || null : null,
+        headlessAccount: hlDirty || settings.headlessAccount ? f.headlessAccount.value || null : null,
+        headlessAccounts: hlDirty || settings.headlessAccounts ? headlessPicks() : settings.headlessAccounts || null,
+        headlessFallback: hlDirty || typeof settings.headlessFallback === 'boolean' ? $('#set-headless-fallback').checked : null,
         defaultShell: f.defaultShell.value,
         keyStrip: Object.fromEntries(KY.KEYS.map((k) => [k.id, f.elements['key-' + k.id].checked])),
         quickChips: readChipList(),
@@ -4567,16 +5363,19 @@
       if (patch.desktopNotify && 'Notification' in window && Notification.permission === 'default') {
         try { await Notification.requestPermission(); } catch (e) { /* ignore */ }
       }
-      const changed = acctDirty;
+      const changed = hlDirty; // CON-ROUTE-ACCT: a main-account change alone never touches the route
       await saveSettings(patch);
       for (const v of views.values()) v.term.options.scrollback = settings.scrollback;
       // CON-UX-PANEROWS: pane strips and card rows follow a new count / state set now
       renderTrackers(); // CON-GATE-PANEL: tracker toggles apply now
       if (statusSnap) renderStatus();
       else renderProjects();
-      // v19.1 B: only an account pick the operator CHANGED in this dialog is applied,
-      // through the kit's own CLI (server side, plugin only); a font change never is.
-      if (changed) api('POST', '/api/route', {}).then((r) => { lastRoute = r; }).catch(() => {});
+      // CON-ROUTE-ACCT: only a HEADLESS pick changed in this dialog is applied, through the
+      // kit's own CLI (server side, plugin only); a refusal is shown on the route line
+      // and in the toast, never dropped.
+      if (changed) {
+        postRoute().then((r) => { if (r && r.refused) alert('Headless route refused: ' + r.refused); });
+      }
     });
     wireHealth();
     wireHealthSched();
@@ -4586,13 +5385,53 @@
 
   // ---------- v19.1 B: headless route line ----------
   let lastRoute = null;
-  let acctDirty = false;
+  let hlDirty = false;
   const acctLabel = (id) => { const a = ((info && info.accounts) || []).find((x) => x.id === id); return a ? a.label : ''; };
   function refreshRouteLine(r) {
     if (r) lastRoute = r;
-    const f = $('#form-settings');
-    const proxy = ((info && info.accounts) || []).find((a) => a.headlessProxy);
-    $('#set-route').textContent = HL.routeText(r || lastRoute, acctLabel(f.defaultAccount.value), acctLabel(f.headlessAccount.value), proxy ? proxy.label : '');
+    // R3-9: without a plugin nothing a pick here does takes effect: no rows, no route line
+    $('#set-hl-box').hidden = !(lastRoute && lastRoute.plugin);
+    const ids = headlessPicks();
+    const gate = lastRoute && lastRoute.gate;
+    const accts = (info && info.accounts) || [];
+    // the kit writes v1 only for one entry or two of different via with no pin
+    const viaOf = (id) => { const a = accts.find((x) => x.id === id) || {}; return a.headlessProxy || a.pinned ? 'proxy' : 'config'; };
+    const v2 = ids.some((id) => (accts.find((x) => x.id === id) || {}).pinned) || ids.length > 2 || (ids.length === 2 && viaOf(ids[0]) === viaOf(ids[1]));
+    const v2Blocked = !!(v2 && gate && !gate.v2);
+    $('#set-headless-3').disabled = !!(gate && !gate.v2);
+    $('#set-headless-fallback').disabled = ids.length < 2;
+    $('#set-route').textContent = HL.routeText(r || lastRoute, { label: acctLabel(ids[0]), labels: ids.map(acctLabel), armed: $('#set-headless-fallback').checked, dirty: hlDirty, v2Blocked });
+  }
+  // The picked list in order: slot 1, then 2 and 3 when set and not a repeat.
+  function headlessPicks() {
+    const out = [];
+    for (const sel of ['#set-headless', '#set-headless-2', '#set-headless-3']) {
+      const v = $(sel).value;
+      if (v && !out.includes(v)) out.push(v);
+    }
+    return out;
+  }
+  function fillHeadless(ids, armed) {
+    const accts = (info && info.accounts) || [];
+    const own = (a) => (a.headlessProxy ? a.label + ' (proxy)' : a.pinned ? a.label + ' (proxy pin)' : a.label + ' (own login)');
+    const items = accts.map((a) => Object.assign({}, a, { label: own(a) }));
+    fillSelect($('#set-headless'), items, ids[0]);
+    for (const [n, sel] of [[1, '#set-headless-2'], [2, '#set-headless-3']]) {
+      fillSelect($(sel), [{ id: '', label: '(none)' }].concat(items), ids[n] || '');
+    }
+    $('#set-headless-fallback').checked = armed === null ? false : !!armed;
+  }
+  // POST /api/route; a 4xx/5xx keeps the server's body (live route + reason) as refused.
+  async function postRoute() {
+    let r;
+    try {
+      const res = await fetch('/api/route', { method: 'POST', headers: { 'X-Console-Token': TOKEN || '', 'Content-Type': 'application/json' }, body: '{}' });
+      const j = await res.json().catch(() => ({}));
+      r = res.ok ? j : Object.assign({}, j, { refused: j.error || ('HTTP ' + res.status) });
+    } catch (e) { r = Object.assign({}, lastRoute || {}, { refused: e.message }); }
+    lastRoute = r;
+    if ($('#dlg-settings').open) refreshRouteLine(r);
+    return r;
   }
 
   // ---------- v19.1 A: Health & cleanup ----------
@@ -4627,6 +5466,10 @@
       $('#hc-report').hidden = true;
       return;
     }
+    // R3-16: the cost sentence and column only when a step has a cost
+    $('#hc-intro').textContent = steps.some(HL.isLlm)
+      ? 'Tick the steps to run. Only the step that uses Claude costs anything; its cost is estimated from past runs. Anything deleted goes to the Recycle Bin unless the step says otherwise.'
+      : 'Tick the steps to run. None of these use Claude or cost anything. Anything deleted goes to the Recycle Bin unless the step says otherwise.';
     for (const s of steps) {
       if (s.group !== group) { group = s.group; box.appendChild(el('h4', 'hc-group', group)); }
       const lab = el('label', 'check hc-row');
@@ -4638,8 +5481,9 @@
       lab.appendChild(cb);
       const txt = el('span', 'hc-text');
       txt.appendChild(el('span', 'hc-label', s.label));
-      txt.appendChild(el('span', 'hc-meta small muted', fmtEta(s.eta_s) + ' | ' + HL.costText(s)));
-      if (s.deletes) txt.appendChild(el('span', 'hc-del small', 'Deletes: ' + s.deletes));
+      txt.appendChild(el('span', 'hc-meta small muted', fmtEta(s.eta_s) + (HL.isLlm(s) ? ' | ' + HL.costText(s) : '')));
+      // R3-16: a step that ends or closes something does not delete it
+      if (s.deletes) txt.appendChild(el('span', 'hc-del small', (/^(ends|closes)\b/.test(s.deletes) ? 'Does: ' : 'Deletes: ') + s.deletes));
       lab.appendChild(txt);
       box.appendChild(lab);
     }
@@ -4648,7 +5492,7 @@
   }
   function renderHealthTotal() {
     const t = HL.totals((healthSnap && healthSnap.steps) || [], healthTicked || new Set());
-    $('#hc-total').textContent = t.count + ' step' + (t.count === 1 ? '' : 's') + ', ' + (fmtEta(t.eta) || '~0s') + ', ' + t.cost + (t.deletes ? ', ' + t.deletes + ' with deletes' : ', nothing deleted') + '.';
+    $('#hc-total').textContent = t.count + ' step' + (t.count === 1 ? '' : 's') + ', ' + (fmtEta(t.eta) || '~0s') + (t.cost === '$0 / 0 tokens' ? '' : ', ' + t.cost) + (t.deletes ? ', ' + t.deletes + ' delete or end something' : ', nothing deleted') + '.';
     $('#hc-go').disabled = !t.count;
   }
   function renderHealthReport(run) {
@@ -4698,12 +5542,12 @@
   // ---------- CON-PUBLIC D/E/F: Settings > Updates & repair (server/updates.js) ----------
   function updLine(s) {
     if (!s) return '';
-    if (s.mode === 'checkout') return 'v' + s.version + ' (running from a checkout; it updates through git)';
+    if (s.mode === 'checkout') return 'Version ' + s.version + ', running from a checkout; it updates through git.';
     const c = s.lastCheck;
     const a = s.auto || {};
     const avail = c && c.available ? c.latest.version : a.available;
-    return 'v' + s.installed.version + ' ' + s.installed.channel + (avail ? ' | update available v' + avail : c && c.checked ? ' | up to date' : c ? ' | no check: ' + c.reason : '') +
-      (a.review ? ' | v' + a.review.version + ' needs review: ' + a.review.conflicts.length + ' conflicting file(s)' : '') + (a.pendingRestart ? ' | v' + a.pendingRestart + ' installed, restart pending' : '');
+    return 'Version ' + s.installed.version + '.' + (avail ? ' Version ' + avail + ' is available.' : c && c.checked ? ' Up to date.' : c ? ' ' + ({ 'no-repo': 'No release source is set, so there is nothing to check.', 'check-off': 'Update checks are turned off in console.local.json.' }[c.reason] || 'The check did not finish: ' + c.reason + '.') : '') +
+      (a.review ? ' Version ' + a.review.version + ' needs review: ' + a.review.conflicts.length + ' conflicting file(s).' : '') + (a.pendingRestart ? ' Version ' + a.pendingRestart + ' is installed; restart the console to use it.' : '');
   }
   // MERGE-CON G5: the header badge; hidden while updates.repo is unset (UP.badge -> null).
   function renderUpdBadge(s) {
@@ -4719,9 +5563,13 @@
       $('#upd-state').textContent = updLine(s);
       const u = s.lastUpdate;
       $('#upd-last').textContent = u ? 'Last update v' + u.from + ' -> v' + u.to + ': ' + u.status + (u.localMods && u.localMods.length ? ', ' + u.localMods.length + ' local mods kept' : '') : 'No update run yet.';
-      $('#upd-auto').checked = !!s.settings.auto;
+      // R3-5: no timer and no task at install; only a task the user registered ticks
+      const tick = s.auto && s.auto.lastTick;
+      $('#upd-how').textContent = tick ? 'The auto-update task last ran ' + String(tick).slice(0, 10) + '. Press Check now to look at once.' : 'Nothing checks in the background. Press Check now to look for a new version.';
       const inst = s.mode === 'installed';
-      for (const id of ['#btn-upd-apply', '#btn-upd-repair', '#btn-upd-contrib', '#upd-auto']) $(id).disabled = !inst;
+      for (const id of ['#btn-upd-apply', '#btn-upd-repair', '#btn-upd-contrib']) $(id).disabled = !inst;
+      // CON-CONTRIB-LABEL: say what the patch button does, and why it is off in a checkout
+      $('#upd-contrib-help').textContent = inst ? "Bundles your own edits to the console's files into one scrubbed patch file in reports/, to share if you want; nothing is sent." : 'Running from a git checkout: your edits are already in git, so there is no patch to save.';
     } catch (e) {
       $('#upd-state').textContent = 'Updates: ' + e.message;
     }
@@ -4763,11 +5611,7 @@
     });
     $('#btn-upd-contrib').addEventListener('click', async () => {
       const r = await api('POST', '/api/updates/contribute', {}).catch((e) => ({ error: e.message }));
-      $('#upd-last').textContent = r.error || ('Patch ' + r.file + ' (' + r.count + ' files, scrubbed) saved in reports/. Nothing was sent.');
-    });
-    $('#upd-auto').addEventListener('change', async (ev) => {
-      await api('POST', '/api/updates/settings', { auto: ev.target.checked }).catch(() => {});
-      refreshUpdates();
+      $('#upd-contrib-help').textContent = r.error || ('Saved ' + r.file + ' in reports/: ' + r.count + ' edited file(s), scrubbed. Nothing was sent.');
     });
   }
   function wireHealth() {
@@ -4778,12 +5622,16 @@
       const ids = [...(healthTicked || [])];
       try {
         const r = await api('POST', '/api/health/run', { steps: ids });
-        healthSnap.running = r.run;
+        // A quick run can end before this reply: its last-run event already came, and
+        // taking r.run as running would hide the report for good.
+        if (!(healthSnap.last && healthSnap.last.startedAt === r.run.startedAt)) healthSnap.running = r.run;
         renderHealth();
         healthTick();
       } catch (e) { $('#hc-note').textContent = e.message; }
     });
-    for (const id of ['#set-account', '#set-headless']) $(id).addEventListener('change', () => { acctDirty = true; refreshRouteLine(null); });
+    for (const sel of ['#set-headless', '#set-headless-2', '#set-headless-3', '#set-headless-fallback']) {
+      $(sel).addEventListener('change', () => { hlDirty = true; if (lastRoute) delete lastRoute.refused; refreshRouteLine(null); });
+    }
   }
 
   // ---------- MERGE-CON: health schedule (CON-HEALTH-SCHED) ----------
@@ -4794,6 +5642,9 @@
     $('#hs-last').textContent = st ? HS.lastText(st) : '';
     if ($('#health-sched')) { $('#health-sched').textContent = HS.line(st); $('#health-sched').title = st ? HS.lastText(st) : ''; }
     const can = !!(st && st.available);
+    // R3-10: no plugin = no schedule: neither row nor box, not a disabled form
+    $('#hs-box').hidden = !can;
+    $('#health-sched-row').hidden = !can;
     for (const n of document.querySelectorAll('#hs-box input, #hs-save')) n.disabled = !can;
     if (!st) return;
     $('#hs-on').checked = !!st.enabled;
@@ -4854,6 +5705,15 @@
     }
     scKindFields();
   }
+  let scOtherOpen = false; // R3-15: other tasks stay folded until opened; survives a re-render
+  // Two-step confirm: the first click arms the button for 4 s; true on the second click.
+  function scArm(b, armedWord, word) {
+    if (b.dataset.armed === '1') return true;
+    b.dataset.armed = '1';
+    b.textContent = armedWord;
+    setTimeout(() => { if (b.isConnected) { b.dataset.armed = ''; b.textContent = word; } }, 4000);
+    return false;
+  }
   function scTaskOf(key) { return ((scList && scList.tasks) || []).find((t) => t.full === key) || null; }
   function renderSched() {
     const sel = $('#sc-filter');
@@ -4877,7 +5737,14 @@
     const gs = SC.groups(scList, projects, sel.value);
     if (scList && scList.available && !gs.length) box.appendChild(el('p', 'small muted', 'No tasks here.'));
     for (const g of gs) {
-      box.appendChild(el('h4', 'sc-group', g.label + ' (' + g.rows.length + ')'));
+      let host = box;
+      if (g.id === '') {
+        host = el('details', 'sc-other');
+        host.open = scOtherOpen;
+        host.addEventListener('toggle', () => { scOtherOpen = host.open; });
+        host.appendChild(el('summary', 'sc-group', g.label + ' (' + g.rows.length + ')'));
+        box.appendChild(host);
+      } else box.appendChild(el('h4', 'sc-group', g.label + ' (' + g.rows.length + ')'));
       for (const r of g.rows) {
         const row = el('div', 'sc-row' + (r.boot ? ' sc-boot' : ''));
         row.dataset.task = r.key;
@@ -4891,6 +5758,7 @@
         const tog = el('button', 'small', r.enabled ? 'Disable' : 'Enable');
         tog.type = 'button';
         tog.dataset.act = 'toggle';
+        if (g.id === '' && r.enabled) tog.dataset.arm = '1';
         const ed = el('button', 'small', 'Edit');
         ed.type = 'button';
         ed.dataset.act = 'edit';
@@ -4903,7 +5771,7 @@
         acts.appendChild(ed);
         acts.appendChild(rm);
         row.appendChild(acts);
-        box.appendChild(row);
+        host.appendChild(row);
       }
     }
     for (const b of box.querySelectorAll('button')) b.disabled = !!(scList && scList.busy);
@@ -4938,16 +5806,13 @@
       const t = scTaskOf(b.closest('.sc-row').dataset.task);
       if (!t) return;
       const ref = { path: t.path, name: t.name };
-      if (b.dataset.act === 'toggle') await scWrite('PATCH', '/api/scheduler/tasks', Object.assign({ enabled: !t.enabled }, ref));
+      if (b.dataset.act === 'toggle') {
+        if (b.dataset.arm === '1' && !scArm(b, 'Confirm disable', 'Disable')) return;
+        await scWrite('PATCH', '/api/scheduler/tasks', Object.assign({ enabled: !t.enabled }, ref));
+      }
       else if (b.dataset.act === 'edit') scSetEdit(ref, t.triggers[0]);
       else if (b.dataset.act === 'remove') {
-        // two-step confirm in the UI: the first click arms the button for 4 s
-        if (b.dataset.armed !== '1') {
-          b.dataset.armed = '1';
-          b.textContent = 'Confirm remove';
-          setTimeout(() => { if (b.isConnected) { b.dataset.armed = ''; b.textContent = 'Remove'; } }, 4000);
-          return;
-        }
+        if (!scArm(b, 'Confirm remove', 'Remove')) return;
         await scWrite('DELETE', '/api/scheduler/tasks?path=' + encodeURIComponent(t.path) + '&name=' + encodeURIComponent(t.name));
       }
     });
@@ -5008,8 +5873,26 @@
   }
 
   // ---------- events ----------
+  // R2-2: still closed after 5 s, the panes say so. The answer to a plain request tells a
+  // dead server from one restarted with a new token, which this window can never rejoin.
+  let eventsUp = false;
+  let eventsDownTimer = null;
+  async function probeServer() {
+    let line = SERVER_GONE;
+    try {
+      const r = await fetch('/api/info', { headers: { 'X-Console-Token': TOKEN || '' } });
+      if (r.status === 401) line = SERVER_RESTARTED;
+    } catch (e) { /* nothing answers: gone */ }
+    if (!eventsUp) setServerDown(line);
+  }
   function connectEvents() {
     const ws = new WebSocket((location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + '/ws/events?t=' + encodeURIComponent(TOKEN));
+    ws.onopen = () => {
+      eventsUp = true;
+      clearTimeout(eventsDownTimer);
+      eventsDownTimer = null;
+      setServerDown(null);
+    };
     ws.onmessage = (ev) => {
       let m;
       try { m = JSON.parse(ev.data); } catch (e) { return; }
@@ -5026,7 +5909,13 @@
         renderRes(m.res);
       }
     };
-    ws.onclose = () => { resOffline(); setTimeout(connectEvents, 2000); };
+    ws.onclose = () => {
+      eventsUp = false;
+      resOffline();
+      if (serverDown) probeServer();
+      else if (!eventsDownTimer) eventsDownTimer = setTimeout(() => { eventsDownTimer = null; probeServer(); }, 5000);
+      setTimeout(connectEvents, 2000);
+    };
   }
 
   // ---------- Projects sidebar collapse (per viewer) ----------
@@ -5039,12 +5928,51 @@
   function toggleSidebar(force) {
     const collapsed = force === undefined ? !document.body.classList.contains('no-sidebar') : force;
     applySidebar(collapsed);
-    prefSet('cc-sidebar', collapsed ? 'collapsed' : 'open');
+    if (isPhone()) { // R2-1: a phone's drawer is no desktop choice; one drawer at a time
+      if (!collapsed) { statusDrawerOpen = false; applyStatusPanel(); }
+    } else prefSet('cc-sidebar', collapsed ? 'collapsed' : 'open');
     for (const v of views.values()) v.scheduleFit();
   }
 
+  // R2-9: a closed dialog gives focus back to what opened it, else to the focused pane's
+  // composer; keystrokes never land on BODY. Whatever took focus meanwhile keeps it.
+  function wireDialogFocus() {
+    const showModal = HTMLDialogElement.prototype.showModal;
+    HTMLDialogElement.prototype.showModal = function () {
+      this.ccOpener = document.activeElement;
+      return showModal.apply(this, arguments);
+    };
+    document.addEventListener('close', (e) => {
+      const d = e.target;
+      if (!d || d.tagName !== 'DIALOG') return;
+      let o = d.ccOpener;
+      d.ccOpener = null;
+      // a project row that opened it may have been rebuilt meanwhile: the same row now
+      if (o && !o.isConnected && o.dataset && o.dataset.fk) o = [...$('#project-list').children].find((x) => x.dataset.fk === o.dataset.fk) || o;
+      if (document.querySelector('dialog[open]')) return;
+      // focus left inside the closed dialog has not been fixed up yet: it counts as none
+      const a = document.activeElement;
+      if (a && a !== document.body && !d.contains(a) && a.getClientRects().length) return;
+      if (o && o !== document.body && o.isConnected && o.getClientRects().length && !o.disabled) {
+        o.focus();
+        if (document.activeElement === o) return;
+      }
+      const v = focusedId && views.get(focusedId);
+      if (v && !isPhone() && !v.minimized && !v.composer.hidden && !v.composer.classList.contains('collapsed')) v.ta.focus();
+    }, true);
+  }
+
   function wireTopbar() {
-    applySidebar(prefGet('cc-sidebar', 'open') === 'collapsed');
+    // R2-1: the drawers open below the bar, whose height follows its wrapping. A phone
+    // starts with both closed and never saves that as the desktop choice.
+    const tb = $('#topbar');
+    const setBarH = () => document.documentElement.style.setProperty('--topbar-h', tb.offsetHeight + 'px');
+    setBarH();
+    if (window.ResizeObserver) new ResizeObserver(setBarH).observe(tb);
+    const sideClosed = () => isPhone() || prefGet('cc-sidebar', 'open') === 'collapsed';
+    applySidebar(sideClosed());
+    if (phoneMq && phoneMq.addEventListener) phoneMq.addEventListener('change', () => { if (isPhone()) statusDrawerOpen = false; applySidebar(sideClosed()); applyStatusPanel(); });
+    if (statusDrawerMq && statusDrawerMq.addEventListener) statusDrawerMq.addEventListener('change', () => { statusDrawerOpen = false; applyStatusPanel(); relayout(); });
     $('#btn-sidebar').addEventListener('click', () => toggleSidebar());
     $('#rail-new').addEventListener('click', () => showNewDialog(null));
     window.addEventListener('keydown', (e) => {
@@ -5055,17 +5983,16 @@
       }
     }, true);
     $('#btn-new').addEventListener('click', () => showNewDialog(null));
-    $('#btn-font-up').addEventListener('click', () => saveSettings({ fontSize: Math.min(40, settings.fontSize + 1) }));
-    $('#btn-font-dn').addEventListener('click', () => saveSettings({ fontSize: Math.max(9, settings.fontSize - 1) }));
-    // Theme toggle lives in the Settings dialog: applies and saves at once, the select follows.
-    $('#btn-theme').addEventListener('click', () => {
-      const t = effTheme() === 'light' ? 'dark' : 'light';
-      $('#set-theme').value = t;
+    // CON-SET-COMPACT: the Settings theme select applies and saves at once (the separate
+    // Toggle button is gone; the select covers system / dark / light).
+    $('#set-theme').addEventListener('change', () => {
+      const v = $('#set-theme').value;
+      const t = v === 'light' || v === 'dark' ? v : 'system';
       settings = Object.assign({}, settings, { theme: t });
       applyTheme();
       saveSettings({ theme: t }).catch(() => {});
     });
-    $('#btn-status').addEventListener('click', () => saveSettings({ statusPanel: !settings.statusPanel }).then(relayout));
+    $('#btn-status').addEventListener('click', () => toggleStatus());
     $('#btn-settings').addEventListener('click', showSettings);
     // CON-013 L5: header '...' overflow: setup profile and recovery entries.
     const moreBtn = $('#btn-more');
@@ -5107,15 +6034,29 @@
     }, true);
     if ($('#btn-prof-browse')) {
       $('#btn-prof-browse').addEventListener('click', () => { $('#dlg-settings').close(); returnTo = $('#btn-settings'); window.CCProfileUI.open(); });
+      $('#btn-mach-open').addEventListener('click', () => { $('#dlg-settings').close(); returnTo = $('#btn-settings'); window.CCMachineUI.open(); });
       $('#btn-prof-setup').addEventListener('click', () => { $('#dlg-settings').close(); returnTo = $('#btn-settings'); window.CCSetupUI.open({}); });
       $('#btn-crash').addEventListener('click', () => { $('#dlg-settings').close(); returnTo = $('#btn-settings'); window.CCRecoveryUI.crash(null); });
     }
     for (const k of ['CCProfileUI', 'CCAdoptUI', 'CCMachineUI', 'CCSetupUI', 'CCRecoveryUI']) if (window[k] && window[k].wire) window[k].wire();
+    // R2-27: Rescan shows it is working and what it found
     $('#btn-rescan').addEventListener('click', async () => {
-      projects = (await api('POST', '/api/projects/rescan')).projects;
-      await loadTools();
-      renderProjects();
-      pollStatus();
+      const b = $('#btn-rescan');
+      b.disabled = true;
+      b.textContent = 'Rescanning';
+      try {
+        await api('POST', '/api/projects/rescan');
+        await reloadProjects();
+        await loadTools();
+        await recheckClaude(true);
+        renderProjects();
+        pollStatus();
+        setFootNote('Found ' + projects.length + ' project' + (projects.length === 1 ? '' : 's'));
+      } catch (e) {
+        setFootNote('Rescan failed: ' + e.message);
+      }
+      b.disabled = false;
+      b.textContent = 'Rescan';
     });
     $('#btn-quit').addEventListener('click', async () => {
       if (!(await askConfirm({ title: 'Quit Claude Console', what: 'Stop the Claude Console server and end every pane process?', safe: 'The Desktop shortcut starts it again.', go: 'Quit', danger: true }))) return;
@@ -5135,6 +6076,20 @@
       }
     });
     window.addEventListener('focus', () => { if (focusedId) markSeen(focusedId); });
+    // CON-ATTENTION-PANEL: the list button and the jump hotkey (capture: before xterm)
+    const attnBtn = $('#btn-attn');
+    const attnBox = $('#attn-list');
+    if (attnBtn && attnBox) {
+      attnBtn.addEventListener('click', () => setAttnOpen(!attnBox.classList.contains('open')));
+      attnBox.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setAttnOpen(false); attnBtn.focus(); } });
+      document.addEventListener('mousedown', (e) => { if (attnBox.classList.contains('open') && !e.target.closest('#attn-list, #btn-attn')) setAttnOpen(false); });
+    }
+    window.addEventListener('keydown', (e) => {
+      if (!AT.isJumpKey(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      jumpNewest();
+    }, true);
   }
 
   // ---------- boot ----------
@@ -5151,6 +6106,7 @@
     }
     const [pj, layout, live] = await Promise.all([api('GET', '/api/projects'), api('GET', '/api/layout'), api('GET', '/api/panes')]);
     projects = pj.projects;
+    hiddenProjs = pj.hidden || [];
     await loadTools();
     applyTheme();
     // CON-UX-VERSION: bottom right of the footer bar
@@ -5178,15 +6134,18 @@
     pollStatus();
     setInterval(pollStatus, 5000);
     // State word ages are whole minutes: re-check every 15 s, write only on change.
-    setInterval(() => { for (const v of views.values()) v.refreshWord(); }, 15000);
+    setInterval(() => { for (const v of views.values()) v.refreshWord(); renderAttn(); }, 15000);
+    renderAttn();
     if (darkMq && darkMq.addEventListener) darkMq.addEventListener('change', () => { if (settings.theme !== 'light' && settings.theme !== 'dark') applyTheme(); });
     if (phoneMq && phoneMq.addEventListener) phoneMq.addEventListener('change', relayout);
+    if (phoneMq && phoneMq.addEventListener) phoneMq.addEventListener('change', () => { for (const v of views.values()) v.renderChips(); });
+    wireDialogFocus();
     document.addEventListener('mousedown', (e) => { if (!e.target.closest('.pmenu, .pbtns .more')) for (const v of views.values()) v.toggleMenu(false); });
     // CON-013 L5: the setup wizard offers itself once at install and once per staged
     // profile update, as a full-page view with "Skip for now", never a modal (VERIFY
     // ruling on UX-F23, operator agreed 2026-10-19); leaving it records the dismissal.
     refreshProfileLine().then((s) => { if (s && s.available && s.offer && window.CCSetupUI) window.CCSetupUI.open({ update: s.offer === 'update' }); });
-    window.__cc = { renderUsage, fitUsage, renderRes, fitRes, get usagePrefs() { return Object.assign({}, usagePrefs); }, views, openPane, closePane, setMinimized, toggleMax, toggleSidebar, setHideCliChrome, effTheme, relayout, get order() { return order.slice(); }, get dormant() { return dormant; }, pollTrackers, setTrkOpen, get trkOpen() { return trkOpen; }, get trkSnap() { return trkSnap; } };
+    window.__cc = { get info() { return info; }, renderFoot, renderUsage, fitUsage, renderRes, fitRes, get usagePrefs() { return Object.assign({}, usagePrefs); }, views, openPane, closePane, setMinimized, toggleMax, toggleSidebar, setHideCliChrome, effTheme, relayout, get order() { return order.slice(); }, get dormant() { return dormant; }, renderAttn, setAttnOpen, jumpNewest, attnList: () => AT.list(attnPanes()), pollTrackers, setTrkOpen, get trkOpen() { return trkOpen; }, get trkSnap() { return trkSnap; } };
   }
 
   boot();

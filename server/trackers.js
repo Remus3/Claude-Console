@@ -69,11 +69,11 @@ function clock12(ms) {
   return (h % 12 || 12) + ':' + String(t.getMinutes()).padStart(2, '0') + (h < 12 ? 'AM' : 'PM');
 }
 
-// Scheduled tasks the console's projects own (owner set), Maint-* included; quiet-window
+// Scheduled tasks the console's projects own (owner set); quiet-window
 // pause / restore tasks named *Quiet* are listed as pauses.
 function tasksTracker(list, now) {
   if (!list || !list.available) return { summary: 'task list not available', rows: [], state: 'unknown' };
-  const own = list.tasks.filter((t) => t.owner || /^Maint-/i.test(t.name) || /quiet/i.test(t.name));
+  const own = list.tasks.filter((t) => t.owner || /quiet/i.test(t.name));
   const failing = own.filter((t) => t.lastResult !== null && t.lastResult !== undefined && !BENIGN.has(Number(t.lastResult)));
   const disabled = own.filter((t) => !t.enabled);
   const quiet = own.filter((t) => /quiet/i.test(t.name) && t.enabled);
@@ -98,6 +98,12 @@ function parseCommit(stdout) {
   const limit = parseInt(m[1], 10) / 1024;
   const free = parseInt(m[2], 10) / 1024;
   return limit > 0 ? { limitMb: limit, usedMb: Math.max(0, limit - free) } : null;
+}
+
+const WT_TTL_MS = 300000;
+function alive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
 }
 
 class TrackerService {
@@ -125,7 +131,9 @@ class TrackerService {
     this.probe = opts.probe || null;
     this.hist = { cpu: [], commit: [], disk: {} };
     this.lastCpu = null;
-    this.cache = { tasks: null, tasksAt: 0, commit: null, commitAt: 0, procs: null, procsAt: 0, procsKey: '', base: undefined, baseAt: 0 };
+    this.cache = { tasks: null, tasksAt: 0, commit: null, commitAt: 0, procs: null, procsAt: 0, procsKey: '', base: undefined, baseAt: 0, wt: null, wtAt: 0 };
+    this.wtMemo = new Map();
+    this.wtBusy = null;
     this.snap = { at: 0, order: TRACKER_IDS.slice(), titles: Object.fromEntries(TRACKERS), trackers: {} };
     this.busy = null;
     this.timer = null;
@@ -220,6 +228,24 @@ class TrackerService {
     return this.cache.base;
   }
 
+  // CON-WT-TRACKER: the git scan runs in the background at most once per 5 min (the panel
+  // polls every 10 s while open), 3 git calls at a time, 60 s per call; the panel shows
+  // the last finished scan ("reading" before the first). Patch compares are memoised per
+  // HEAD pair, so a rescan only re-runs list + status. Read-only toward every tree.
+  worktrees(projects, now) {
+    const F = this.fleet;
+    if (!this.runner) return { summary: 'no git runner', rows: [], state: 'unknown' };
+    if (!this.wtBusy && (!this.cache.wt || now - this.cache.wtAt > WT_TTL_MS)) {
+      const git = (args) => this.runner('git', args, { timeoutMs: 60000, env: { GIT_OPTIONAL_LOCKS: '0' } });
+      this.cache.wtAt = now;
+      this.wtBusy = F.scanWorktrees(projects, git, alive, this.wtMemo, 3)
+        .then((t) => { this.cache.wt = t; this.cache.wtAt = this.now(); })
+        .catch(() => { /* keep the last scan */ })
+        .finally(() => { this.wtBusy = null; });
+    }
+    return F.worktreesTracker(this.cache.wt);
+  }
+
   async refresh(want) {
     if (this.busy) return this.busy;
     this.busy = (async () => {
@@ -247,10 +273,10 @@ class TrackerService {
         } else if (id === 'headless') await safe(id, () => F.headlessTracker(snap));
         else if (id === 'notes') await safe(id, () => F.notesTracker(projects, snap, F.outboundCap(this.kitFiles), now));
         else if (id === 'kit') await safe(id, () => F.kitTracker(snap, this.queueFile, now));
-        else if (id === 'locks') await safe(id, () => F.locksTracker(projects, (pid) => { if (!Number.isInteger(pid) || pid <= 0) return false; try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } }));
-        else if (id === 'worktrees') await safe(id, () => F.worktreesTracker(projects, now, 24));
+        else if (id === 'locks') await safe(id, () => F.locksTracker(projects, alive));
+        else if (id === 'worktrees') await safe(id, () => this.worktrees(projects, now));
         else if (id === 'route') await safe(id, async () => F.routeTracker(this.routeFile, await this.baseUrl(now), this.probe));
-        else if (id === 'usage') await safe(id, () => F.usageTracker(snap));
+        else if (id === 'usage') await safe(id, () => F.usageTracker(snap, now));
         else if (id === 'lanes') await safe(id, () => F.lanesTracker(snap));
         else if (id === 'stalls') await safe(id, () => F.stallsTracker(snap));
       }

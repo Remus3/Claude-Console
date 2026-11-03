@@ -72,6 +72,16 @@ test('model: slots follow the configured account order; missing account and sour
   assert.strictEqual(U.isOn({}, 'api'), false);
   assert.strictEqual(U.isOn({}, 'w7d'), true);
   assert.strictEqual(U.isOn({ api: true }, 'api'), true);
+  // R2-23: the gear offers Account 3 and Extra Usage only with a source, or while on
+  const two = [{ id: 'a' }, { id: 'b' }];
+  assert.strictEqual(U.offered('acc3', {}, two, null), false);
+  assert.strictEqual(U.offered('acc3', {}, two.concat({ id: 'c' }), null), true);
+  assert.strictEqual(U.offered('acc3', { acc3: true }, two, null), true);
+  assert.strictEqual(U.offered('extra', {}, two, { accounts: [{ id: 'a', extra: null }] }), false);
+  assert.strictEqual(U.offered('extra', {}, two, { accounts: [{ id: 'a', extra: { used: 3 } }] }), true);
+  assert.strictEqual(U.offered('extra', { extra: true }, two, null), true);
+  assert.strictEqual(U.offered('w5h', {}, two, null), true);
+  assert.deepStrictEqual(U.TOGGLES.filter(([k]) => U.offered(k, {}, two, null)).map(([, l]) => l), ['7-day limit', '5-hour limit', 'Fable limit', 'Account 1', 'Account 2', 'API spend']);
 });
 
 test('prefs: booleans only, author defaults (7d, Acc 1, Acc 2), unknown keys dropped', () => {

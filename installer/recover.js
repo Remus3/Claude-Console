@@ -4,9 +4,9 @@
 //
 // stopAll() - two-step in every UI (the caller asks; this needs confirm === true):
 //   1. kills console-spawned processes only: the records in <run>/spawned/<pid>.json
-//      (panes' pty trees, headless children), by recorded pid and its whole tree, and
-//      only when the live process still matches the record (image name + start time);
-//      never by image name (lsn-kill-by-pid);
+//      (panes' pty trees, headless children), by recorded pid and its verified
+//      descendants (safekill.js), and only when the live process still matches the record
+//      (image name + start time); never by image name (lsn-kill-by-pid);
 //   2. disables (never deletes) every scheduled task the profile added (user lock), XML
 //      exported first;
 //   3. profile hooks off: the marker <dataDir>/profile/HOOKS_OFF (every profile hook
@@ -27,10 +27,18 @@ const { execFile } = require('child_process');
 const { readJson, exists } = require('./fsutil');
 const { stamp } = require('./paths');
 const { scrub } = require('./contribute');
+const safekill = require('./safekill');
 
 const KILL_SWITCH_VAR = 'CLAUDE_HEADLESS_BASE_URL';
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const count = (n, one, many) => n + ' ' + (n === 1 ? one : many);
+const runsWord = (n) => count(n, 'running pane or background run', 'running panes or background runs');
+const tasksWord = (n) => count(n, 'scheduled task', 'scheduled tasks');
+const filesWord = (n) => count(n, 'settings file', 'settings files');
+// The recovery script as an install lays it out (release\recover.ps1 of the version folder).
+const RECOVER_PS1 = '<install folder>\\app\\<version>\\release\\recover.ps1';
+const RECOVER_RUN = 'powershell -NoProfile -ExecutionPolicy Bypass -File ' + RECOVER_PS1;
 
 function profileDir(dataDir) { return path.join(dataDir, 'profile'); }
 function stopDir(dataDir) { return path.join(profileDir(dataDir), 'stop-all'); }
@@ -67,10 +75,10 @@ function procInfoWindows(pid) {
     });
   });
 }
-function killTreeWindows(pid) {
-  return new Promise((resolve) => {
-    execFile('taskkill.exe', ['/PID', String(+pid), '/T', '/F'], { windowsHide: true, timeout: 15000 }, (err) => resolve(!err));
-  });
+// CON-TASKKILL: verified descendants only, each ended alone, never /T (installer/safekill.js).
+// sinceMs is the record's start time; true when the recorded pid itself was ended.
+async function killTreeWindows(pid, sinceMs) {
+  return (await safekill.killTree(+pid, sinceMs || 0)).includes(+pid);
 }
 
 // ------------------------------------------------------------------ what the profile manages
@@ -128,8 +136,11 @@ async function stopAll(o) {
   const settings = o.dataDir ? managedSettings(o.dataDir, o.configDir) : [];
   const ks = o.killSwitchVar || KILL_SWITCH_VAR;
   if (o.confirm !== true) {
+    // R3-21: the variable is named only as what it does, and only when it is set.
+    let ksSet = false;
+    try { ksSet = !!(deps.env && (deps.env.get(ks) || {}).present); } catch (e) { ksSet = false; }
     return { ok: true, dryRun: true, processes: procs.map((p) => ({ pid: p.pid, kind: p.kind })), tasks, settings: settings.length, killSwitch: ks,
-      line: 'stop everything would: stop ' + procs.length + ' console process tree(s), disable ' + tasks.length + ' profile task(s), turn profile hooks off (' + settings.length + ' settings file(s)), unset ' + ks + ' - confirm to go ahead' };
+      line: 'This would end ' + runsWord(procs.length) + ', pause ' + tasksWord(tasks.length) + ' and turn off hooks in ' + filesWord(settings.length) + (ksSet ? ', and block new background runs' : '') + '.' };
   }
   const id = stamp(o.now) + '-' + crypto.randomBytes(2).toString('hex');
   const side = noData ? null : path.join(stopDir(o.dataDir), id);
@@ -145,7 +156,7 @@ async function stopAll(o) {
     const nameOk = !p.name || !live.name || String(p.name).toLowerCase() === String(live.name).toLowerCase();
     const startOk = !p.startMs || !live.startMs || Math.abs(p.startMs - live.startMs) < 2000;
     if (!nameOk || !startOk) { rec.processes.push({ pid: p.pid, kind: p.kind, result: 'skipped: pid now belongs to another process' }); continue; }
-    await kill(p.pid);
+    await kill(p.pid, p.startMs);
     const after = await info(p.pid);
     const gone = !after || !after.alive;
     rec.processes.push({ pid: p.pid, kind: p.kind, result: gone ? 'stopped' : 'still running' });
@@ -154,7 +165,7 @@ async function stopAll(o) {
   }
   if (noData) {
     const n = rec.processes.filter((p) => p.result === 'stopped').length;
-    return { ok: !problems.length, id: null, record: rec, problems, line: 'stopped ' + n + ' process tree(s); no profile data, so no tasks, hooks or kill switch to change' };
+    return { ok: !problems.length, id: null, record: rec, problems, line: 'Ended ' + runsWord(n) + '. No setup profile data, so no tasks, hooks or background-run setting to change.' };
   }
   // 2) tasks
   for (const name of tasks) {
@@ -200,7 +211,7 @@ async function stopAll(o) {
   fs.writeFileSync(path.join(stopDir(o.dataDir), id + '.json'), JSON.stringify(rec, null, 2) + '\n');
   const stopped = rec.processes.filter((p) => p.result === 'stopped').length;
   return { ok: !problems.length, id, record: rec, problems,
-    line: 'stopped ' + stopped + ' process tree(s), disabled ' + rec.tasks.length + ' task(s), hooks off' + (rec.hooks.files.length ? ' (' + rec.hooks.files.length + ' settings file(s))' : '') + (rec.killSwitch ? ', ' + ks + ' unset' : '') + (problems.length ? '; ' + problems.length + ' problem(s): ' + problems[0] : '') };
+    line: 'Ended ' + runsWord(stopped) + ', paused ' + tasksWord(rec.tasks.filter((t) => t.disabled).length) + ', turned off hooks' + (rec.hooks.files.length ? ' in ' + filesWord(rec.hooks.files.length) : '') + (rec.killSwitch && rec.killSwitch.unset ? ', and blocked new background runs' : '') + (problems.length ? '; ' + problems.length + ' problem(s): ' + problems[0] : '') };
 }
 
 function listStops(dataDir) {
@@ -218,7 +229,7 @@ async function resume(o) {
   const rec = o.id ? all.find((r) => r.id === o.id) : all.filter((r) => !r.resumed).pop();
   if (!rec) return { ok: true, nothing: true, line: 'nothing to resume' };
   if (rec.resumed) return { ok: false, line: 'refused: ' + rec.id + ' was already resumed' };
-  if (o.confirm !== true) return { ok: true, dryRun: true, id: rec.id, line: 'resume would: re-enable ' + rec.tasks.length + ' task(s), turn hooks back on, restore the kill switch' + (rec.processes.length ? '; ' + rec.processes.filter((p) => p.result === 'stopped').length + ' stopped process(es) are not restarted (open the panes again)' : '') + ' - confirm to go ahead' };
+  if (o.confirm !== true) return { ok: true, dryRun: true, id: rec.id, line: 'resume would: re-enable ' + rec.tasks.length + ' task(s), turn hooks back on' + (rec.killSwitch && deps.env ? ', restore the kill switch' : '') + (rec.processes.length ? '; ' + rec.processes.filter((p) => p.result === 'stopped').length + ' stopped process(es) are not restarted (open the panes again)' : '') + ' - confirm to go ahead' };
   const side = path.join(stopDir(o.dataDir), rec.id);
   const problems = [];
   if (rec.killSwitch && deps.env) {
@@ -279,7 +290,7 @@ function recoverPrompt(o) {
     for (const l of lastLogLines(o.runDir, 400)) if (/error|fail|exception|refused|denied/i.test(l)) errs.push(l);
   }
   if (!errs.length && !(o.problems || []).length) L.push('- (no failing check recorded; describe what you see)');
-  for (const l of errs.slice(-20)) L.push('- log: ' + l);
+  for (const l of errs.slice(-20)) L.push('- Last console log line (may be unrelated): ' + l);
   L.push('');
   L.push('## Environment');
   L.push('- console ' + (o.version || '?') + ', ' + (o.os || (os.platform() + ' ' + os.release())) + ', node ' + (o.node || process.version));
@@ -311,18 +322,21 @@ function recoverPrompt(o) {
   if (!txs.length) L.push('- none');
   L.push('');
   L.push('## Undo steps (in this order; each is safe to repeat)');
-  L.push('1. Stop everything: `claude-console stop-all --yes` (or, with the console down: `powershell -NoProfile -ExecutionPolicy Bypass -File <install folder>\\recover.ps1 -Stop -DisableHooks -PauseTasks`).');
-  L.push('2. Undo the last profile change: `claude-console profile revert --last --apply --yes` (console down: `recover.ps1 -Revert last`).');
+  // R3-22: numbered as they are listed, so a step that does not apply leaves no gap.
+  let stepNo = 0;
+  const addStep = (s) => L.push((++stepNo) + '. ' + s);
+  addStep('Stop everything: `claude-console stop-all --yes` (or, with the console down: `' + RECOVER_RUN + ' -Stop -DisableHooks -PauseTasks`).');
+  addStep('Undo the last profile change: `claude-console profile revert --last --apply --yes` (console down: `' + RECOVER_RUN + ' -Revert last`).');
   if (txs.length && o.dataDir) {
     const last = txs[txs.length - 1];
     let entries = [];
     try { entries = fs.readFileSync(path.join(profileDir(o.dataDir), 'tx', last, 'journal.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((e) => e.op === 'write' && e.display); } catch (e) { /* none */ }
     if (entries.length) {
-      L.push('3. By hand, if both fail: for transaction ' + last + ', in the console data folder under profile/tx/' + last + '/pre/:');
+      addStep('By hand, if both fail: for transaction ' + last + ', in the console data folder under profile/tx/' + last + '/pre/:');
       for (const e of entries.slice(0, 20)) L.push('   - ' + e.display + ': ' + (e.pre ? 'copy pre/' + e.pre + ' back over it' : 'created by the profile; move it to the Recycle Bin'));
     }
   }
-  L.push('4. Turn hooks back on later with `claude-console resume --yes` (or delete the HOOKS_OFF file in the profile folder and rename "hooks.profile-disabled" back to "hooks").');
+  addStep('Turn hooks back on later with `claude-console resume --yes` (or delete the HOOKS_OFF file in the profile folder and rename "hooks.profile-disabled" back to "hooks").');
   const raw = L.join('\n') + '\n';
   let username = o.username;
   if (username === undefined) { try { username = os.userInfo().username; } catch (e) { username = ''; } }

@@ -18,7 +18,7 @@ const drops = require('./drops');
 const clean = require('../installer/machine-advisors-cleanliness');
 
 const CORE_STEPS = Object.freeze([
-  { id: 'console.drops', group: 'Console', label: 'Old composer attachments (drops/ day folders over 14 days)', eta_s: 10, default: true, deletes: 'drops/ day folders over 14 days old, to the Recycle Bin' },
+  { id: 'console.drops', group: 'Console', label: 'Old message box attachments (drops/ day folders over 14 days)', eta_s: 10, default: true, deletes: 'drops/ day folders over 14 days old, to the Recycle Bin' },
   { id: 'console.panes', group: 'Console', label: 'Dead and idle panes', eta_s: 1, default: true, deletes: 'closes panes whose process exited over 1 h ago (their scrollback is discarded; nothing on disk)' },
   { id: 'console.orphans', group: 'Console', label: 'Orphaned child processes of closed panes', eta_s: 5, default: false, deletes: 'ends processes left running by panes that are gone' },
   { id: 'console.memory', group: 'Console', label: 'Server memory (RSS, heap) and leak trend', eta_s: 1, default: true, deletes: null },
@@ -31,7 +31,7 @@ const CORE_STEPS = Object.freeze([
 // whoever mounts them: `core: Object.assign(coreRunners(d), machineRunners(m))` with
 // `steps: CORE_STEPS.concat(MACHINE_STEPS)`.
 const MACHINE_STEPS = Object.freeze([
-  { id: 'machine.temp', group: 'Machine', label: 'Temp hygiene: file count against the alarm line', eta_s: 20, default: false, deletes: null },
+  { id: 'machine.temp', group: 'Machine', label: 'Temp folder: how many files it holds (many files slow down start-up)', eta_s: 20, default: false, deletes: null },
   { id: 'machine.disk', group: 'Machine', label: 'Disk free per drive', eta_s: 2, default: false, deletes: null },
   { id: 'machine.scratch', group: 'Machine', label: 'Scratch in repos, Temp and outside folders (suggestions only)', eta_s: 20, default: false, deletes: null },
 ].map((s) => Object.freeze(Object.assign({ cost: { usd: 0, tokens: 0 } }, s))));
@@ -281,7 +281,7 @@ function coreRunners(deps) {
       const list = deps.panes ? [...deps.panes.panes.values()] : [];
       const total = list.reduce((a, p) => a + (p.bufBytes || 0), 0);
       const top = list.reduce((a, p) => ((p.bufBytes || 0) > (a ? a.bufBytes : -1) ? p : a), null);
-      const cap = deps.panes && deps.panes.cfg ? deps.panes.cfg.scrollbackBytes || 400000 : 400000;
+      const cap = deps.panes ? deps.panes.ringBytes || (deps.panes.cfg && deps.panes.cfg.scrollbackBytes) || 400000 : 400000;
       return result('console.scrollback', true, list.length + ' panes hold ' + Math.round(total / 1024) + ' KB of scrollback (cap ' + Math.round(cap / 1024) + ' KB each)', { panes: list.length, total_kb: Math.round(total / 1024), max_kb: top ? Math.round(top.bufBytes / 1024) : 0, cap_kb: Math.round(cap / 1024) }, []);
     },
   };

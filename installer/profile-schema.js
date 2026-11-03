@@ -26,7 +26,7 @@ const VAR_REF = /(?<!\$)\{([a-z][a-z0-9_]*)\}/g;
 
 const PROFILE_KEYS = ['schema', 'profile', 'version', 'console_min', 'kit_source_version', 'modules', 'presets', 'variables'];
 const VARIABLE_KEYS = ['type', 'pattern', 'ask', 'why', 'scope', 'default', 'detect', 'optional', 'secret', 'store',
-  'value', 'min', 'max', 'measure'];
+  'value', 'min', 'max', 'measure', 'label', 'start_skipped'];
 const MODULE_KEYS = ['schema', 'id', 'order', 'title', 'summary', 'why', 'default', 'locked', 'items'];
 const ITEM_KEYS = ['id', 'order', 'title', 'does', 'why', 'risk', 'default', 'platform', 'depends_on', 'pairs_with',
   'conflicts_with', 'contributes', 'detect', 'verify', 'scope', 'notes'];
@@ -35,7 +35,7 @@ const CONTRIB_KEYS = {
   block: ['kind', 'target', 'block', 'slot', 'template', 'account'],
   'json-merge': ['kind', 'target', 'template', 'value', 'mode', 'account'],
   env: ['kind', 'name', 'value', 'secret', 'scope'],
-  task: ['kind', 'name', 'template'],
+  task: ['kind', 'name', 'template', 'deletes'],
   git: ['kind', 'key', 'value', 'scope'],
   kit: ['kind', 'files', 'target'],
   'app-config': ['kind', 'target', 'to', 'format', 'processes'],
@@ -160,8 +160,8 @@ function validateVariable(name, v, declared, err) {
   unknownKeys(v, VARIABLE_KEYS, at + '.', err);
   if (!VARIABLE_TYPES.includes(v.type)) err(at + '.type', 'must be one of ' + VARIABLE_TYPES.join(', '));
   if (v.pattern !== undefined) { const e = regexError(v.pattern); if (e) err(at + '.pattern', e); }
-  for (const k of ['ask', 'why', 'detect', 'measure']) if (v[k] !== undefined && !isStr(v[k])) err(at + '.' + k, 'must be a string');
-  for (const k of ['optional', 'secret']) if (v[k] !== undefined && typeof v[k] !== 'boolean') err(at + '.' + k, 'must be true or false');
+  for (const k of ['ask', 'why', 'label', 'detect', 'measure']) if (v[k] !== undefined && !isStr(v[k])) err(at + '.' + k, 'must be a string');
+  for (const k of ['optional', 'secret', 'start_skipped']) if (v[k] !== undefined && typeof v[k] !== 'boolean') err(at + '.' + k, 'must be true or false');
   if (v.scope !== undefined && !['target', 'user'].includes(v.scope)) err(at + '.scope', 'must be target or user');
   if (v.store !== undefined && !['git-config-local', 'secret-store'].includes(v.store)) err(at + '.store', 'must be git-config-local or secret-store');
   if (v.secret === true && v.default !== undefined && v.default !== null) err(at + '.default', 'a secret has no default');

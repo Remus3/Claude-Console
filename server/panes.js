@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { EventEmitter } = require('events');
-const { buildPaneEnv, hookSettings, claudeMissingMessage } = require('./claudeenv');
+const { buildPaneEnv, hookSettings, claudeMissingMessage, paneTmpDir } = require('./claudeenv');
 
 let pty = null;
 function loadPty() {
@@ -49,10 +49,34 @@ function consoleList(shellPid) {
   });
 }
 
+// CON-SCROLL-CONPTY: node-pty 1.1.0 with the bundled conpty.dll never frees its conout
+// worker and pipe after a kill (it waits for output that never comes) nor after the
+// process exits on its own (it does not close the pseudoconsole then): every ended pane
+// leaked a worker thread and kept node alive (test files hung for good). After the end
+// the pseudoconsole is closed once and the worker and pipe released RELEASE_MS later,
+// so the last output is still read.
+const CLOSED = new WeakSet();
+const RELEASE_MS = 500;
+function releaseDllPty(proc, viaExit) {
+  const a = proc && proc._agent;
+  if (!a || !a._useConptyDll || CLOSED.has(proc)) return;
+  CLOSED.add(proc);
+  if (viaExit) { try { proc.kill(); } catch (e) { /* already closed */ } }
+  const t = setTimeout(() => {
+    try { if (a._conoutSocketWorker) a._conoutSocketWorker.dispose(); } catch (e) { /* gone */ }
+    try { if (a._outSocket) a._outSocket.destroy(); } catch (e) { /* gone */ }
+  }, RELEASE_MS);
+  if (t.unref) t.unref();
+}
+
 // o: {platform, list(shellPid) -> Promise<{pids, agentPid}>} (tests).
 function killPty(proc, o) {
   o = o || {};
   const a = proc && proc._agent;
+  if (a && a._useConptyDll) {
+    if (!CLOSED.has(proc)) { try { proc.kill(); } catch (e) { /* already gone */ } releaseDllPty(proc, false); }
+    return Promise.resolve();
+  }
   const listable = (o.platform || process.platform) === 'win32' && a && typeof a._getConsoleProcessList === 'function' && !a._useConptyDll;
   const close = () => { try { proc.kill(); } catch (e) { /* already gone */ } };
   if (!listable) { close(); return Promise.resolve(); }
@@ -76,6 +100,46 @@ function rid(n) {
   return crypto.randomBytes(n || 4).toString('hex');
 }
 
+// CON-SCROLL-CONPTY (2026-10-25): Windows 10's inbox ConPTY (build 19045) re-renders its
+// own viewport after every resize while xterm.js reflows the same lines, so scrolling up
+// showed repeated, overwritten and missing lines and the scrollback lost history (search
+// found nothing). Measured on this box with cmd.exe, 150 long lines and 8 resizes:
+// inbox ConPTY 8 repeated ids, 3 out of order, 3 missing; xterm windowsPty mode instead
+// 0 repeated but 14 missing; node-pty's bundled conpty.dll (1.23) 0 / 0 / 0. Every pty
+// pane uses the bundled conpty.dll when it is there (cfg.conptyDll false turns it off).
+function conptyDllPath() {
+  try {
+    const root = path.dirname(require.resolve('node-pty/package.json'));
+    for (const d of [path.join(root, 'build', 'Release', 'conpty'), path.join(root, 'prebuilds', process.platform + '-' + process.arch, 'conpty')]) {
+      if (fs.existsSync(path.join(d, 'conpty.dll')) && fs.existsSync(path.join(d, 'OpenConsole.exe'))) return d;
+    }
+  } catch (e) { /* node-pty missing */ }
+  return null;
+}
+// o: {platform, dllPath} (tests).
+function useConptyDll(cfg, o) {
+  o = o || {};
+  if ((o.platform || process.platform) !== 'win32') return false;
+  if (cfg && cfg.conptyDll === false) return false;
+  return !!(o.dllPath !== undefined ? o.dllPath : conptyDllPath());
+}
+
+// xterm.js windowsPty hint for a pane's terminal: the bundled conpty.dll behaves like
+// the ConPTY of Windows 11 22H2 (22621: reflow on, grown rows come back from scrollback
+// the ConPTY way); the inbox one gets the real build (xterm turns reflow off below 21376).
+function windowsPtyFor(dll, o) {
+  o = o || {};
+  if ((o.platform || process.platform) !== 'win32') return null;
+  const build = parseInt(String(o.release || require('os').release()).split('.')[2], 10) || 0;
+  return { backend: 'conpty', buildNumber: dll ? 22621 : build };
+}
+
+const RING_BYTES_PER_LINE = 200;
+const RING_MAX_BYTES = 8 * 1024 * 1024;
+function ringBytesFor(lines, floor) {
+  return Math.min(RING_MAX_BYTES, Math.max(floor || 400000, Math.round(lines) * RING_BYTES_PER_LINE));
+}
+
 class Pane extends EventEmitter {
   constructor(spec, mgr) {
     super();
@@ -94,13 +158,15 @@ class Pane extends EventEmitter {
     this.rows = spec.rows || 30;
     this.mgr = mgr;
     this.secret = rid(16);
-    this.buf = [];
+    this.buf = []; // output strings, plus {c, r} size markers (CON-SCROLL-REPLAY)
     this.bufBytes = 0;
-    this.maxBytes = mgr.cfg.scrollbackBytes || 400000;
+    this.headSize = { c: this.cols, r: this.rows }; // pty size at the oldest ring entry
+    this.maxBytes = mgr.ringBytes || mgr.cfg.scrollbackBytes || 400000;
     this.state = 'starting';
     this.unseen = false;
     this.exitCode = null;
     this.startedAt = Date.now();
+    this.stateAt = this.startedAt; // CON-ATTENTION-PANEL: when the current state began
     this.lastInput = 0;
     this.lastActivity = 0;
     this.busySince = 0;
@@ -132,7 +198,7 @@ class Pane extends EventEmitter {
   info() {
     return {
       id: this.id, kind: this.kind, projectId: this.projectId, title: this.title, cwd: this.cwd,
-      account: this.account, shell: this.shell, args: this.args, state: this.state, unseen: this.unseen,
+      account: this.account, shell: this.shell, args: this.args, state: this.state, unseen: this.unseen, stateAt: this.stateAt,
       exitCode: this.exitCode, startedAt: this.startedAt, cols: this.cols, rows: this.rows, note: this.note,
       sessionId: this.sessionId, hooks: this.hookSeen, done: this.done, clearedAt: this.clearedAt,
       // CON-CLEAR-NORESUME: the /clear is the newest prompt / session event of this process,
@@ -140,7 +206,7 @@ class Pane extends EventEmitter {
       clearedLast: !!this.clearedAt && this.clearedAt >= this.clearAt,
       busySince: this.busySince, tool: this.tool, toolSince: this.toolSince,
       pid: this.proc ? this.proc.pid : null, openedBy: this.openedBy, clearReopens: this.clearReopens,
-      svc: this.svc, recipe: this.recipe,
+      svc: this.svc, recipe: this.recipe, windowsPty: this.windowsPty || null,
     };
   }
 
@@ -152,8 +218,11 @@ class Pane extends EventEmitter {
       paneId: this.id,
       hookUrl: this.mgr.hookUrl,
       hookSecret: this.secret,
+      machineFile: this.mgr.cfg.dataDir ? path.join(this.mgr.cfg.dataDir, 'machine', 'spec.json') : null,
+      tmpDir: this.kind === 'claude' ? this.mgr.paneTmpDir(this.cwd) : null,
     });
     this.state = 'busy';
+    this.stateAt = Date.now();
     this.clearAt = Date.now();
     this.doneTitle = null;
     this.oscTail = '';
@@ -162,15 +231,18 @@ class Pane extends EventEmitter {
     this.lastActivity = Date.now();
     this.exitCode = null;
     this.exitedAt = 0;
+    const dll = useConptyDll(this.mgr.cfg);
+    this.windowsPty = windowsPtyFor(dll);
     this.proc = P.spawn(this.file, this.args, {
       name: 'xterm-256color', cols: this.cols, rows: this.rows, cwd: this.cwd, env,
+      useConptyDll: dll,
     });
     const proc = this.proc;
     // HEALTH: every pane process is logged {pid, startedAt, endedAt} so the orphan
     // step can tell a child left behind by an ended pane (health.js findOrphans).
     const rec = { pid: proc.pid, paneId: this.id, startedAt: Date.now(), endedAt: null };
     if (typeof this.mgr.recordPid === 'function') this.mgr.recordPid(rec);
-    try { proc.onExit(() => { rec.endedAt = Date.now(); EXITED.add(proc); }); } catch (e) { /* no exit event */ }
+    try { proc.onExit(() => { rec.endedAt = Date.now(); EXITED.add(proc); releaseDllPty(proc, true); }); } catch (e) { /* no exit event */ }
     proc.onData((d) => {
       if (this.proc !== proc) return;
       this.push(d);
@@ -191,12 +263,35 @@ class Pane extends EventEmitter {
     this.buf.push(d);
     this.bufBytes += d.length;
     while (this.bufBytes > this.maxBytes && this.buf.length > 1) {
-      this.bufBytes -= this.buf.shift().length;
+      const x = this.buf.shift();
+      if (typeof x === 'string') this.bufBytes -= x.length;
+      else this.headSize = x;
     }
   }
 
+  // CON-SCROLL-REPLAY: the ring remembers each pty resize, so a reload replays every
+  // stretch of output at the size it was written for (wrapping and cursor moves land
+  // where they did live) instead of all of it at the page's current size.
+  pushSize(cols, rows) {
+    const last = this.buf[this.buf.length - 1];
+    if (last && typeof last !== 'string') this.buf[this.buf.length - 1] = { c: cols, r: rows };
+    else if (this.buf.length) this.buf.push({ c: cols, r: rows });
+    else this.headSize = { c: cols, r: rows };
+  }
+
   replay() {
-    return this.buf.join('');
+    return this.buf.filter((x) => typeof x === 'string').join('');
+  }
+
+  // [{cols, rows, d}] oldest first; consecutive output at one size is one segment.
+  replaySegments() {
+    const segs = [{ cols: this.headSize.c, rows: this.headSize.r, d: '' }];
+    for (const x of this.buf) {
+      if (typeof x === 'string') segs[segs.length - 1].d += x;
+      else if (segs[segs.length - 1].d === '') { segs[segs.length - 1].cols = x.c; segs[segs.length - 1].rows = x.r; }
+      else segs.push({ cols: x.c, rows: x.r, d: '' });
+    }
+    return segs;
   }
 
   // OSC 0/2 window titles in the output; only a DONE title is remembered.
@@ -313,6 +408,7 @@ class Pane extends EventEmitter {
 
   setState(s, markUnseen) {
     const changed = s !== this.state || (markUnseen && !this.unseen);
+    if (s !== this.state) this.stateAt = Date.now();
     this.state = s;
     if (s !== 'attention') this.note = null;
     if (s !== 'busy' && s !== 'attention') { this.tool = null; this.toolSince = 0; }
@@ -329,6 +425,13 @@ class Pane extends EventEmitter {
 
   write(d) {
     if (!this.proc || this.state === 'exited') return false;
+    // CON-SCROLL-CONPTY: the bundled ConPTY turns on focus reporting (CSI ? 1004 h), so
+    // xterm sends CSI I / CSI O on every focus change. Passed on, but not operator input:
+    // it must not mark the pane seen or look like typing.
+    if (/^(?:\x1b\[[IO])+$/.test(d)) {
+      try { this.proc.write(d); } catch (e) { /* gone */ }
+      return true;
+    }
     const now = Date.now();
     this.lastInput = now;
     if (this.unseen) this.seen();
@@ -347,8 +450,12 @@ class Pane extends EventEmitter {
   resize(cols, rows) {
     cols = Math.max(10, Math.min(500, cols | 0));
     rows = Math.max(4, Math.min(300, rows | 0));
+    // CON-SCROLL-CONPTY: a resize to the same size is not passed on - every pty resize
+    // makes ConPTY and claude repaint, and each page sends one on (re)connect.
+    if (cols === this.cols && rows === this.rows && this.proc) return;
     this.cols = cols;
     this.rows = rows;
+    this.pushSize(cols, rows);
     if (this.proc && this.state !== 'exited') {
       try {
         this.proc.resize(cols, rows);
@@ -444,6 +551,19 @@ class LogPane extends Pane {
 }
 
 class PaneManager extends EventEmitter {
+  // SIDECAR-TEMP-SESSION: the claude pane's CLAUDE_CODE_TMPDIR (claudeenv.paneTmpDir);
+  // cfg.paneTmpDir === false switches it off, cfg.sidecarRoot / cfg.fleetRoster override.
+  paneTmpDir(cwd) {
+    const cfg = this.cfg || {};
+    if (cfg.paneTmpDir === false) return null;
+    const rosterFile = cfg.fleetRoster || path.join(cfg.root || path.resolve(__dirname, '..'), '..', 'ops', 'fleet_roster.json');
+    try {
+      return paneTmpDir(cwd, { rosterFile, sidecarRoot: cfg.sidecarRoot });
+    } catch (e) {
+      return null; // a sidecar problem never blocks a pane
+    }
+  }
+
   constructor(cfg, opts) {
     super();
     this.cfg = cfg;
@@ -458,6 +578,9 @@ class PaneManager extends EventEmitter {
     this.markerFor = null; // projectId -> validated /done marker (status.js), set by the server
     // CON-CLEAR-MODE: () => 'refresh' | 'reopen' (Settings "After /clear"), set by the server.
     this.clearMode = () => 'refresh';
+    // CON-SCROLLBACK: the replay ring a reload / reconnect rebuilds a pane from. It follows
+    // the Settings scrollback lines (setRingLines), never below cfg.scrollbackBytes.
+    this.ringBytes = cfg.scrollbackBytes || 400000;
     this.clearReopenDelayMs = 400;
     this.claudePath = opts && opts.claudePath;
     this.nodePath = process.execPath;
@@ -482,6 +605,17 @@ class PaneManager extends EventEmitter {
     let m = null;
     try { m = this.markerFor && p.projectId ? this.markerFor(p.projectId) : null; } catch (e) { m = null; }
     p.refreshDone(m);
+  }
+
+  // CON-SCROLLBACK: size the replay ring from the Settings scrollback lines. Raw claude
+  // output measured 87-148 bytes per newline on 2026-10-25 (escape codes, redraws), so
+  // RING_BYTES_PER_LINE bytes a line, at least cfg.scrollbackBytes, at most RING_MAX_BYTES.
+  // Applies to open panes too (a shrink trims on their next output).
+  setRingLines(lines) {
+    const n = Number.isFinite(lines) && lines > 0 ? lines : 10000;
+    this.ringBytes = ringBytesFor(n, this.cfg.scrollbackBytes);
+    for (const p of this.panes.values()) p.maxBytes = this.ringBytes;
+    return this.ringBytes;
   }
 
   hookSettingsFile() {
@@ -511,6 +645,7 @@ class PaneManager extends EventEmitter {
     spec.openedBy = typeof req.client === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(req.client) ? req.client : null;
     const extra = Array.isArray(req.args) ? req.args.filter((a) => typeof a === 'string').slice(0, 20) : [];
     if (kind === 'claude') {
+      if (!this.claudePath) this.claudePath = require('./claudeenv').resolveClaude(this.cfg);
       if (!this.claudePath) throw new Error(claudeMissingMessage(this.cfg));
       const account = req.account && this.cfg.accounts[req.account] ? req.account : this.cfg.defaultAccount;
       if (!this.cfg.accounts[account]) throw new Error('unknown account ' + account);
@@ -596,6 +731,7 @@ class PaneManager extends EventEmitter {
       // clear the screen and scrollback of every attached terminal (data-ordered).
       p.buf = [];
       p.bufBytes = 0;
+      p.headSize = { c: p.cols, r: p.rows };
       const cls = '\x1b[2J\x1b[3J\x1b[H';
       p.push(cls);
       p.emit('data', cls);
@@ -676,4 +812,4 @@ class PaneManager extends EventEmitter {
   }
 }
 
-module.exports = { PaneManager, Pane, LogPane, killPty, EXITED };
+module.exports = { PaneManager, Pane, LogPane, killPty, EXITED, ringBytesFor, RING_BYTES_PER_LINE, RING_MAX_BYTES, useConptyDll, conptyDllPath, windowsPtyFor, releaseDllPty };

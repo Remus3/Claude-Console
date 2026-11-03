@@ -47,6 +47,6 @@ function checkPrereqs(o) {
 }
 
 const { CLAUDE_MISSING } = require('../server/claudeenv');
-const GIT_MISSING = 'Git not found: installing anyway. The self-test skipped its git-dependent tests, projects show without git status, and an update keeps a file changed on both sides aside instead of merging it. Install Git (winget install Git.Git, or https://git-scm.com) and re-run the installer.';
+const GIT_MISSING = 'Git not found: installing anyway. Projects show without git status, and an update keeps a file changed on both sides aside instead of merging it. To fix: winget install Git.Git, then run the install command again.';
 
 module.exports = { checkPrereqs, findEdge, NODE_MAJOR, CLAUDE_MISSING, GIT_MISSING };

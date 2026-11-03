@@ -89,11 +89,15 @@ test('console server API, security and a live shell pane', { timeout: 90000 }, a
     assert.strictEqual(s.fontSize, 21);
     assert.strictEqual(s.bogus, undefined);
     assert.strictEqual((await j('GET', '/api/settings')).body.theme, 'light');
-    // CON-UX-TYPESCALE: the scale is stored per machine, sanitized on PUT
-    assert.strictEqual(s.typeScale.base, 15);
-    const ts = (await j('PUT', '/api/settings', { typeScale: { base: 17, header: 2, mono: 'x' } })).body.typeScale;
-    assert.deepStrictEqual([ts.base, ts.header, ts.mono], [17, 2, -3]);
-    assert.strictEqual((await j('GET', '/api/settings')).body.typeScale.base, 17);
+    // CON-UX-TYPESCALE / CON-SET-PX: absolute px per level, stored per machine, sanitized
+    // on PUT; a legacy base + offsets scale is migrated to the same rendered px
+    assert.strictEqual(s.typeScale.body, 15);
+    assert.strictEqual(s.typeScale.base, undefined);
+    const ts = (await j('PUT', '/api/settings', { typeScale: { header: 18, mono: 'x', sub: 99 } })).body.typeScale;
+    assert.deepStrictEqual([ts.header, ts.mono, ts.sub], [18, 12, 32]);
+    assert.strictEqual((await j('GET', '/api/settings')).body.typeScale.header, 18);
+    const lg = (await j('PUT', '/api/settings', { typeScale: { base: 17, header: 2, mono: 'x' } })).body.typeScale;
+    assert.deepStrictEqual([lg.header, lg.body, lg.mono, lg.base], [19, 17, 14, undefined]);
     // CON-UX-PANEROWS: row count + shown states survive (data/settings.json)
     assert.deepStrictEqual([s.flowRows, s.flowStates.done], [6, false]);
     await j('PUT', '/api/settings', { flowRows: 2, flowStates: { done: true, idle: false } });
@@ -173,7 +177,11 @@ test('console server API, security and a live shell pane', { timeout: 90000 }, a
     const ws2 = new WebSocket('ws://127.0.0.1:' + srv.port + '/ws/pane/' + id + '?t=' + srv.token);
     const replay = await new Promise((r) => ws2.on('message', (m) => r(JSON.parse(m))));
     assert.strictEqual(replay.t, 'replay');
-    assert.ok(replay.d.includes('PANE_OK_42'));
+    // CON-SCROLL-REPLAY: the ring comes in size segments; the last one is the 111x33 now
+    const segs = replay.segs;
+    assert.ok(segs.map((g) => g.d).join('').includes('PANE_OK_42'));
+    assert.deepStrictEqual([segs[0].cols, segs[0].rows], [90, 25]);
+    assert.deepStrictEqual([segs[segs.length - 1].cols, segs[segs.length - 1].rows], [111, 33]);
     ws2.close();
     // hook endpoint: wrong secret refused, right secret sets state
     const pane = srv.panes.get(id);

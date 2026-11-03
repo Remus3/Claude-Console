@@ -13,6 +13,8 @@ const path = require('path');
 const { tmpdir } = require('./helpers');
 const P = require('../installer/profile');
 const PL = require('../installer/profile-plan');
+const PU = require('../installer/profile-update');
+const PV = require('../installer/profile-verify');
 
 const PROFILE = path.join(__dirname, '..', 'profile');
 const FAKE_PY = 'C:/Tools/Py314/python.exe';
@@ -126,4 +128,69 @@ test('{python} in the tracked repo .claude/settings.json resolves to a bare name
   // trackedVars: exe variables only, bare names
   const tv = P.trackedVars(w.model, { python: FAKE_PY, node: FAKE_NODE, repo_code: 'DM' });
   assert.deepStrictEqual([tv.python, tv.node, tv.repo_code], [P.BARE_EXE.python, 'node', 'DM']);
+});
+
+// ------------------------------------------------------------------ 0.1.5 D2 / R3-8: a target with no repo
+
+function presetPlan(w, name, target, values) {
+  const sel = PU.presetSelection(w.model, name, {}).selection;
+  const deps = { tasks: { get: () => ({ present: false }) }, env: { get: () => ({ present: false }) }, git: { get: () => null } };
+  // python deliberately not detected: nothing that is left on a user target may need it from a task
+  return PL.plan({ model: w.model, selection: sel, dataDir: w.data, target, values: values || {}, ctx: { detect: () => null }, deps, platform: 'win32' });
+}
+
+for (const name of ['remus3', 'recommended']) {
+  test('user target, preset ' + name + ': nothing missing, no task set, the plan can go ahead', () => {
+    const w = world();
+    const p = presetPlan(w, name, { repo: null, configDir: w.cfg });
+    assert.deepStrictEqual(p.missing, []);
+    assert.deepStrictEqual(p.machine.filter((m) => m.kind === 'task' && m.op === 'set'), []);
+    assert.strictEqual(PL.planVerdict(p).code, 0);
+    assert.ok(!p.files.some((f) => /projects\//.test(f.rel)), 'no project memory folder is invented');
+  });
+}
+
+test('user target: the project_slug rows and the task rows are skipped, each with its reason', () => {
+  const w = world();
+  const p = presetPlan(w, 'remus3', { repo: null, configDir: w.cfg });
+  const slug = p.rows.filter((r) => /\{project_slug\}/.test(r.target));
+  assert.ok(slug.length >= 2);
+  for (const r of slug) { assert.strictEqual(r.status, 'skipped'); assert.strictEqual(r.reason, 'needs a project target'); }
+  const tasks = p.rows.filter((r) => r.kind === 'task');
+  assert.strictEqual(tasks.length, 7);
+  for (const r of tasks) { assert.strictEqual(r.status, 'skipped'); assert.strictEqual(r.reason, 'its script needs a project target'); }
+  // a typed value does not bring back a junk folder
+  const typed = presetPlan(w, 'remus3', { repo: null, configDir: w.cfg }, { project_slug: 'invented' });
+  assert.ok(!typed.files.some((f) => /invented/.test(f.rel)));
+});
+
+test('another account (no repo, config files only): project_slug is not missing there either', () => {
+  const w = world();
+  const sel = PU.presetSelection(w.model, 'remus3', {}).selection;
+  const p = PL.plan({ model: w.model, selection: sel, dataDir: w.data, target: { repo: null, configDir: w.cfg }, configFilesOnly: true, primaryConfigDir: path.join(w.root, 'other'), ctx: { detect: () => null }, platform: 'win32' });
+  assert.ok(!p.missing.some((m) => m.name === 'project_slug'));
+});
+
+test('repo target: the tasks are planned and runtime_retention_days comes from its default of 30', () => {
+  const w = world();
+  const p = presetPlan(w, 'remus3', { repo: w.repo, configDir: w.cfg }, { repo_code: 'DM', python: 'python', operator_ident: 'Sam Example <sam@example.com>', wol_mac: '00:11:22:33:44:55', backup_target: 'bk', board_url: 'https://claude.ai/x', effort_level: 'high', headless_base_url: 'http://127.0.0.1:3456', retention_days: 30, retention_nested_days: 7, sidecar_retention_days: 30 });
+  assert.deepStrictEqual(p.missing, []);
+  assert.strictEqual(p.machine.filter((m) => m.kind === 'task' && m.op === 'set').length, 7);
+  assert.match(textOf(fileOf(p, 'repo:tools/reap_runtime.py')), /^RETENTION_DAYS = 30$/m);
+});
+
+test('read-back: a task the plan skipped is not reported as "not registered"', () => {
+  const w = world();
+  const sel = PU.presetSelection(w.model, 'remus3', {}).selection;
+  const rows = PV.verifyItems({ model: w.model, selection: sel, dataDir: w.data, target: { repo: null, configDir: w.cfg }, deps: { tasks: { get: () => ({ present: false }) } }, platform: 'win32', ctx: { detect: () => null } });
+  const tasks = rows.rows.filter((r) => /^task /.test(r.check));
+  assert.strictEqual(tasks.length, 7);
+  for (const r of tasks) { assert.strictEqual(r.skipped, true); assert.strictEqual(r.reason, 'its script needs a project target'); }
+  const repoRows = PV.verifyItems({ model: w.model, selection: sel, dataDir: w.data, target: { repo: w.repo, configDir: w.cfg }, deps: { tasks: { get: () => ({ present: false }) } }, platform: 'win32', ctx: { detect: () => null } });
+  assert.ok(repoRows.rows.filter((r) => /^task /.test(r.check)).every((r) => r.ok === false && !r.skipped), 'on a project an absent task still fails');
+});
+
+test('statusLine: three states, the date only for a transaction still in force', () => {
+  assert.strictEqual(P.statusLine({ on: 148, total: 300, lastAppliedAt: null }), 'Setup profile: not applied. Your picks: 148 of 300 items.');
+  assert.strictEqual(P.statusLine({ on: 148, total: 300, lastAppliedAt: '2026-11-02T10:00:00Z' }), 'Setup profile: applied 2026-11-02. Your picks: 148 of 300 items.');
 });

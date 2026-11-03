@@ -8,7 +8,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawn } = require('child_process');
 const { tmpdir } = require('./helpers');
 const R = require('../installer/recover');
 const egress = require('../installer/egress');
@@ -55,10 +55,11 @@ test('stop-all: dry run first; then only recorded, matching console processes; t
   const x = world();
   const dry = await R.stopAll({ dataDir: x.dataDir, runDir: x.runDir, configDir: x.configDir, deps: x.deps });
   assert.ok(dry.dryRun);
-  assert.match(dry.line, /stop 4 console process tree\(s\), disable 1 profile task\(s\), turn profile hooks off \(1 settings file\(s\)\), unset CLAUDE_HEADLESS_BASE_URL - confirm/);
+  assert.strictEqual(dry.line, 'This would end 4 running panes or background runs, pause 1 scheduled task and turn off hooks in 1 settings file, and block new background runs.');
   assert.deepStrictEqual(x.killed, []);
   const res = await R.stopAll({ dataDir: x.dataDir, runDir: x.runDir, configDir: x.configDir, deps: x.deps, confirm: true });
   assert.ok(res.ok, res.line);
+  assert.strictEqual(res.line, 'Ended 3 running panes or background runs, paused 1 scheduled task, turned off hooks in 1 settings file, and blocked new background runs');
   assert.deepStrictEqual(x.killed.sort(), [101, 102, 103]);
   assert.ok(x.procs.get(999).alive, 'an unrelated process survives');
   assert.ok(x.procs.get(104).alive, 'a reused pid is never killed');
@@ -86,6 +87,98 @@ test('stop-all: dry run first; then only recorded, matching console processes; t
   assert.strictEqual(x.tasks.get('ClaudeProfile-Clean').enabled, true);
   assert.strictEqual(x.envm.get('CLAUDE_HEADLESS_BASE_URL'), 'http://127.0.0.1:9');
   assert.match((await R.resume({ dataDir: x.dataDir, id: res.id, deps: x.deps, confirm: true })).line, /already resumed/);
+});
+
+test('R3-21: the dry-run line names the headless variable never, and blocks background runs only when it is set', async () => {
+  const x = world();
+  x.envm.clear();
+  const dry = await R.stopAll({ dataDir: x.dataDir, runDir: x.runDir, configDir: x.configDir, deps: x.deps });
+  assert.strictEqual(dry.line, 'This would end 4 running panes or background runs, pause 1 scheduled task and turn off hooks in 1 settings file.');
+  const noEnv = await R.stopAll({ dataDir: x.dataDir, runDir: x.runDir, configDir: x.configDir, deps: { procInfo: x.deps.procInfo, killTree: x.deps.killTree, tasks: x.deps.tasks } });
+  assert.ok(!/block new|CLAUDE_HEADLESS/.test(noEnv.line), noEnv.line);
+  const res = await R.stopAll({ dataDir: x.dataDir, runDir: x.runDir, configDir: x.configDir, deps: x.deps, confirm: true });
+  assert.ok(!/blocked new|CLAUDE_HEADLESS|process tree/.test(res.line), res.line);
+  // Nothing recorded and no data folder: the words hold there too.
+  const root = tmpdir('cc-rec1-');
+  const run = path.join(root, 'run');
+  R.registerSpawn(run, { pid: 7, kind: 'pane', name: 'a.exe', startMs: 1 });
+  const gone = await R.stopAll({ dataDir: path.join(root, 'missing'), runDir: run, deps: { procInfo: async () => ({ alive: false }), killTree: async () => true }, confirm: true });
+  assert.match(gone.line, /^Ended 0 running panes or background runs\. No setup profile data/);
+});
+
+// R3-4: what the Stop dialog reads when it opens (public/recovery.js stop()). The dry run
+// changes nothing, so opening the dialog never touches a task, a hook or the variable.
+test('R3-4: an earlier stop stays open across a fresh load: the dry run says so, changes nothing, and Resume then undoes it', async () => {
+  const x = world();
+  assert.ok((await R.resume({ dataDir: x.dataDir, deps: x.deps })).nothing, 'no stop yet: Resume stays off');
+  const res = await R.stopAll({ dataDir: x.dataDir, runDir: x.runDir, configDir: x.configDir, deps: x.deps, confirm: true });
+  const settings = r(path.join(x.repo, '.claude', 'settings.json'));
+  const open = await R.resume({ dataDir: x.dataDir, deps: x.deps });
+  assert.deepStrictEqual([open.ok, open.dryRun, open.id], [true, true, res.id]);
+  assert.match(open.line, /^resume would: re-enable 1 task\(s\).* - confirm to go ahead$/);
+  assert.strictEqual(x.tasks.get('ClaudeProfile-Clean').enabled, false, 'the dry run re-enables nothing');
+  assert.ok(fs.existsSync(R.markerFile(x.dataDir)), 'the dry run leaves the hooks off');
+  assert.strictEqual(r(path.join(x.repo, '.claude', 'settings.json')), settings);
+  assert.ok(!x.envm.has('CLAUDE_HEADLESS_BASE_URL'));
+  const done = await R.resume({ dataDir: x.dataDir, deps: x.deps, confirm: true });
+  assert.ok(done.ok, done.line);
+  assert.strictEqual(x.tasks.get('ClaudeProfile-Clean').enabled, true);
+  assert.ok((await R.resume({ dataDir: x.dataDir, deps: x.deps })).nothing, 'all undone: Resume goes off again');
+});
+
+test('resume dry run: it names the kill switch only when the stop saved one and the adapter can put it back', async () => {
+  const x = world();
+  await R.stopAll({ dataDir: x.dataDir, runDir: x.runDir, configDir: x.configDir, deps: x.deps, confirm: true });
+  const line = (await R.resume({ dataDir: x.dataDir, deps: x.deps })).line;
+  assert.match(line, /^resume would: re-enable 1 task[(]s[)], turn hooks back on, restore the kill switch/);
+  const noAdapter = await R.resume({ dataDir: x.dataDir, deps: { tasks: x.deps.tasks } });
+  assert.ok(noAdapter.dryRun);
+  assert.doesNotMatch(noAdapter.line, /kill switch/);
+  const y = world();
+  y.envm.delete('CLAUDE_HEADLESS_BASE_URL');
+  await R.stopAll({ dataDir: y.dataDir, runDir: y.runDir, configDir: y.configDir, deps: y.deps, confirm: true });
+  const none = await R.resume({ dataDir: y.dataDir, deps: y.deps });
+  assert.ok(none.dryRun);
+  assert.match(none.line, /^resume would: re-enable 1 task[(]s[)], turn hooks back on(;| - confirm to go ahead$)/);
+  assert.doesNotMatch(none.line, /kill switch/);
+  assert.ok(!y.envm.has('CLAUDE_HEADLESS_BASE_URL'), 'the dry run sets nothing');
+});
+
+test('R3-4: two stops: the dialog resume loop (newest open first, until none is open) restores everything', async () => {
+  const x = world();
+  const first = await R.stopAll({ dataDir: x.dataDir, runDir: x.runDir, configDir: x.configDir, deps: x.deps, confirm: true, now: new Date('2026-11-01T10:00:00Z') });
+  await R.stopAll({ dataDir: x.dataDir, runDir: x.runDir, configDir: x.configDir, deps: x.deps, confirm: true, now: new Date('2026-11-01T10:05:00Z') });
+  const one = await R.resume({ dataDir: x.dataDir, deps: x.deps, confirm: true });
+  assert.notStrictEqual(one.id, first.id, 'the newest open record, empty, goes first');
+  assert.strictEqual(x.tasks.get('ClaudeProfile-Clean').enabled, false, 'one replay is not enough: this is why the dialog loops');
+  assert.ok((await R.resume({ dataDir: x.dataDir, deps: x.deps })).dryRun);
+  const two = await R.resume({ dataDir: x.dataDir, deps: x.deps, confirm: true });
+  assert.strictEqual(two.id, first.id);
+  assert.strictEqual(x.tasks.get('ClaudeProfile-Clean').enabled, true);
+  assert.ok(!fs.existsSync(R.markerFile(x.dataDir)));
+  assert.strictEqual(r(path.join(x.repo, '.claude', 'settings.json')), x.settingsText);
+  assert.strictEqual(x.envm.get('CLAUDE_HEADLESS_BASE_URL'), 'http://127.0.0.1:9');
+  assert.ok((await R.resume({ dataDir: x.dataDir, deps: x.deps })).nothing);
+});
+
+test('stop-all: the kill gets the recorded start time, so the root and its descendants are verified', async () => {
+  const x = world();
+  const seen = [];
+  const kill = x.deps.killTree;
+  x.deps.killTree = async (pid, sinceMs) => { seen.push([pid, sinceMs]); return kill(pid); };
+  await R.stopAll({ dataDir: x.dataDir, runDir: x.runDir, configDir: x.configDir, deps: x.deps, confirm: true });
+  assert.deepStrictEqual(seen.sort((a, b) => a[0] - b[0]), [[101, 1000], [102, 2000], [103, 3000]]);
+});
+
+test('killTreeWindows (real process): a spawned tree ends; a root older than the record is left alone', { skip: process.platform !== 'win32' }, async () => {
+  const t0 = Date.now();
+  const child = spawn(process.execPath, ['-e', "require('child_process').spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore' }); setInterval(() => {}, 1000)"], { windowsHide: true, stdio: 'ignore' });
+  await new Promise((res) => setTimeout(res, 1500));
+  const exited = new Promise((res) => child.once('exit', res));
+  assert.strictEqual(await R.killTreeWindows(child.pid, t0 + 60000), false, 'a reused pid: nothing ended');
+  assert.strictEqual(child.exitCode, null, 'still running');
+  assert.strictEqual(await R.killTreeWindows(child.pid, t0), true);
+  await exited;
 });
 
 test('resume after the user edited a disabled settings file renames the key back, keeping the edit', async () => {
@@ -118,13 +211,18 @@ test('recover prompt: self-contained, scrubbed, key names and hooks only, undo s
   w(path.join(tx, 'journal.jsonl'), JSON.stringify({ seq: 1, op: 'write', abs: path.join(x.repo, 'CLAUDE.md'), display: 'repo:CLAUDE.md', pre: '1', applied_sha: 'a' }) + '\n' + JSON.stringify({ seq: 1, done: true }) + '\n');
   const p = R.recoverPrompt({ dataDir: x.dataDir, runDir: x.runDir, configDir: x.configDir, version: '0.1.3', problems: ['settings parse failed'], username: 'zelda_tester', hostname: 'ZELDA-PC9' });
   const t = p.text;
-  assert.match(t, /## What is wrong\n- settings parse failed\n- log: server\.log: ERROR: hook failed for <USER>/);
+  assert.match(t, /## What is wrong\n- settings parse failed\n- Last console log line \(may be unrelated\): server\.log: ERROR: hook failed for <USER>/);
   assert.match(t, /- user settings: keys env, statusLine/);
   assert.match(t, /- repo repo: keys model, hooks, env\n  - hook Stop: python kit_done\.py/);
   assert.match(t, /20261019-010203-001: applied, 1 write\(s\)/);
   assert.match(t, /repo:CLAUDE\.md: copy pre\/1 back over it/);
   assert.match(t, /claude-console stop-all --yes/);
-  assert.match(t, /recover\.ps1 -Stop -DisableHooks -PauseTasks/);
+  assert.ok(t.includes('-File <install folder>\\app\\<version>\\release\\recover.ps1 -Stop -DisableHooks -PauseTasks'), t);
+  assert.ok(t.includes('-File <install folder>\\app\\<version>\\release\\recover.ps1 -Revert last'), t);
+  assert.ok(!/<install folder>\\recover\.ps1/.test(t), 'the path a person with a broken setup can actually find');
+  const stepsOf = (s) => s.slice(s.indexOf('## Undo steps')).split('\n').map((l) => /^(\d+)\. /.exec(l)).filter(Boolean).map((m) => +m[1]);
+  assert.deepStrictEqual(stepsOf(t), [1, 2, 3, 4]);
+  assert.deepStrictEqual(stepsOf(R.recoverPrompt({ dataDir: tmpdir('cc-rec2-'), version: '0.1.3' }).text), [1, 2, 3], 'no gap when the by-hand step does not apply');
   for (const needle of ['sk-ant-FAKE', 'zelda_tester', 'ZELDA-PC9', x.root, '127.0.0.1:9']) assert.ok(!t.includes(needle), 'no ' + needle);
   const calls = [];
   assert.strictEqual((await R.promptActions(p, { clipboard: (s) => calls.push(['clip', s]), openUrl: (u) => calls.push(['open', u]) })).ok, false);
@@ -133,6 +231,31 @@ test('recover prompt: self-contained, scrubbed, key names and hooks only, undo s
   assert.ok(ok.ok);
   assert.deepStrictEqual(calls.map((c) => c[0]), ['clip', 'open']);
   assert.strictEqual(calls[1][1], 'https://claude.ai/new');
+});
+
+// CON-RECOVER-TEMP-GAP: a temp folder outside home reaches the prompt through a log line or
+// a problem line, and neither the home literal nor the Users pattern covers it.
+function withEnv(vals, fn) {
+  const saved = {};
+  for (const k of Object.keys(vals)) { saved[k] = process.env[k]; process.env[k] = vals[k]; }
+  try { return fn(); } finally { for (const k of Object.keys(vals)) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } }
+}
+
+test('recover prompt: TEMP and TMP outside home are scrubbed, in every form scrub knows', () => {
+  const x = world();
+  const TEMP = 'Q:\\OutsideHome\\TempA';
+  const TMP = 'R:\\OutsideHome\\TmpB';
+  w(path.join(x.runDir, 'server.log'), [
+    'ERROR spawn failed at ' + TEMP + '\\cc-1\\a.txt',
+    'ERROR json form ' + TEMP.replace(/\\/g, '\\\\') + '\\\\b.txt',
+    'ERROR slash form ' + TEMP.replace(/\\/g, '/') + '/c.txt',
+    'ERROR lower drive q:' + TEMP.slice(2) + '\\d.txt',
+    'ERROR tmp var ' + TMP + '\\e.txt',
+  ].join('\n') + '\n');
+  // a trailing separator in the variable must not hide the bare folder
+  const t = withEnv({ TEMP: TEMP + '\\', TMP }, () => R.recoverPrompt({ home: path.join(x.root, 'home'), dataDir: x.dataDir, runDir: x.runDir, configDir: x.configDir, problems: ['cannot write ' + TMP + '\\f.txt', 'bare folder ' + TEMP], username: 'zelda_tester', hostname: 'ZELDA-PC9' }).text);
+  assert.ok(!/OutsideHome/i.test(t), t);
+  for (const l of ['spawn failed at <PATH>', 'json form <PATH>', 'slash form <PATH>', 'lower drive <PATH>', 'tmp var <PATH>', 'cannot write <PATH>', 'bare folder <PATH>']) assert.ok(t.includes(l), l);
 });
 
 test('cli stop-all / resume / recover-prompt are two-step', async () => {
@@ -145,11 +268,12 @@ test('cli stop-all / resume / recover-prompt are two-step', async () => {
   const deps = Object.assign({ out: (s) => lines.push(s), dataDir: x.dataDir, configDir: x.configDir, noDefaultAdapters: true, clipboard: () => {}, openUrl: () => {} }, x.deps);
   let code = await cli.run(['stop-all', '--home', home], deps);
   assert.strictEqual(code, 0);
-  assert.match(lines.pop(), /confirm to go ahead/);
+  assert.match(lines.pop(), /^go ahead with: claude-console stop-all --yes$/);
+  assert.match(lines.pop(), /^This would end /);
   assert.deepStrictEqual(x.killed, []);
   code = await cli.run(['stop-all', '--yes', '--home', home], deps);
   assert.strictEqual(code, 0, lines.join('\n'));
-  assert.match(lines.pop(), /^stopped 3 process tree\(s\), disabled 1 task\(s\), hooks off/);
+  assert.match(lines.pop(), /^Ended 3 running panes or background runs, paused 1 scheduled task, turned off hooks/);
   code = await cli.run(['resume', '--yes', '--home', home], deps);
   assert.strictEqual(code, 0, lines.join('\n'));
   assert.match(lines.pop(), /^resumed /);
@@ -170,11 +294,16 @@ test('recover.ps1: parses with Windows PowerShell 5.1; ASCII + LF; standalone an
   const t = b.toString('utf8');
   for (const sw of ['Stop', 'DisableHooks', 'PauseTasks', 'Resume', 'Revert', 'Prompt']) assert.match(t, new RegExp('\\[(switch|string)\\]\\$' + sw + '\\b'), '-' + sw);
   assert.match(t, /SupportsShouldProcess = \$true/, '-WhatIf');
-  assert.match(t, /taskkill\.exe \/PID \(\[int\]\$rec\.pid\) \/T \/F/, 'kills by recorded pid tree');
+  assert.match(t, /& taskkill\.exe \/PID \$id \/F \| Out-Null/, 'ends each verified pid alone');
+  assert.ok(!/taskkill[^\n]*\s\/T\b/i.test(t), 'no /T: it follows reused parent pids');
+  assert.match(t, /function Get-VerifiedTree/);
+  assert.match(t, /CreationDate -lt \$up/, 'a process older than its "parent" is pid reuse');
   assert.ok(!/Stop-Process|Get-Process\s+-Name|taskkill[^\n]*\/IM/i.test(t), 'never by image name');
   assert.ok(!/Remove-Item/i.test(t), 'no direct delete');
   assert.match(t, /SendToRecycleBin/);
   assert.ok(!/Invoke-WebRequest|Invoke-RestMethod|Net\.WebClient|\birm\b/i.test(t.replace(/^#.*$/gm, '')), 'no network');
+  const protect = t.slice(t.indexOf('function Protect-Text'), t.indexOf('function Invoke-Prompt'));
+  for (const src of [/\$env:TEMP\b/, /\$env:TMP\b/, /GetTempPath\(\)/]) assert.match(protect, src, 'the -Prompt scrub covers the temp folder');
   assert.match(t, /Disable-ScheduledTask/);
   assert.ok(!/Unregister-ScheduledTask/.test(t.split('function Invoke-Revert')[0]), 'stop only disables tasks');
   assert.match(t, /'hooks' 'hooks\.profile-disabled'/);

@@ -1,13 +1,39 @@
 'use strict';
 // Claude Code hook -> Claude Console. Loaded only through the --settings file the
 // console passes to the claude panes it starts. Prints nothing (UserPromptSubmit
-// stdout would enter the model context) and always exits 0 quickly.
+// stdout would enter the model context) and always exits 0 quickly - with one
+// exception: SessionStart names the console's machine read file in one line of
+// additionalContext when that file exists (CON-MACHINE-READ).
+const fs = require('fs');
 const http = require('http');
 
 const event = process.argv[2] || '';
 const url = process.env.CONSOLE_HOOK_URL;
 const pane = process.env.CONSOLE_PANE;
 const secret = process.env.CONSOLE_HOOK_SECRET;
+
+// CON-MACHINE-READ: one line, about 60 tokens, only at session start, only when Settings >
+// Machine > Read machine has saved a result. The session opens the file only when a task
+// depends on this machine's hardware or OS.
+function machineLine(file) {
+  if (!file) return null;
+  let scanned = '';
+  try {
+    const st = fs.statSync(file);
+    if (!st.isFile() || st.size > 262144) return null;
+    const j = JSON.parse(fs.readFileSync(file, 'utf8'));
+    scanned = typeof j.scanned === 'string' ? j.scanned.slice(0, 10).replace(/[^0-9-]/g, '') : '';
+  } catch (e) {
+    return null;
+  }
+  return 'This machine\'s hardware/OS read (Claude Console "Read machine"' + (scanned ? ', ' + scanned : '') + '): ' + file.replace(/\\/g, '/') + ' - JSON with model, board, BIOS, CPU, RAM, GPUs, displays, disks, NICs, OS build. Read it only when the task depends on this machine\'s hardware or OS.';
+}
+if (event === 'ready') {
+  const line = machineLine(process.env.CONSOLE_MACHINE_FILE);
+  if (line) {
+    try { fs.writeSync(1, JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: line } }) + '\n'); } catch (e) { /* no stdout */ }
+  }
+}
 
 function done() {
   process.exit(0);

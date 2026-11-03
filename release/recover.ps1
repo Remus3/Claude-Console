@@ -4,8 +4,9 @@
 #
 #   recover.ps1 -WhatIf -Stop -DisableHooks -PauseTasks   show what would happen, change nothing
 #   recover.ps1 -Stop            stop console-spawned process trees (recorded pid + image +
-#                                start time; taskkill /T by pid, never by image name) and
-#                                unset the headless kill-switch variable
+#                                start time; verified descendants, each ended alone by pid,
+#                                never by image name) and unset the headless kill-switch
+#                                variable
 #   recover.ps1 -DisableHooks    HOOKS_OFF marker + "hooks" -> "hooks.profile-disabled" in
 #                                every settings.json the profile put hooks into
 #   recover.ps1 -PauseTasks      disable (never delete) the profile's scheduled tasks,
@@ -169,6 +170,35 @@ function Ensure-SideDir {
   return $script:SideDir
 }
 
+# CON-TASKKILL, the rule of installer/safekill.js: taskkill's tree switch selects by
+# ParentProcessId, which Windows never clears when a parent exits, so a reused pid makes an
+# unrelated process look like a child. A process joins the tree only when its parent is in
+# the tree and it was created at or after that parent. Returns pids, parents before
+# children. The caller has just matched the root to its record, so with no process list the
+# root alone is returned.
+function Get-VerifiedTree([int]$RootId) {
+  try { $rows = @(Get-CimInstance Win32_Process) } catch { return @($RootId) }
+  $created = @{}
+  $tree = New-Object System.Collections.ArrayList
+  foreach ($r in $rows) { if ([int]$r.ProcessId -eq $RootId) { $created[$RootId] = $r.CreationDate; [void]$tree.Add($RootId) } }
+  if (-not $tree.Count) { return @() }
+  $grew = $true
+  while ($grew) {
+    $grew = $false
+    foreach ($r in $rows) {
+      $id = [int]$r.ProcessId
+      $up_id = [int]$r.ParentProcessId
+      if ($id -eq $up_id -or $created.ContainsKey($id) -or -not $created.ContainsKey($up_id)) { continue }
+      $up = $created[$up_id]
+      if ($r.CreationDate -and $up -and $r.CreationDate -lt $up) { continue }
+      $created[$id] = $r.CreationDate
+      [void]$tree.Add($id)
+      $grew = $true
+    }
+  }
+  return @($tree)
+}
+
 function Invoke-StopProcesses {
   $dir = Join-Path $RunDir 'spawned'
   if (-not (Test-Path -LiteralPath $dir)) { Say 'processes: none recorded'; return }
@@ -185,7 +215,9 @@ function Invoke-StopProcesses {
     }
     if (-not ($nameOk -and $startOk)) { $Record.processes += ,([ordered]@{ pid = $rec.pid; kind = $rec.kind; result = 'skipped: pid now belongs to another process' }); continue }
     if ($script:Dry) { Say ('would stop the process tree of pid ' + $rec.pid + ' (' + $rec.kind + ')'); continue }
-    & taskkill.exe /PID ([int]$rec.pid) /T /F | Out-Null
+    $tree = @(Get-VerifiedTree ([int]$rec.pid))
+    [array]::Reverse($tree)
+    foreach ($id in $tree) { & taskkill.exe /PID $id /F | Out-Null }
     Start-Sleep -Milliseconds 300
     $gone = -not (Get-CimInstance Win32_Process -Filter ('ProcessId=' + [int]$rec.pid))
     $res = 'still running'
@@ -425,8 +457,11 @@ function Invoke-Revert([string]$Tx) {
 
 function Protect-Text([string]$Text) {
   $s = $Text
-  foreach ($lit in @($DataDir, $InstallDir, $ConfigDir, $env:USERPROFILE) | Where-Object { $_ } | Sort-Object Length -Descending) {
-    $s = $s.Replace($lit, '<PATH>').Replace($lit.Replace('\', '/'), '<PATH>')
+  # CON-RECOVER-TEMP-GAP: the temp folder names the machine even outside home. A bare drive
+  # root is skipped: it would eat every ordinary path. Same forms as the console's scrub.
+  $temps = @($env:TEMP, $env:TMP, [IO.Path]::GetTempPath()) | Where-Object { $_ } | ForEach-Object { $_.Trim().TrimEnd('\', '/') } | Where-Object { $_.Length -gt 2 }
+  foreach ($lit in @($DataDir, $InstallDir, $ConfigDir, $env:USERPROFILE) + @($temps) | Where-Object { $_ } | Sort-Object Length -Descending) {
+    foreach ($form in @($lit, $lit.Replace('\', '/'), $lit.Replace('\', '\\'))) { $s = [regex]::Replace($s, [regex]::Escape($form), '<PATH>', 'IgnoreCase') }
   }
   $s = [regex]::Replace($s, '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', '<EMAIL>')
   $s = [regex]::Replace($s, '\b(sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,})', '<TOKEN>')
@@ -446,7 +481,7 @@ function Invoke-Prompt {
   [void]$L.Add('## What is wrong')
   $logs = @()
   if (Test-Path -LiteralPath $RunDir) { foreach ($f in Get-ChildItem -LiteralPath $RunDir -Filter '*.log' | Sort-Object LastWriteTime) { $logs += @(Get-Content -LiteralPath $f.FullName -Tail 400 | Where-Object { $_ -match 'error|fail|exception|refused|denied' }) } }
-  if ($logs.Count) { foreach ($l in ($logs | Select-Object -Last 20)) { [void]$L.Add('- log: ' + $l) } } else { [void]$L.Add('- (no error lines in the console logs; describe what you see)') }
+  if ($logs.Count) { foreach ($logLine in ($logs | Select-Object -Last 20)) { [void]$L.Add('- Last console log line (may be unrelated): ' + $logLine) } } else { [void]$L.Add('- (no error lines in the console logs; describe what you see)') }
   [void]$L.Add('')
   [void]$L.Add('## Environment')
   [void]$L.Add('- Windows ' + [Environment]::OSVersion.Version.ToString() + ', PowerShell ' + $PSVersionTable.PSVersion.ToString())

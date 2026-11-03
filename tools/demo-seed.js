@@ -5,6 +5,8 @@
 // Then starts the server in isolated mode (port 0, temp data / run / drops dirs) with
 // Claude panes running tools/demo-claude.js, a scripted stand-in that needs no account,
 // no network and shows no real model output. Every name and text here is made up.
+// tools/demo-capture.js passes media: true (the pictures' world: the trackers panel off,
+// a /done command in each sample project) and, for --real, real: { claude, configDir }.
 //
 //   node tools/demo-seed.js            # prints the URL to open, Ctrl+C ends and cleans up
 const fs = require('fs');
@@ -57,7 +59,12 @@ const REPOS = [
   },
 ];
 
-function seedRepo(base, r, now) {
+// The media's sample projects have a /done command, so a pane shows the /done chip as it
+// does in any project that has one (sample-docs carries a /done marker). It sits in the
+// project, not the config dir: a real capture's config dir belongs to the account.
+const DONE_COMMAND = '---\ndescription: End the session: update the hand-off and write the done marker.\n---\nUpdate the hand-off file and report.\n';
+
+function seedRepo(base, r, now, opts) {
   const dir = path.join(base, r.name);
   fs.mkdirSync(dir, { recursive: true });
   git(dir, ['init', '-q', '-b', 'main']);
@@ -67,6 +74,7 @@ function seedRepo(base, r, now) {
   write(path.join(dir, handoff), 'SESSION: ' + r.session + '\n\nTHE SINGLE NEXT ACTION\n  ' + r.next + '\n\nOPEN ITEMS\n' +
     r.roadmap.slice(1).map((x) => '  - ' + x).join('\n') + '\n');
   write(path.join(dir, '.gitignore'), 'ops/loop/control/\n');
+  if (opts && opts.media) write(path.join(dir, '.claude', 'commands', 'done.md'), DONE_COMMAND);
   git(dir, ['add', '-A']);
   git(dir, ['commit', '-q', '-m', 'Start ' + r.name], new Date(T0 - 86400000).toISOString());
   git(dir, ['commit', '-q', '--allow-empty', '-m', 'Session ' + r.session + ' hand-off'], new Date(T0 - 3600000).toISOString());
@@ -88,7 +96,7 @@ function seedRepo(base, r, now) {
 // Builds the workspace; returns { base, repos: [dir...] }. Pure filesystem + local git.
 // A given base (e.g. C:\Demo, so screenshots show no user name in paths) must be empty
 // or a previous demo workspace (it carries .cc-demo); it is rebuilt from scratch.
-function seedWorkspace(base) {
+function seedWorkspace(base, opts) {
   if (base) {
     if (fs.existsSync(base) && fs.readdirSync(base).length && !fs.existsSync(path.join(base, '.cc-demo'))) {
       throw new Error('refusing: ' + base + ' is not empty and is not a demo workspace');
@@ -100,22 +108,48 @@ function seedWorkspace(base) {
     base = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-demo-'));
   }
   const now = Date.now();
-  const repos = REPOS.map((r) => seedRepo(path.join(base, 'Projects'), r, now));
+  const repos = REPOS.map((r) => seedRepo(path.join(base, 'Projects'), r, now, opts));
   return { base, repos };
+}
+
+// What a Claude pane runs. Default: the scripted stand-in on an empty config dir. real
+// (tools/demo-capture.js --real): the given CLI in an ordinary console pane, user settings
+// and MCP servers left out; configDir absent means no CLAUDE_CONFIG_DIR, so the CLI uses
+// its own default login. This file never reads an account and never picks one. prefix:
+// arguments before the CLI's (a test's stand-in script).
+const REAL_CLAUDE_ARGS = ['--setting-sources', 'project,local', '--strict-mcp-config'];
+function paneOverrides(base, real) {
+  if (!real) {
+    return {
+      claudePath: process.execPath, claudeArgs: [path.join(__dirname, 'demo-claude.js')],
+      accounts: { acct1: { label: 'Account 1', configDir: path.join(base, 'claude-config') } },
+    };
+  }
+  return {
+    claudePath: real.claude, claudeArgs: [].concat(real.prefix || [], REAL_CLAUDE_ARGS),
+    accounts: { acct1: { label: 'Account 1', configDir: real.configDir || null } },
+  };
 }
 
 // Starts the isolated demo server over a seeded workspace.
 async function startDemo(opts) {
   opts = opts || {};
-  const ws = seedWorkspace(opts.base);
+  const ws = seedWorkspace(opts.base, { media: !!opts.media });
   const { createConsoleServer } = require(path.join(ROOT, 'server', 'server.js'));
+  if (opts.media) {
+    // The tracker toggles are read from settings.json, not from the config overrides.
+    // The pictures show no scheduler state and no host data; nothing writes to the page.
+    const { TRACKER_IDS } = require(path.join(ROOT, 'server', 'trackers.js'));
+    write(path.join(ws.base, 'data', 'settings.json'), JSON.stringify({ trackers: Object.fromEntries(TRACKER_IDS.map((id) => [id, false])) }) + '\n');
+  }
   const srv = await createConsoleServer({
     port: opts.port || 0,
+    token: opts.token, // absent: a fresh one, as on every real start
     dataDir: path.join(ws.base, 'data'), runDir: path.join(ws.base, 'run'), dropsDir: path.join(ws.base, 'drops'),
+    routeFile: path.join(ws.base, 'no-route.json'), // the media never read this machine's headless route
     overrides: {
       scanRoots: [path.join(ws.base, 'Projects')], extraProjects: [], projects: {},
-      claudePath: process.execPath, claudeArgs: [path.join(__dirname, 'demo-claude.js')], useHooks: false,
-      accounts: { acct1: { label: 'Account 1', configDir: path.join(ws.base, 'claude-config') } }, defaultAccount: 'acct1',
+      ...paneOverrides(ws.base, opts.real), useHooks: true, defaultAccount: 'acct1',
       updates: { check: false, auto: false, repo: '<owner>/claude-console' }, plugins: { main: { enabled: false } },
       // demo shows no host data: no live CPU / RAM / drive readout, no real usage quota file
       resources: { enabled: false }, quotaStateFile: path.join(ws.base, 'no-quota.json'),
@@ -130,7 +164,7 @@ function cleanup(base) {
   try { fs.rmSync(base, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch (e) { /* temp sweep */ }
 }
 
-module.exports = { seedWorkspace, startDemo, cleanup, REPOS };
+module.exports = { seedWorkspace, startDemo, cleanup, paneOverrides, REPOS, REAL_CLAUDE_ARGS };
 
 if (require.main === module) {
   startDemo({ port: Number(process.argv[process.argv.indexOf('--port') + 1]) || 0 }).then(({ srv, ws, port, token }) => {

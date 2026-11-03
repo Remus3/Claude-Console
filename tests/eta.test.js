@@ -1,6 +1,6 @@
 'use strict';
 // CONETA (CHECKLIST-ETA-CLOCK, 2026-10-18): the console's progress display
-// (pane workflow rows, status-card rows, pane header tooltip) shows a running item whose
+// (pane progress rows, status-card rows, pane header tooltip) shows a running item whose
 // progress file carries the optional "started" field in the clock form
 // `<pct>% ~<rem>m of <total>m [h:mmAM/PM]`; a file without "started" keeps `45% ~3m`.
 // CON-ETA-REMAIN (KIT-ETA-REMAIN, kit v21 form, mirrored here, no kit code used):

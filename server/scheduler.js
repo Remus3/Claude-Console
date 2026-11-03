@@ -47,10 +47,8 @@ const PS_EXPORT = "$ErrorActionPreference = 'Stop'; "
 const BENIGN = Object.freeze({ 0: 'ok', 267009: 'running', 267011: 'never run', 2147946720: 'repeat refused (IgnoreNew)' });
 
 const FACTS = Object.freeze([
-  'Temp file COUNT is boot time here (~0.2 ms per file at logon); the directory count matters too.',
   'Task results 267009 (running), 267011 (never run) and 2147946720 (repeat refused, IgnoreNew) are not failures.',
   'Boot and logon triggers add work to every boot: delay them or keep them short.',
-  'Windows boot event 100 is dead on this machine; boot time comes from Record-BootTime.ps1 (boot-times.csv).',
 ]);
 
 const KINDS = Object.freeze({

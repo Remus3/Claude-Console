@@ -36,12 +36,12 @@ test('public sources stay ASCII (arrow labels as \\u escapes)', () => {
   }
 });
 
-test('key strip settings: every key shown by default; garbage falls back; client = server', () => {
-  const all = Object.fromEntries(K.KEYS.map((k) => [k.id, true]));
-  assert.deepStrictEqual(K.normalizeStrip(null), all);
-  assert.deepStrictEqual(UI_DEFAULTS.keyStrip, all);
-  const s = { esc: false, up: 'no', bogus: false };
-  assert.deepStrictEqual(K.normalizeStrip(s), Object.assign({}, all, { esc: false }));
+test('key strip settings (R2-6): Esc and S-Tab on by default, the rest offered; garbage falls back; client = server', () => {
+  const dflt = Object.fromEntries(K.KEYS.map((k) => [k.id, k.id === 'esc' || k.id === 'stab']));
+  assert.deepStrictEqual(K.normalizeStrip(null), dflt);
+  assert.deepStrictEqual(UI_DEFAULTS.keyStrip, dflt);
+  const s = { esc: false, up: 'no', left: true, bogus: false };
+  assert.deepStrictEqual(K.normalizeStrip(s), Object.assign({}, dflt, { esc: false, left: true }));
   assert.deepStrictEqual(sanitizeKeyStrip(s), K.normalizeStrip(s));
 });
 

@@ -52,17 +52,49 @@ test('scrub: user and host names anywhere, tokens, 32+ hex, artifact URLs, conso
   assert.deepStrictEqual(needleHits('has Zz inside', ['zz']), ['zz']);
 });
 
+// CON-RECOVER-TEMP-GAP: scrub() itself covers the temp folder, so the crash report and the
+// contribute patch hold no temp path outside home either.
+function withTempEnv(TEMP, TMP, tmpFn, fn) {
+  const saved = [process.env.TEMP, process.env.TMP, os.tmpdir];
+  process.env.TEMP = TEMP;
+  process.env.TMP = TMP;
+  if (tmpFn) os.tmpdir = tmpFn;
+  try { return fn(); } finally {
+    if (saved[0] === undefined) delete process.env.TEMP; else process.env.TEMP = saved[0];
+    if (saved[1] === undefined) delete process.env.TMP; else process.env.TMP = saved[1];
+    os.tmpdir = saved[2];
+  }
+}
+
+test('scrub: TEMP, TMP and os.tmpdir() outside home go, without any option', () => {
+  const t = withTempEnv('Q:\\OutsideHome\\TempA', 'R:\\OutsideHome\\TmpB', () => 'S:\\OutsideHome\\FromNode', () => scrub('a Q:\\OutsideHome\\TempA\\x b R:/OutsideHome/TmpB/y c S:\\\\OutsideHome\\\\FromNode\\\\z d q:\\outsidehome\\tempa'));
+  assert.strictEqual(t, 'a <PATH>\\x b <PATH>/y c <PATH>\\\\z d <PATH>');
+});
+
+test('scrub: a temp variable set to a drive root or nothing does not eat ordinary paths', () => {
+  const t = withTempEnv('C:\\', '', () => '', () => scrub('C:\\Program Files\\x and C: alone'));
+  assert.strictEqual(t, 'C:\\Program Files\\x and C: alone');
+});
+
+test('report: a temp path outside home in a log line is scrubbed', () => {
+  const s = seeded();
+  const rep = withTempEnv('Q:\\OutsideHome\\TempA', 'R:\\OutsideHome\\TmpB', null, () => CR.buildReport({ home: s.home, runDir: s.run, dataDir: s.data, git: true, username: USER, hostname: HOST, logLines: ['server.log: failed at Q:\\OutsideHome\\TempA\\x and R:\\OutsideHome\\TmpB\\y'] }));
+  assert.ok(rep.ok, rep.reason);
+  assert.ok(!/OutsideHome/.test(rep.text), rep.text);
+  assert.match(rep.text, /failed at <PATH>\\x and <PATH>\\y/);
+});
+
 test('report: allowed content only, last 200 log lines, stack without paths, needles = 0', () => {
   const s = seeded();
   const rep = CR.buildReport({ version: '0.1.3', channel: 'stable', step: { id: 'profile-verify', exit: 9009, reason: 'python not found\nsecond line dropped', stack: 'Error: x\n    at run (C:\\Users\\' + USER + '\\app\\installer\\x.js:12:3)\n    at file:///C:/Users/' + USER + '/app/y.js:3:4' },
-    runDir: s.run, dataDir: s.data, home: s.home, profileState: 'profile 1.0.0 - 38 of 147 items on', lastTx: { id: '20261019-010203-001', status: 'failed' },
+    runDir: s.run, dataDir: s.data, home: s.home, profileState: 'Setup profile: not applied. Your picks: 38 of 147 items.', lastTx: { id: '20261019-010203-001', status: 'failed' },
     os: 'win32 10.0.19045 x64', node: 'v24.0.0', git: true, username: USER, hostname: HOST });
   assert.ok(rep.ok, rep.reason);
   const t = rep.text;
   assert.match(t, /^Claude Console crash report\nversion: 0\.1\.3  channel: stable\nos: win32 10\.0\.19045 x64\nnode: v24\.0\.0\ngit: yes\nfailing step: profile-verify \(exit 9009\): python not found\n/);
   assert.ok(!t.includes('second line dropped'));
   assert.match(t, /at run \(x\.js:12:3\)/);
-  assert.match(t, /profile: profile 1\.0\.0 - 38 of 147 items on/);
+  assert.match(t, /profile: Setup profile: not applied\. Your picks: 38 of 147 items\./);
   assert.match(t, /last tx: 20261019-010203-001 failed/);
   assert.match(t, /last 200 console log line\(s\):/);
   assert.ok(t.includes('line 299 ') && !t.includes('line 99 '), 'only the last 200 lines');

@@ -23,10 +23,12 @@
   </div>
   <div id="res-strip" role="group" aria-label="Resource usage"><div id="res-items"></div></div>
   <div class="top-actions">
-    <button id="btn-font-dn" title="Smaller default font">A-</button>
-    <span id="font-size-label" class="muted"></span>
-    <button id="btn-font-up" title="Larger default font">A+</button>
     <button id="upd-badge" type="button" class="upd-badge" title="An update is available" hidden>Update available</button>
+    <!-- CON-ATTENTION-PANEL: panes that need you or wait unread; Ctrl+Alt+U jumps to the newest -->
+    <span class="top-attn">
+      <button id="btn-attn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="attn-list" title="Panes that need you or wait unread (Ctrl+Alt+U: jump to the newest unread)">? 0</button>
+      <div id="attn-list" class="pmenu top-menu attn-menu" role="menu" aria-label="Needs you"></div>
+    </span>
     <button id="btn-status" title="Show/hide the status panel">Status</button>
     <button id="btn-settings" title="Settings">Settings</button>
     <!-- CON-013 L5: header overflow: setup profile and recovery -->
@@ -53,10 +55,10 @@
   <aside id="sidebar">
     <div class="side-head">
       <span class="side-title">Projects</span>
-      <button id="btn-rescan" class="small" title="Rediscover repos">Rescan</button>
+      <button id="btn-rescan" class="small" title="Look again for git repos in the project folders">Rescan</button>
       <button id="btn-sched" class="small" title="Scheduled tasks of the console and each repo: view, add, alter, remove">Tasks</button>
       <span class="grow"></span>
-      <button id="btn-new" class="small" title="New pane: claude or shell (choose project, kind, account)">+ New pane</button>
+      <button id="btn-new" class="small" title="New pane: claude or shell (choose project, kind, account)">+ New</button>
     </div>
     <ul id="project-list"></ul>
     <div class="side-foot muted" id="side-foot"></div>
@@ -64,69 +66,84 @@
   <section id="workspace">
     <div id="grid"></div>
     <div id="empty" class="empty">
-      <h2>No panes open</h2>
-      <p>Click a project on the left to start <b>claude</b> in it, or <b>+</b> for a new pane (claude or shell). Right-click a project: new pane there.</p>
-      <p class="muted">Composer: type below a pane, <b>Enter</b> sends, <b>Shift+Enter</b> is a new line. <b>Ctrl+Shift+F</b> searches a pane's scrollback.</p>
+      <h2>Start here</h2>
+      <p>Click a project on the left, or <b>+ New</b> to open Claude in any folder. Right-click a project for a shell.</p>
+      <p class="muted">No project listed? Use + New and pick its folder; it stays listed after that.</p>
+      <p class="muted">Optional: <b>Run setup</b> in the ... menu sets Claude Code up the way the author works.</p>
     </div>
   </section>
   <aside id="statuspanel">
     <div class="side-head"><span>Status</span><span id="status-age" class="muted"></span></div>
     <section id="trk" class="trk" aria-label="Trackers">
-      <button type="button" id="trk-toggle" class="trk-head" aria-expanded="true" aria-controls="trk-body" title="Show or hide the trackers (remembered in this browser)"><span class="trk-caret" aria-hidden="true">-</span><span class="trk-title">Trackers</span><span id="trk-sum" class="trk-sum muted"></span></button>
+      <button type="button" id="trk-toggle" class="trk-head" aria-expanded="true" aria-controls="trk-body" title="Show or hide the trackers (remembered in this browser)"><span class="trk-caret" aria-hidden="true">v</span><span class="trk-title">Trackers</span><span id="trk-sum" class="trk-sum muted"></span></button>
       <div id="trk-body" class="trk-body"></div>
     </section>
     <div id="status-list"></div>
   </aside>
 </div>
-<footer id="taskbar"><span class="muted tb-label">Minimized</span><div id="tb-items"></div><span id="tb-version" class="muted" title="Claude Console version"></span></footer>
+<footer id="taskbar"><span class="muted tb-label">-</span><div id="tb-items"></div><span id="tb-version" class="muted" title="Claude Console version"></span></footer>
 
 <dialog id="dlg-new">
   <form method="dialog" id="form-new">
     <h3>New pane</h3>
     <label>Project <select name="project" id="new-project"></select></label>
+    <details id="new-other" class="fp-details">
+    <summary>Use another folder <span class="muted small" id="new-opens"></span></summary>
     <fieldset class="folder-pick" id="new-folder">
       <legend>Working folder</legend>
       <div class="fp-row">
         <select id="new-drive" aria-label="Drive"></select>
-        <input id="new-cwd" name="cwd" placeholder="Empty: project or console folder. Type a path, Enter browses" autocomplete="off" spellcheck="false" aria-label="Working folder path">
+        <input id="new-cwd" name="cwd" placeholder="Type a path, Enter opens it" autocomplete="off" spellcheck="false" aria-label="Working folder path">
         <button type="button" id="fp-up" title="Up one folder (Alt+Up)">Up</button>
       </div>
       <nav class="fp-crumbs" id="fp-crumbs" aria-label="Folder path"></nav>
       <div class="fp-list" id="fp-list" role="list" aria-label="Subfolders"></div>
       <p class="fp-note muted small" id="fp-note"></p>
     </fieldset>
+    </details>
     <label>Kind
       <select name="kind" id="new-kind"><option value="claude">claude</option><option value="shell">shell</option></select>
     </label>
     <label class="for-claude">Account <select name="account" id="new-account"></select></label>
     <label class="for-shell">Shell <select name="shell" id="new-shell"></select></label>
     <label>Extra args <input name="args" id="new-args" placeholder="e.g. --continue"></label>
-    <div class="dlg-actions"><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="primary">Open</button></div>
+    <div class="dlg-actions"><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="primary" id="new-open">Open</button></div>
   </form>
 </dialog>
 
 <dialog id="dlg-settings">
   <form method="dialog" id="form-settings">
     <h3>Settings</h3>
-    <label>Theme <select name="theme" id="set-theme"><option value="system">system</option><option value="dark">dark</option><option value="light">light</option></select> <button type="button" id="btn-theme" class="small" title="Toggle light/dark now">Toggle</button></label>
-    <label>Default terminal font size <input name="fontSize" type="number" min="9" max="40"></label>
+    <h4 class="set-sec">Appearance</h4>
+    <div class="set-line">
+      <label class="inl" title="Shows at once; Cancel undoes it">Theme <select name="theme" id="set-theme"><option value="system">system</option><option value="dark">dark</option><option value="light">light</option></select></label>
+      <label class="inl">Terminal font px <input name="fontSize" type="number" min="9" max="40" class="n3"></label>
+      <label class="inl">Line height <input name="lineHeight" type="number" min="1" max="2" step="0.05" class="n4"></label>
+      <label class="inl">Scrollback lines <input name="scrollback" type="number" min="1000" max="100000" step="1000" class="n6"></label>
+    </div>
+    <label class="inl set-font">Font family <input name="fontFamily" spellcheck="false"></label>
+    <p class="muted small set-help" id="sb-note">Scrollback: how many lines each pane keeps to scroll back through. After a reload a busy pane may come back with fewer. /clear empties it.</p>
+    <details class="set-type-d" id="set-type-d">
+      <summary class="small">Fine-tune console text size</summary>
     <fieldset class="proj-admin type-admin" id="set-type">
-      <legend>Text size (console chrome; each pane keeps its own A- / A+)</legend>
+      <legend>Text size in px (the console's own text; each pane keeps its own A- / A+)</legend>
       <div class="ts-grid">
-        <label>Base px <input name="ts-base" type="number" min="10" max="24" step="0.5"></label>
-        <label>Header (top bar) <input name="ts-header" type="number" min="-8" max="8" step="0.5"></label>
-        <label>Subheader (titles) <input name="ts-sub" type="number" min="-8" max="8" step="0.5"></label>
-        <label>Body <input name="ts-body" type="number" min="-8" max="8" step="0.5"></label>
-        <label>Nested / secondary <input name="ts-secondary" type="number" min="-8" max="8" step="0.5"></label>
-        <label>Mono (rows, paths) <input name="ts-mono" type="number" min="-8" max="8" step="0.5"></label>
-        <label>Badges / meters <input name="ts-badge" type="number" min="-8" max="8" step="0.5"></label>
+        <label class="inl">Header <input name="ts-header" type="number" min="8" max="32" step="0.5" class="n4" title="Top bar"></label>
+        <label class="inl">Subheader <input name="ts-sub" type="number" min="8" max="32" step="0.5" class="n4" title="Titles"></label>
+        <label class="inl">Body <input name="ts-body" type="number" min="8" max="32" step="0.5" class="n4"></label>
+        <label class="inl">Secondary <input name="ts-secondary" type="number" min="8" max="32" step="0.5" class="n4" title="Nested / secondary text"></label>
+        <label class="inl">Mono <input name="ts-mono" type="number" min="8" max="32" step="0.5" class="n4" title="Rows and paths"></label>
+        <label class="inl">Badges <input name="ts-badge" type="number" min="8" max="32" step="0.5" class="n4" title="Badges and meters"></label>
+        <button type="button" id="ts-reset" class="small">Reset</button>
       </div>
-      <div class="ha-row"><span class="muted small" id="ts-note">Levels are offsets from the base, in px. Changes show at once; Cancel undoes them.</span><button type="button" id="ts-reset" class="small">Reset to defaults</button></div>
+      <p class="muted small set-help" id="ts-note">Each level is its own size in px. Changes show at once; Cancel undoes them.</p>
     </fieldset>
+    </details>
+    <h4 class="set-sec">Panes</h4>
     <fieldset class="proj-admin flow-admin" id="set-flow">
-      <legend>Pane workflow rows (above each terminal and on the status cards)</legend>
-      <label>Rows shown (0 hides the strip) <input name="flowRows" type="number" min="0" max="12" step="1"></label>
+      <legend>Pane progress rows (above each terminal and on the status cards)</legend>
       <div class="fs-checks">
+        <label class="inl">Rows shown <input name="flowRows" type="number" min="0" max="12" step="1" class="n3" title="0 hides the strip"></label>
         <label class="check"><input type="checkbox" name="fs-running"> running</label>
         <label class="check"><input type="checkbox" name="fs-stale"> stale</label>
         <label class="check"><input type="checkbox" name="fs-failed"> failed</label>
@@ -135,23 +152,14 @@
         <label class="check"><input type="checkbox" name="fs-done"> done</label>
       </div>
     </fieldset>
-    <label>Font family <input name="fontFamily"></label>
-    <label>Line height <input name="lineHeight" type="number" min="1" max="2" step="0.05"></label>
-    <label>Scrollback lines <input name="scrollback" type="number" min="1000" max="100000" step="1000"></label>
-    <div class="acct-pair">
-      <label>Main / orchestrator account (interactive panes) <select name="defaultAccount" id="set-account"></select></label>
-      <label>Headless lane account <select name="headlessAccount" id="set-headless"></select></label>
-    </div>
-    <p class="muted small set-route" id="set-route" role="status"></p>
-    <label>Default shell <select name="defaultShell" id="set-shell"></select></label>
     <fieldset class="proj-admin keys-admin" id="set-keys">
       <legend>Pane key buttons (unticked = hidden)</legend>
       <div class="fs-checks">
         <label class="check"><input type="checkbox" name="key-esc"> Esc</label>
-        <label class="check"><input type="checkbox" name="key-ctrlc"> ^C</label>
+        <label class="check"><input type="checkbox" name="key-ctrlc"> Ctrl+C</label>
         <label class="check"><input type="checkbox" name="key-enter"> Enter</label>
-        <label class="check" title="Ctrl+X Ctrl+S: claude sends the typed or queued message now"><input type="checkbox" name="key-ctrlx"> ^X^S (send now)</label>
-        <label class="check"><input type="checkbox" name="key-stab"> S-Tab</label>
+        <label class="check" title="Ctrl+X Ctrl+S: claude sends the typed or queued message now"><input type="checkbox" name="key-ctrlx"> Ctrl+X Ctrl+S (send now)</label>
+        <label class="check"><input type="checkbox" name="key-stab"> Shift+Tab</label>
         <label class="check"><input type="checkbox" name="key-up"> Up</label>
         <label class="check"><input type="checkbox" name="key-down"> Down</label>
         <label class="check"><input type="checkbox" name="key-left"> Left</label>
@@ -165,13 +173,27 @@
     </fieldset>
     <label class="check"><input type="checkbox" name="idleBadge"> Badge panes waiting for input</label>
     <label class="check"><input type="checkbox" name="desktopNotify"> Desktop notification when a hidden pane needs you</label>
-    <label class="check"><input type="checkbox" name="hideCliChrome"> Composer-only claude panes: hide claude's own input box and status rows (this window)</label>
-    <label title="Refresh: the pane's task rows and project card restart, claude keeps running. Reopen: claude restarts fresh in the same pane (new session, cleared screen).">After /clear in a claude pane <select name="clearMode" id="set-clear-mode"><option value="refresh">Refresh the workflow rows</option><option value="reopen">Reopen the pane fresh</option></select></label>
-    <p class="muted small">Refresh: the workflow rows restart; claude keeps running. Reopen: claude restarts with a new session and the pane's screen is cleared.</p>
+    <label class="check"><input type="checkbox" name="hideCliChrome"> Message box only: hide Claude Code's own input box and status rows (this window)</label>
+    <label>After /clear in a Claude pane <select name="clearMode" id="set-clear-mode"><option value="refresh">Keep Claude running, restart the progress rows</option><option value="reopen">Restart Claude with a new session</option></select></label>
+    <label>Default shell <select name="defaultShell" id="set-shell"></select></label>
+    <h4 class="set-sec">Status panel</h4>
     <fieldset class="proj-admin keys-admin" id="set-trackers">
       <legend>Status panel trackers (unticked = hidden)</legend>
       <div class="fs-checks" id="set-trk-list"></div>
     </fieldset>
+    <h4 class="set-sec">Accounts</h4>
+    <label id="set-acct-row">Account for new Claude panes <select name="defaultAccount" id="set-account"></select></label>
+    <p class="muted small" id="set-acct-one" hidden>One account configured. To add another, see docs/capabilities.md section 13.</p>
+    <!-- R3-9: background-run routing does something only with a plugin; refreshRouteLine shows it then -->
+    <div id="set-hl-box" hidden>
+      <label>Account for background runs <select name="headlessAccount" id="set-headless"></select></label>
+      <div class="acct-pair hl-list" id="set-hl-list">
+        <label>Background runs: next account (at a 7-day limit) <select name="headlessAccount2" id="set-headless-2"></select></label>
+        <label>Background runs: third account <select name="headlessAccount3" id="set-headless-3"></select></label>
+      </div>
+      <label class="check"><input type="checkbox" name="headlessFallback" id="set-headless-fallback"> Fallback: move to the next listed account on a 7-day limit, back at its reset</label>
+      <p class="muted small set-route" id="set-route" role="status"></p>
+    </div>
     <fieldset class="proj-admin health-admin" id="set-credits" hidden>
       <legend>API keys and credits</legend>
       <p class="muted small">Each account reads its own key from a user environment variable, on this machine only; the key never reaches this page. An Admin key shows this month's API spend; Extra Usage shows when a source reports it.</p>
@@ -179,28 +201,38 @@
       <div id="set-credit-rows"></div>
       <div class="ha-row"><span class="muted small" id="credit-note" role="status"></span><button type="button" id="btn-credits" class="small">Re-read now</button></div>
     </fieldset>
+    <h4 class="set-sec">Setup and maintenance</h4>
     <fieldset class="proj-admin health-admin" id="set-profile">
       <legend>Setup profile <span class="pf-beta">Beta</span></legend>
       <div class="ha-row"><span class="muted small" id="prof-line" role="status">Setup profile: loading.</span><span><button type="button" id="btn-prof-browse" class="small">Browse</button> <button type="button" id="btn-prof-setup" class="small">Run setup...</button></span></div>
-      <div class="ha-row"><span class="muted small">Something wrong? Preview an exact, scrubbed report first.</span><button type="button" id="btn-crash" class="small">Report a problem</button></div>
     </fieldset>
     <fieldset class="proj-admin health-admin">
       <legend>Health &amp; cleanup</legend>
       <div class="ha-row"><span class="muted small" id="health-last">No health check run yet.</span><button type="button" id="btn-health" class="small">Run health check...</button></div>
-      <div class="ha-row"><span class="muted small" id="health-sched">Scheduled health check: loading.</span></div>
-      <div class="ha-row"><span class="muted small">Watchdog: memory and handle growth, paging, crashes (observe only).</span><button type="button" id="btn-watch" class="small" title="Watchdog readings (observe only)">Watchdog readings...</button></div>
+      <div class="ha-row" id="health-sched-row" hidden><span class="muted small" id="health-sched">Scheduled health check: loading.</span></div>
+      <div class="ha-row"><span class="muted small">Watchdog: records memory and crash numbers every 10 minutes, on this computer only, kept 14 days. It changes nothing and has no alerts yet. Turn off with "watchdog": {"enabled": false} in console.local.json.</span><button type="button" id="btn-watch" class="small" title="Watchdog readings (observe only)">Watchdog readings...</button></div>
+    </fieldset>
+    <fieldset class="proj-admin health-admin" id="set-machine">
+      <legend>Machine</legend>
+      <div class="ha-row"><span class="muted small" id="mach-line" role="status">Machine: loading.</span><button type="button" id="btn-mach-open" class="small">Open machine advisor...</button></div>
     </fieldset>
     <fieldset class="proj-admin health-admin" id="set-updates">
       <legend>Updates &amp; repair</legend>
-      <div class="ha-row"><span class="muted small" id="upd-state" role="status">Checking...</span><span><button type="button" id="btn-upd-check" class="small">Check now</button> <button type="button" id="btn-upd-apply" class="small">Update now</button></span></div>
-      <div class="ha-row"><span class="muted small" id="upd-last"></span><button type="button" id="btn-upd-contrib" class="small">Contribute?</button></div>
-      <div class="ha-row"><span class="muted small">Repair restores missing files and keeps your tweaks. Fresh and factory reinstall run from the CLI after Quit (claude-console reinstall).</span><button type="button" id="btn-upd-repair" class="small">Repair...</button></div>
+      <div class="ha-row"><span class="muted small" id="upd-state" role="status">Reading the version.</span><span><button type="button" id="btn-upd-check" class="small">Check now</button> <button type="button" id="btn-upd-apply" class="small">Update now</button></span></div>
+      <div class="ha-row"><span class="muted small" id="upd-how">Nothing checks in the background. Press Check now to look for a new version.</span></div>
+      <div class="ha-row"><span class="muted small" id="upd-last"></span></div>
+      <div class="ha-row"><span class="muted small" id="upd-contrib-help">Bundles your own edits to the console's files into one scrubbed patch file in reports/, to share if you want; nothing is sent.</span><button type="button" id="btn-upd-contrib" class="small">Save my edits as a patch</button></div>
+      <div class="ha-row"><span class="muted small">Repair restores missing files and keeps your changes. For a clean reinstall, press Quit and run claude-console reinstall in a terminal; it explains the options.</span><button type="button" id="btn-upd-repair" class="small">Repair...</button></div>
       <div class="ha-row" id="upd-repair-row" hidden><span class="muted small" id="upd-repair-what"></span><span><input id="upd-repair-phrase" autocomplete="off" spellcheck="false" autocapitalize="off" aria-label="Confirmation phrase"> <button type="button" id="btn-upd-repair-go" class="small danger">Repair</button></span></div>
-      <label class="check"><input type="checkbox" id="upd-auto"> Auto-update inside the update window, only when no pane is busy</label>
+      <div class="ha-row"><span class="muted small">To remove the console: Apps &amp; features &gt; Claude Console &gt; Uninstall.</span></div>
     </fieldset>
+    <div class="health-admin set-crash">
+      <div class="ha-row"><span class="muted small">Something wrong? Preview an exact, scrubbed report first.</span><button type="button" id="btn-crash" class="small">Report a problem</button></div>
+    </div>
+    <h4 class="set-sec">Projects</h4>
     <fieldset class="proj-admin">
-      <legend>Projects</legend>
       <ul id="set-projects" class="set-projects"></ul>
+      <ul id="set-hidden" class="set-projects" hidden></ul>
     </fieldset>
     <p class="muted small" id="settings-info"></p>
     <div class="dlg-actions"><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="primary">Save</button></div>
@@ -210,11 +242,11 @@
 <dialog id="dlg-health" aria-labelledby="hc-title">
   <form method="dialog" id="form-health">
     <h3 id="hc-title">Health check and cleanup</h3>
-    <p class="muted small" id="hc-intro">Tick the steps to run. Deterministic steps cost $0 / 0 tokens; the LLM step's cost is estimated from past runs. Every delete goes to the Recycle Bin unless the step says otherwise.</p>
+    <p class="muted small" id="hc-intro">Tick the steps to run. None of these use Claude or cost anything. Anything deleted goes to the Recycle Bin unless the step says otherwise.</p>
     <div id="hc-steps" class="hc-steps"></div>
     <p class="small hc-total" id="hc-total"></p>
     <div id="hc-report" class="hc-report" hidden></div>
-    <fieldset id="hs-box" class="hs-box">
+    <fieldset id="hs-box" class="hs-box" hidden>
       <legend>Schedule (read-only steps, no deletes)</legend>
       <p class="small" id="hs-line">Scheduled health check: loading.</p>
       <p class="small muted" id="hs-last"></p>
@@ -237,7 +269,7 @@
     <h3 id="pf-title">Setup profile <span id="pf-ver" class="num"></span> <span class="pf-beta">Beta</span></h3>
     <label class="pf-target">Target <select id="pf-target"></select></label>
     <span class="grow"></span>
-    <button type="button" id="pf-review" class="small" title="Pending changes: open the dry-run plan">Review 0</button>
+    <button type="button" id="pf-review" class="small" title="Open the dry-run plan: exactly what Apply would change">Review</button>
     <button type="button" id="pf-tx" class="small" title="Applied changes; revert one">History</button>
     <button type="button" id="pf-setup" class="small">Run setup...</button>
     <button type="button" id="pf-close" class="small">Close</button>
@@ -264,8 +296,8 @@
       <ol id="wz-rail" class="wz-rail" aria-label="Progress"></ol>
     </div>
     <div id="wz-body" class="wz-body"></div>
-    <p class="small wz-note" id="wz-note" role="alert"></p>
     <div class="dlg-actions wz-actions">
+      <p class="small wz-note" id="wz-note" role="alert"></p>
       <span class="grow"></span>
       <button type="button" id="wz-switch">Switch to custom setup</button>
       <button type="button" id="wz-back">Back</button>
@@ -297,7 +329,7 @@
   <p class="small muted" id="cr-size"></p>
   <div class="dlg-actions cr-acts">
     <button type="button" id="cr-issue" class="cr-act" title="Opens a pre-filled issue on Remus3/Claude-Console in your browser">Open a GitHub issue</button>
-    <button type="button" id="cr-claude" class="cr-act" title="A new local Claude pane with the report in its composer">Ask my Claude to fix it</button>
+    <button type="button" id="cr-claude" class="cr-act" title="A new local Claude pane with the report in its message box">Ask my Claude to fix it</button>
     <button type="button" id="cr-save" class="cr-act" title="Documents/claude-console-report-[stamp].txt">Save to file</button>
     <button type="button" id="cr-close">Close</button>
   </div>
@@ -308,6 +340,7 @@
 <dialog id="dlg-stop" aria-labelledby="st-title">
   <h3 id="st-title">Stop everything</h3>
   <p class="small">Stops only what this console started: its panes and headless runs (Claude sessions the console starts in the background, with no window), found by recorded process id; the scheduled tasks the setup profile added (disabled, not deleted); and the profile hooks (small scripts Claude runs before or after its actions).</p>
+  <p class="small">The console window stays open. To close the console, use Quit. Stays stopped until you press Resume, also after a restart.</p>
   <p class="small pf-note" id="st-line" role="status"></p>
   <p class="small pf-note" id="st-confirm" role="alert"></p>
   <div class="dlg-actions">
@@ -321,7 +354,7 @@
      panel further down (UX-B2). -->
 <dialog id="dlg-help" class="cr-dlg" aria-labelledby="gh-title">
   <h3 id="gh-title">Get help in the browser</h3>
-  <p class="small">For when Claude itself is broken: this text explains the problem, your setup (names only) and the exact undo steps. The button copies it and opens claude.ai; paste it into the new chat.</p>
+  <p class="small">For when Claude itself is broken: this text explains the problem, your setup (setting, hook and project folder names only) and the exact undo steps. The button copies it and opens claude.ai; paste it into the new chat.</p>
   <textarea id="gh-text" class="mono cr-text" readonly aria-label="Recovery prompt"></textarea>
   <p class="small muted" id="gh-size"></p>
   <div class="dlg-actions"><button type="button" id="gh-close">Close</button><button type="button" id="gh-go" class="primary">Copy and open claude.ai</button></div>
@@ -337,7 +370,7 @@
       <button type="button" id="sc-refresh" class="small">Refresh</button>
     </div>
     <p class="small" id="sc-sum">Loading.</p>
-    <details class="sc-facts-d"><summary class="small muted">Machine facts (CLAUDE.md)</summary><ul id="sc-facts" class="small muted"></ul></details>
+    <details class="sc-facts-d"><summary class="small muted">What the result codes mean</summary><ul id="sc-facts" class="small muted"></ul></details>
     <div id="sc-list" class="sc-list"></div>
     <details id="sc-add" class="sc-add">
       <summary id="sc-add-sum">Add a task</summary>
@@ -377,12 +410,23 @@
 
 <dialog id="dlg-remove" aria-labelledby="rm-title">
   <form method="dialog" id="form-remove">
-    <h3 id="rm-title">Remove project</h3>
+    <h3 id="rm-title">Hide project</h3>
     <p id="rm-what"></p>
-    <p class="rm-safe">This removes the project from the console. Files on disk are not touched.</p>
-    <label>Type <b>DELETE PROJECT</b> to confirm <input id="rm-phrase" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
+    <p class="rm-safe" id="rm-same" hidden></p>
+    <label id="rm-phrase-row">Type <b>DELETE PROJECT</b> to confirm <input id="rm-phrase" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
     <p class="rm-note small" id="rm-note" role="alert"></p>
-    <div class="dlg-actions"><button value="cancel" formnovalidate>Cancel</button><button type="button" id="rm-go" class="danger-solid" disabled>Remove</button></div>
+    <div class="dlg-actions"><button value="cancel" formnovalidate>Cancel</button><button type="button" id="rm-go" class="danger-solid" disabled>Hide</button></div>
+  </form>
+</dialog>
+
+<!-- R1-15: a pane that cannot open says why in the console's own dialog; an install command sits in a box to select or copy -->
+<dialog id="dlg-paneerr" aria-labelledby="pe-title">
+  <form method="dialog">
+    <h3 id="pe-title">Could not open pane</h3>
+    <p id="pe-what"></p>
+    <div class="pe-cmd" id="pe-cmd-row" hidden><input id="pe-cmd" readonly aria-label="Command to run" spellcheck="false"><button type="button" id="pe-copy">Copy</button></div>
+    <p id="pe-after" hidden></p>
+    <div class="dlg-actions"><button value="cancel" class="primary">Close</button></div>
   </form>
 </dialog>
 
@@ -417,6 +461,8 @@
 <script src="/vendor/addon-fit.js"></script>
 <script src="/vendor/addon-search.js"></script>
 <script src="/vendor/addon-web-links.js"></script>
+<script src="/vendor/addon-progress.js"></script>
+<script src="/vendor/addon-webgl.js"></script>
 <script src="/app.js"></script>
 <script src="/profile.js"></script>
 <script src="/setup-paths.js"></script>

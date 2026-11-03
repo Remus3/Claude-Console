@@ -42,7 +42,7 @@ function item(mod, order, pos, o) {
   }, o || {});
 }
 
-const TASK_XML = (what) => '<?xml version="1.0"?>\n<Task><Description>' + what + '</Description><Exec>{python}</Exec></Task>\n';
+const TASK_XML = (what) => '<?xml version="1.0"?>\n<Task><Description>' + what + '</Description><Settings><Hidden>true</Hidden></Settings><Exec>{python} {repo_root}/tools/task.py</Exec></Task>\n';
 
 function moduleFor(mod, order) {
   const items = [item(mod, order, 1), item(mod, order, 2, { default: order === 1 ? 'on' : 'off', title: TITLES[mod] + ' extra' })];
@@ -118,7 +118,7 @@ const PROFILE = {
     repo_root: { type: 'path', scope: 'target' },
     handoff_name: { type: 'derived', value: '{repo_code}-NEXT-SESSION.txt' },
     python: { type: 'exe', detect: 'python', why: 'Runs the kit hooks.' },
-    operator_ident: { type: 'git-ident', ask: 'wizard.step.identity', why: 'Your own name and email for commits.', store: 'git-config-local' },
+    operator_ident: { type: 'git-ident', ask: 'wizard.step.identity', label: 'Your name and email for commits', why: 'Your own name and email for commits.', store: 'git-config-local' },
     headless_base_url: { type: 'url', pattern: '^http://127\\.0\\.0\\.1:[0-9]{2,5}/?$', optional: true, ask: 'wizard.step.headless', why: 'The loopback proxy URL you run for headless runs.' },
   },
 };
@@ -153,6 +153,8 @@ function seedProfile(dir, o) {
   MODULES.forEach((mod, i) => {
     const m = moduleFor(mod, i + 1);
     if (o.extraItem && mod === 'lessons') m.items.push(item(mod, i + 1, m.items.length + 1, { id: 'lessons-new-rule', title: 'A new lesson', default: 'on' }));
+    // The item the engine's typed acknowledgement is for (off, in the preset too): the isolated e2e's refusal case.
+    if (o.bypassItem && mod === 'permissions-context') m.items.push(item(mod, i + 1, m.items.length + 1, { id: 'set-bypass-permissions', title: 'Run tools without permission prompts', risk: 'high', default: 'off', does: 'Sets permissions.defaultMode to bypassPermissions.', why: 'Most people should not.', contributes: [{ kind: 'json-merge', target: 'user:settings.json', value: { permissions: { defaultMode: 'bypassPermissions' } }, mode: 'replace-ask' }], detect: [], verify: [] }));
     w(path.join(dir, 'modules', mod, 'module.json'), JSON.stringify(m, null, 2) + '\n');
     for (const it of m.items) {
       for (const c of it.contributes) {
@@ -163,7 +165,7 @@ function seedProfile(dir, o) {
         else w(f, '# ' + it.title + '\n\n' + it.does + '\n\nWhy: ' + it.why + '\n');
       }
       // remus3 = everything on except the conflict partner and the extra items of modules 20-22.
-      preset.items[it.id] = it.id === 'md-wakeup-notes' || (i >= 19 && /-item-2$/.test(it.id)) ? 'off' : 'on';
+      preset.items[it.id] = it.id === 'md-wakeup-notes' || it.id === 'set-bypass-permissions' || (i >= 19 && /-item-2$/.test(it.id)) ? 'off' : 'on';
     }
   });
   w(path.join(dir, 'presets', 'remus3.json'), JSON.stringify(preset, null, 2) + '\n');

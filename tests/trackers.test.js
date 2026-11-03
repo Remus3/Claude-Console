@@ -16,11 +16,13 @@ const { makeFixture } = require('./helpers');
 test('12 trackers, one Settings toggle each, default shown; junk sanitized', () => {
   assert.strictEqual(T.TRACKER_IDS.length, 12);
   assert.deepStrictEqual(T.TRACKER_IDS, ['gate', 'tasks', 'headless', 'notes', 'kit', 'locks', 'worktrees', 'machine', 'route', 'usage', 'lanes', 'stalls']);
-  assert.deepStrictEqual(UI_DEFAULTS.trackers, Object.fromEntries(T.TRACKER_IDS.map((k) => [k, true])));
+  assert.deepStrictEqual(UI_DEFAULTS.trackers, Object.fromEntries(T.TRACKER_IDS.map((k) => [k, k !== 'machine'])), 'R2-29: Machine starts off');
   const s = sanitizeUiPrefs({ trackers: { gate: false, tasks: 'no', bogus: false } });
   assert.strictEqual(s.trackers.gate, false);
   assert.strictEqual(s.trackers.tasks, true);
   assert.ok(!('bogus' in s.trackers));
+  assert.strictEqual(s.trackers.machine, false, 'R2-29: unset means off');
+  assert.strictEqual(sanitizeUiPrefs({ trackers: { machine: true } }).trackers.machine, true);
 });
 
 test('scheduled tasks tracker: benign results are not failures; quiet pauses and disabled listed', () => {
@@ -67,6 +69,9 @@ test('client: shown ids follow the toggles; summary line; sparkline points', () 
     machine: { summary: 'CPU 5%', state: 'ok' },
   } };
   assert.deepStrictEqual(TK.shown(snap, { tasks: false }), ['gate', 'machine']);
+  assert.strictEqual(TK.heading(snap, { gate: false, machine: false }), 'Scheduled tasks', 'R2-29: only the tasks on');
+  assert.strictEqual(TK.heading(snap, { gate: false }), 'Trackers');
+  assert.strictEqual(TK.heading(snap, { tasks: false, machine: false }), 'Trackers');
   assert.strictEqual(TK.summaryLine(snap, {}), 'Suite gate: 1 of 2 slots held | Scheduled tasks: 3 tasks, 1 failing');
   assert.strictEqual(TK.summaryLine(snap, { gate: false, tasks: false }), '1 tracker, all calm');
   assert.strictEqual(TK.summaryLine(snap, { gate: false, tasks: false, machine: false }), 'All trackers hidden: tick them in Settings > Status panel trackers.');
@@ -103,6 +108,6 @@ test('GET /api/trackers: token required, generic trackers in a test server, numb
   assert.strictEqual(r.status, 200);
   const j = await r.json();
   assert.ok(Array.isArray(j.order) && j.order.includes('machine') && j.order.includes('tasks'));
-  assert.ok(j.trackers.machine && typeof j.trackers.machine.summary === 'string');
+  assert.ok(!j.trackers.machine && typeof j.trackers.tasks.summary === 'string', 'R2-29: Machine is off until Settings turns it on');
   assert.ok(!/@|token|secret/i.test(JSON.stringify(j)));
 });

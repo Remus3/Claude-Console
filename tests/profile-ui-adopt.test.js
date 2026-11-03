@@ -180,6 +180,30 @@ test('adopt routes: choose, apply, check FAILED + bisect, revert each breaker, w
   });
 });
 
+test('R3-19: Leave out folders reaches the route: the folder is not copied, the original keeps it, and the list and load bring the adoption back', async () => {
+  const wd = world();
+  w(path.join(wd.demo, 'node_modules', 'pkg', 'index.js'), 'module.exports = 1;\n');
+  w(path.join(wd.demo, 'vendor-big', 'blob.bin'), 'x'.repeat(2048));
+  const before = CP.treeHash(wd.demo);
+  await withServer(wd, async (c) => {
+    const st = (await c('POST', { op: 'start', project: 'demo', values: VALUES, exclude: ['node_modules', 'vendor-big'] })).body;
+    assert.strictEqual(st.ok, true, st.line);
+    const ad = AD.openAdopt({ engine: null, dataDir: wd.dataDir }).load(st.adoption.id);
+    assert.deepStrictEqual(ad.exclude, ['node_modules', 'vendor-big']);
+    assert.ok(!fs.existsSync(path.join(ad.copyDir, 'node_modules')) && !fs.existsSync(path.join(ad.baseDir, 'node_modules')), 'not copied');
+    assert.ok(!fs.existsSync(path.join(ad.copyDir, 'vendor-big')));
+    assert.ok(fs.existsSync(path.join(ad.copyDir, 'README.md')), 'the rest is');
+    assert.ok(fs.existsSync(path.join(wd.demo, 'node_modules', 'pkg', 'index.js')), 'the original keeps it');
+    // R3-20: closing the dialog loses nothing: list, then load, is the way back.
+    const ls = (await c('POST', { op: 'list' })).body.adoptions;
+    assert.deepStrictEqual(ls.map((a) => [a.id, a.project, a.status]), [[st.adoption.id, 'demo', 'scanned']]);
+    const ld = (await c('POST', { op: 'load', id: ls[0].id })).body;
+    assert.deepStrictEqual([ld.ok, ld.adoption.status, ld.adoption.project], [true, 'scanned', 'demo']);
+    assert.ok(ld.report.modules.length > 0, 'the report is there to render again');
+  });
+  assert.strictEqual(CP.treeHash(wd.demo), before);
+});
+
 test('adopt routes: off when the build has no adopt module or no profile', async () => {
   const wd = world({ adopt: null });
   await withServer(wd, async (c) => {

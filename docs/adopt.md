@@ -22,22 +22,21 @@ it, the command walks you through every step and asks before each one.
 | "Works" means this exact copy | your confirmation is stored with a hash of the copy; any later edit to the copy needs a new confirmation |
 | The original goes only by a later, separate step | to the Recycle Bin or a zip archive, after a typed phrase |
 | Every step can be undone byte for byte | per change, per module, or the whole adoption |
-| Nothing is committed or pushed for you | the copy is a branch or folder you own; the console prints a suggested commit message |
+| Nothing is committed or pushed for you | the copy is a folder you own; the console prints a suggested commit message |
 
 ## 1. Copy
 
-The console always works on a copy; there is no in-place adoption.
+The console always works on a copy; there is no in-place adoption. **Copy and scan** makes
+a full byte copy of the folder, untracked and ignored files and `.git` included, and
+records a fingerprint of every original file. Nothing is added to your project's `.git`.
+Symbolic links and junctions are listed and not followed.
 
-- When the project is a git repository with a clean working tree, the copy is a new
-  worktree on its own branch, `profile-adopt/<stamp>`.
-- Otherwise (uncommitted changes, ignored files that matter, or not a git repository)
-  it makes a full copy of the folder, untracked and ignored files included, and records
-  a fingerprint of every original file.
-
-You see the size of the copy first and can leave out folders the checks do not need,
-such as `node_modules` (`--exclude node_modules`). The copy lives in the console's data
-folder under `data\adopt\` (or in the sidecar area when that module is on), never inside
-your project and never in Temp.
+**Leave out folders** takes top-level folders the checks do not need, such as
+`node_modules`, which it starts with (`--exclude node_modules` in a terminal). They are not
+copied, the checks run without them, and promoting the copy keeps them. In the console the
+size shows once the copy is made; the terminal command prints it just before copying. The
+copy lives in the console's data folder under `data\adopt\` (or outside your repositories
+with the Sidecar module on), never inside your project and never in Temp.
 
 ## 2. Report
 
@@ -92,17 +91,18 @@ accepted changes caused it, names it, and offers to revert just that change
 (`profile adopt revert <id> --change <change-id> --apply --yes`) and run the check
 again.
 
-When you are satisfied, confirm by typing `works` (`profile adopt works <id> --type
-works`). The full diff of the copy against the original is shown next to the
-confirmation.
+When you are satisfied, press **It works** (or type `works` in the terminal: `profile adopt
+works <id> --type works`). The full diff of the copy against the original is shown next to
+the confirmation.
 
 ## 5. Promote
 
 Only after "works" can the copy become your project. Choose one way:
 
-- **git**: the copy's branch is merged into your project's current branch, as a
-  fast-forward when possible. The console makes only that merge and never pushes. If
-  you changed the original after the copy was made, it refuses and lists the changes.
+- **git**: commit the accepted changes in the copy first, since the console never commits.
+  Your project's current branch then fast-forwards to the copy, and nothing is pushed. It
+  refuses if the original has uncommitted changes or its HEAD moved after the copy was
+  made.
 - **folder swap**: your original folder is renamed to `<name>.pre-profile-<stamp>`
   beside it, and the copy moves into its place. Both are shown.
 

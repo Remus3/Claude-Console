@@ -98,6 +98,9 @@ denies. Non-allow decisions append one JSONL line to
 <project>/ops/loop/control/claims.jsonl. Stdout carries only the JSON decision.
 Never fails closed: any exception -> exit 0, no output.
 
+v27 (KIT-HOOK-FAST): subprocess is imported only by porcelain_paths (the one
+git call), not at hook start.
+
 Pure stdlib. No machine path, account id or repo name appears in this file.
 """
 
@@ -107,7 +110,6 @@ import json
 import os
 import re
 import shlex
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -530,6 +532,13 @@ _GITLOCK = "kit_gitlock.py"
 _GATE = "kit_suite_gate.py"
 
 
+def names_helper(seg, helper, win=None):
+    """v26 RM-778: True when a segment names a kit helper script. Case-folded
+    on Windows, where an upper-case spelling of the gate runs the same file."""
+    win = WIN if win is None else win
+    return helper.lower() in seg.lower() if win else helper in seg
+
+
 def _unquote(s):
     return s[1:-1] if len(s) >= 2 and s[0] == s[-1] and s[0] in "\"'" else s
 
@@ -807,7 +816,7 @@ def add_then_gitlock(command):
     gitlock call fails, the staged paths stay in the shared index."""
     seen_add = False
     for seg in _segments(command):
-        if _GITLOCK in seg:
+        if names_helper(seg, _GITLOCK):
             if seen_add:
                 return True
             continue
@@ -831,7 +840,7 @@ def _bare_git(command, cwd, project, verbs):
             if cd is not None:
                 here = _abs(_msys(cd), here)
                 continue
-        if _GITLOCK in seg:
+        if names_helper(seg, _GITLOCK):
             continue
         if read_only_search(words):
             continue
@@ -865,7 +874,7 @@ def _pytest_at(words):
 def bare_whole_suite(command):
     """True when a segment runs pytest naming no test FILE, not via the gate."""
     for seg in _segments(command):
-        if _GATE in seg:
+        if names_helper(seg, _GATE):
             continue
         words = _words(seg)
         if read_only_search(words):
@@ -886,13 +895,14 @@ def owner_flag_missing(command, me):
     """The helper name when a gitlock/gate `run` lacks `--owner <me>`."""
     for seg in _segments(command):
         for helper in (_GITLOCK, _GATE):
-            if helper not in seg:
+            if not names_helper(seg, helper):
                 continue
             words = _words(seg)
             if read_only_search(words):
                 continue
             at = [j for j, w in enumerate(words[:4])
-                  if w.replace("\\", "/").endswith(helper)]
+                  if (w.replace("\\", "/").lower().endswith(helper.lower()) if WIN
+                      else w.replace("\\", "/").endswith(helper))]
             if at and at[0] + 1 < len(words) and words[at[0] + 1] == "run":
                 given = None
                 for k, w in enumerate(words):
@@ -940,7 +950,12 @@ def decide_edit(payload, me, now, ttl_s):
     target = ti.get("file_path") or ti.get("notebook_path")
     if not target or not me:
         return "allow", ""
-    path = _abs(target, payload.get("cwd") or os.getcwd())
+    base = payload.get("cwd")
+    if not base and not Path(os.path.expandvars(os.path.expanduser(str(target)))).is_absolute():
+        # v24 (KIT-CLAIMS-CWD): a relative path with no tool cwd has no known
+        # base; never guess the hook process's (project) dir - claim nothing.
+        return "allow", ""
+    path = _abs(target, base or os.getcwd())
     t = tree_of(path)
     if t is None or exempt(rel_in(path, t[0])):
         return "allow", ""
@@ -990,6 +1005,7 @@ def porcelain_paths(top, specs, runner=None):
     """Absolute paths `git status --porcelain` reports under the pathspecs
     (v17, `git add -A` / `.` / a directory or glob). ONE git call; any git
     error or timeout returns [] (claim nothing, never deny)."""
+    import subprocess  # noqa: PLC0415 - v27 KIT-HOOK-FAST: lazy, ~4-28 ms per hook start
     runner = runner or subprocess.run
     git = os.environ.get("KIT_GIT") or "git"
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if WIN else 0
@@ -1016,18 +1032,37 @@ def porcelain_paths(top, specs, runner=None):
 
 def shell_targets(command, cwd):
     """(files, specs): files a shell command writes or `git add`s by name,
-    and the (base, pathspec) pairs a whole-tree / directory / glob add names."""
-    files = [_abs(p, cwd) for p in write_targets(command)]
-    specs = []
-    for cdir, paths in git_add_targets(command):
-        base = _abs(cdir, cwd) if cdir else Path(cwd)
-        for p in paths:
-            ap = base if p == "." else _abs(p, base)
-            if p == "." or _GLOB.search(p) or ap.is_dir():
-                specs.append(ap)
-            else:
-                files.append(ap)
+    and the (base, pathspec) pairs a whole-tree / directory / glob add names.
+    v24 (KIT-CLAIMS-CWD): a relative target resolves against the command's
+    EFFECTIVE cwd - the dir a preceding plain `cd` / Set-Location segment
+    moved to (Git Bash /d/x spellings mapped), else cwd - never against the
+    session's project root, and every returned path is absolute."""
+    files, specs = [], []
+    here = Path(cwd)
+    for seg in _segments(command):
+        cd = _cd_target(_words(seg))
+        if cd is not None:
+            here = _abs(_msys(cd), here)
+            continue
+        files += [_abs(_msys(p), here) for p in write_targets(seg)]
+        for cdir, paths in git_add_targets(seg):
+            base = _abs(_msys(cdir), here) if cdir else here
+            for p in paths:
+                ap = base if p == "." else _abs(_msys(p), base)
+                if p == "." or _GLOB.search(p) or ap.is_dir():
+                    specs.append(ap)
+                else:
+                    files.append(ap)
     return files, specs
+
+
+def _glob_base(spec):
+    """v24: the deepest parent of a glob pathspec with no glob character (the
+    spec is absolute and already resolved against the effective cwd)."""
+    p = Path(spec)
+    while _GLOB.search(str(p)) and p.parent != p:
+        p = p.parent
+    return p
 
 
 def claim_shell(payload, me, cwd, files, specs, now, ttl_s, porcelain=None):
@@ -1040,7 +1075,7 @@ def claim_shell(payload, me, cwd, files, specs, now, ttl_s, porcelain=None):
             continue
         by_main.setdefault(str(t[2]), (t, [], []))[1].append(p)
     for s in specs:
-        t = tree_of(s if not _GLOB.search(str(s)) else Path(cwd))
+        t = tree_of(s if not _GLOB.search(str(s)) else _glob_base(s))
         if t is not None:
             by_main.setdefault(str(t[2]), (t, [], []))[2].append(s)
     for main, (t, fs, ss) in by_main.items():
@@ -1213,18 +1248,33 @@ def _cli(argv):
     return 2
 
 
+def take_nonce(argv):
+    """v26 (SC-815): (argv without `--kit-nonce N`, N or None)."""
+    argv = list(argv)
+    if "--kit-nonce" in argv:
+        k = argv.index("--kit-nonce")
+        if k + 1 < len(argv):
+            return argv[:k] + argv[k + 2:], argv[k + 1]
+    return argv, None
+
+
 def main(argv=None):
-    argv = sys.argv[1:] if argv is None else argv
-    if argv[:1] in (["hook"], ["release-hook"]):
-        try:
-            text = sys.stdin.read()
-            out = run_hook(text) if argv[0] == "hook" else run_release_hook(text)
-        except Exception:  # never fail closed
+    argv, nonce = take_nonce(sys.argv[1:] if argv is None else argv)
+    try:
+        if argv[:1] in (["hook"], ["release-hook"]):
+            try:
+                text = sys.stdin.read()
+                out = run_hook(text) if argv[0] == "hook" else run_release_hook(text)
+            except Exception:  # never fail closed in-process; the launcher proves life
+                return 0
+            if out:
+                sys.stdout.write(out + "\n")
             return 0
-        if out:
-            sys.stdout.write(out + "\n")
-        return 0
-    return _cli(argv)
+        return _cli(argv)
+    finally:
+        if nonce is not None:  # v26 kit_hook.sh proof line, on every exit path
+            sys.stdout.write(f"KIT-NONCE {nonce}\n")
+            sys.stdout.flush()
 
 
 if __name__ == "__main__":

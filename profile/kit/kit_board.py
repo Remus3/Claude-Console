@@ -1,57 +1,54 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 the operator - the kit's owner and sole copyright holder. See NOTICE.
-"""Kit v21 - STATUS BOARD (SHARED RULES 18): the per-tree claude.ai board.
+"""Kit v23 - STATUS BOARD (SHARED RULES 18): the per-tree LOCAL board.
 Vendored byte-for-byte at ops/kit/ and pinned by MANIFEST.json. Do NOT
 edit a vendored copy: report the defect to SUPERVISOR.
 
-Every live tree has one Dashboard-type artifact (its URL in the tree's own
-`ops/status_board.json`: {"url"}, optional "code" and "dataset_version").
-The board page reads ONE dataset, `datasets/board`, whose source is an uploaded `status.json`
-asset: a JSON array of rows
+v23 (author's rule 2026-10-25): the board is LOCAL ONLY. No claude.ai
+artifact, no Artifact upload, no ArtifactData update, no board URL. Why: the
+operator views the board locally; the artifact push wasted tokens. Nothing
+this helper prints is a tool call.
+
+    python ops/kit/kit_board.py render --session <n> < checklist.txt
+       -> writes <main checkout>/ops/loop/control/board/status.json,
+          state.json and board.html; prints {"rendered", "file", "html", "rows"}
+
+status.json is a JSON array of rows
 
     {"id", "group": running|operator|next|done, "seq", "task", "state", "detail"}
 
-This helper RENDERS that file deterministically from the item-13 session
-checklist (the text the session already printed, or progress-file "checklist"
-rows) plus this tree's running progress files - no model composition. Why: the
-operator wants a board per repo at minimal token cost, so a push is exactly
+and board.html is a static, self-contained page (no script, no network, light
+and dark, re-read every 60 s by an open browser tab) built from the same
+rows. Open board.html in any browser. Rendering is deterministic from the
+item-13 session checklist (the text the session already printed, or
+progress-file "checklist" rows) plus this tree's running progress files - no
+model composition. A session renders only at session start, at the
+every-4-completions reprint and at /done (`render --final`), never per step.
+A headless run never renders: render prints {"rendered": false, "reason":
+"headless"} and writes nothing.
 
-    1. python ops/kit/kit_board.py render --session <n> < checklist.txt
-       -> prints {"push", "file", "board", "if_version", "data"}
-    2. Artifact publish  url=<board> file_path=<file> asset=true  -> /_blob/<id>
-    3. ArtifactData update url=<board> collection=datasets doc_id=board
-       if_version=<if_version> data=<data with "__URL__" replaced by the blob url>
+Tasks that were open at the last render and are gone now move to "done", in
+completion order; a new session number starts a fresh done list.
 
-`calls` (same arguments as render) does step 1 and prints steps 2 and 3
-as the exact tool calls, so the session spends no tokens composing them;
-pushes happen only at session start, at the every-4-completions reprint
-and at /done (`render --final`), never per step. A headless run never pushes
-(no artifact tools assumed): render prints {"push": false, "reason":
-"headless"} and writes nothing. If step 3 fails on a version mismatch, run
-`pushed --version <current>` and redo step 3 with that pin.
+`calls` is kept for a tree whose /done still names it (v19-v22): it renders
+the same files and prints one line `board: <board.html> (local only, nothing
+to push)`. `pushed` and `account` are kept as no-ops that print one line.
+ops/status_board.json is no longer read except its optional "code" (the
+page title); a tree may leave the file or delete it.
 
-State between pushes lives in <main checkout>/ops/loop/control/board/
-(state.json, status.json). Tasks that were open at the last render and are
-gone now move to "done", in completion order; a new session number starts a
-fresh done list. `page --title <t>` prints the board's index.html (the one
-page every board uses; ASCII, no names or paths).
+v26: task IDs up to ID_MAX (48) chars, shared with kit_checklist (SI FIX
+0612: a 17+ char ID was silently dropped); a box line that is not a task row
+and not the /done box FAILS LOUDLY (exit 2, nothing written); a non-empty
+checklist that parses to no task and no /done box is refused and leaves
+state.json untouched (KIT-BOARD-EMPTY - stdin is read as UTF-8 bytes, so a
+cp1252 console no longer turns the box into mojibake); `--final` moves only
+the rows passed as done (state done) to done and keeps every carried row
+open (SA 2128 item 4); the page gains a Lanes card from kit_lanes status
+(holders + queue, local board only; KIT-BOARD-LANES).
 
-v21 KIT-BOARD-ACCT (option 2, the permanent fix): a board belongs to the
-claude.ai account that created it, and a session on the other account gets
-not_found pushing to it. `ops/status_board.json` may now name one board per
-account: {"url", "owner": "A2", "boards": {"A1": <url>, "A2": <url>}} (account
-LABELS only, never an id or email; "url" stays the board the console links,
-and "url" + "owner" count as boards[owner]). The session's account is the
-statusline's label - A<n> from an `acct<n>` CLAUDE_CONFIG_DIR basename, else
-A1. render pushes to boards[<label>] and pins its dataset version per account
-(state.json "versions"); with no board for the label it prints {"push":
-false, "reason": "no board for account A1 ...", "create": {...}} - create
-the board from that session (Dashboard type, `page --title`) and record it
-with `kit_board.py account --url <url>` (that session's label). A config
-with only "url" (no owner, no boards) behaves as before: every session pushes
-to "url".
-
-Standalone: imports nothing from the rest of the kit. ASCII source.
+Standalone: imports nothing from the rest of the kit at import time (the
+Lanes card loads the sibling kit_lanes.py by path, and a failure there only
+drops the card). ASCII source.
 """
 
 import argparse
@@ -65,53 +62,24 @@ from pathlib import Path
 CONFIG_REL = Path("ops") / "status_board.json"
 STATE_REL = Path("ops") / "loop" / "control" / "board"
 PROGRESS_REL = Path("ops") / "loop" / "control" / "progress"
-URL_PLACEHOLDER = "__URL__"
+HTML_NAME = "board.html"
+REFRESH_S = 60
 GROUPS = ("running", "operator", "next", "done")
 DONE_KEEP = 30
 PROGRESS_MAX_AGE_S = 6 * 3600
 TEXT_MAX = 160
-_LINE = re.compile(r"^(?:\u2610|\[ \])\s+\+?([A-Za-z0-9][A-Za-z0-9._-]{0,15}):\s+(.+?)\s*$")
+ID_MAX = 48  # v26: = kit_checklist.ID_MAX (SI FIX 0612)
+_LINE = re.compile(r"^(?:\u2610|\[ \])\s+\+?([A-Za-z0-9][A-Za-z0-9._-]{0,"
+                   + str(ID_MAX - 1) + r"}):\s+(.+?)\s*$")
+_BOX = re.compile(r"^(?:\u2610|\[ \])")
+_DONE_BOX = re.compile(r"^(?:\u2610|\[ \])\s+/done\b")
+_DONE_STATES = ("done", "complete", "completed")
 _TAIL = re.compile(r"^(.*?)\s+\(([^()]*)\)$")
 _HEAD = re.compile(r"^Session\s+(\d+)\s+checklist")
 # v20 (CHECKLIST-ETA-CLOCK): `38% ~20m of 32m [2:27PM]` is the ETA part too.
 _CLOCK = re.compile(r"^(?:\d{1,3}% ~|started \d{1,2}:\d{2}[AP]M - )")
 _OPERATOR = re.compile(r"\b(operator|you|waiting)\b", re.I)
 _BLOCKED = re.compile(r"\bblocked\b", re.I)
-
-
-_ACCT = re.compile(r"acct(\d+)", re.I)
-
-
-def account_label(environ=None):
-    """v21: this session's account label, as the status line shows it - A<n>
-    from an `acct<n>` CLAUDE_CONFIG_DIR basename, else A1."""
-    env = os.environ if environ is None else environ
-    cfg = str(env.get("CLAUDE_CONFIG_DIR") or "").rstrip("/\\")
-    m = _ACCT.search(re.split(r"[/\\]", cfg)[-1]) if cfg else None
-    return "A" + (m.group(1) if m else "1")
-
-
-def boards_of(cfg):
-    """{label: url} from a status_board.json doc ("boards" plus url/owner);
-    {} for a legacy config (url only)."""
-    out = {}
-    raw = cfg.get("boards")
-    if isinstance(raw, dict):
-        out.update({str(k): v for k, v in raw.items() if isinstance(v, str) and v})
-    owner = cfg.get("owner")
-    if isinstance(owner, str) and owner and cfg.get("url"):
-        out.setdefault(owner, cfg["url"])
-    return out
-
-
-def board_for(cfg, environ=None):
-    """(label or None, url or None): the board this session pushes to. A
-    legacy config (no owner, no boards) answers (None, url)."""
-    boards = boards_of(cfg)
-    if not boards:
-        return None, cfg.get("url") or None
-    label = account_label(environ)
-    return label, boards.get(label)
 
 
 def is_headless(environ=None):
@@ -154,18 +122,31 @@ def fmt_eta(eta_s):
     return f"~{round(s / 3600)}h"
 
 
-def parse_checklist(text):
+class ChecklistError(ValueError):
+    """v26: a checklist the board cannot trust - nothing is written."""
+
+
+def parse_checklist(text, strict=False):
     """(session or None, rows) from a printed item-13 checklist. The /done box,
-    the header and the trailing note line are not rows."""
-    session, rows = None, []
+    the header and the trailing note line are not rows. v26 strict=True (the
+    CLI): a box line that is neither a task row nor the /done box raises
+    ChecklistError, and so does non-empty text with no task row and no /done
+    box (a mis-decoded checklist must never mark every open task done)."""
+    session, rows, done_box = None, [], False
     for raw in str(text).splitlines():
         s = raw.strip()
         m = _HEAD.match(s)
         if m:
             session = int(m.group(1))
             continue
+        if _DONE_BOX.match(s):
+            done_box = True
+            continue
         m = _LINE.match(s)
         if not m:
+            if strict and _BOX.match(s):
+                raise ChecklistError(f"checklist line is not `<box> <ID>: <task>` (ID 1-{ID_MAX}"
+                                     f" of [A-Za-z0-9._-]): {_clip(s)[:80]}")
             continue
         rid, rest = m.group(1), m.group(2)
         state = eta = None
@@ -178,6 +159,9 @@ def parse_checklist(text):
                 parts = parts[:-1]
             state = ", ".join(parts) or None
         rows.append({"id": rid, "task": rest, "state": state, "eta": eta})
+    if strict and not rows and not done_box and str(text).strip():
+        raise ChecklistError("checklist has no task row and no /done box - refused, "
+                             "nothing written (pipe it as UTF-8 with the U+2610 box)")
     return session, rows
 
 
@@ -271,12 +255,13 @@ def build(session, rows, state, final=False, progress=()):
         if rid not in now_ids and rid not in done_ids:
             done.append({"id": rid, "task": task, "detail": ""})
             done_ids.add(rid)
-    if final:
-        for r in rows:
-            if r["id"] not in done_ids:
-                done.append({"id": r["id"], "task": _clip(r["task"]), "detail": ""})
-                done_ids.add(r["id"])
-        rows = []
+    # v26 (SA 2128 item 4): only a row passed as done moves to done - with or
+    # without --final; a carried, not-acted row stays open on the final board.
+    for r in rows:
+        if str(r.get("state") or "").strip().lower() in _DONE_STATES \
+                and r["id"] not in done_ids:
+            done.append({"id": r["id"], "task": _clip(r["task"]), "detail": ""})
+            done_ids.add(r["id"])
     done = done[-DONE_KEEP:]
     out = []
     seqs = {g: 0 for g in GROUPS}
@@ -308,268 +293,204 @@ def build(session, rows, state, final=False, progress=()):
     return out, new_state
 
 
-def dataset_update(code, session, at):
-    """The datasets/board update fields; the session swaps in the blob url."""
-    return {"source": {"kind": "file", "format": "json", "name": "status.json",
-                       "url": URL_PLACEHOLDER},
-            "updated": {"at": at, "by": f"{code} session {int(session)}"}}
+GROUP_TITLES = (("operator", "Waiting on you", "Physical acts and grants only you can do."),
+                ("running", "Running now", "Background agents working at this moment."),
+                ("next", "Up next", "In execution order."),
+                ("done", "Done", "This session, newest first."))
+
+PAGE_HEAD = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="__REFRESH__">
+<title>__TITLE__</title>
+<style>
+:root { color-scheme: light dark; --bg: #faf9f5; --panel: #ffffff; --fg: #1f1e1d; --muted: #6b6a66; --line: #e3e1da; --ok: #2e7d4f; --warn: #a15c00; --bad: #b3261e; }
+@media (prefers-color-scheme: dark) { :root { --bg: #1f1e1d; --panel: #2a2927; --fg: #f0eee8; --muted: #a8a69f; --line: #3d3b38; --ok: #6cc08b; --warn: #e0a54a; --bad: #f08a80; } }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 system-ui, sans-serif; }
+main { max-width: 72rem; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+h1 { font-weight: 500; font-size: 1.5rem; margin: 0; }
+.take { color: var(--muted); margin: 4px 0 0; font-size: .875rem; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 12px; }
+.tile, .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; min-width: 0; }
+.tile.you { border-color: var(--warn); }
+.lbl { font-size: .8rem; color: var(--muted); display: block; }
+.num { font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); gap: 12px; }
+h2 { font-size: 1rem; font-weight: 600; margin: 0; }
+.note { font-size: .8rem; color: var(--muted); margin: 2px 0 8px; }
+.wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+th { text-align: left; font-size: .75rem; color: var(--muted); font-weight: 500; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--line); }
+td { padding: 6px 8px 6px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+.id, .detail { font-size: .75rem; color: var(--muted); }
+.id { white-space: nowrap; }
+.chip { display: inline-block; font-size: .75rem; padding: 0 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.chip.running { color: var(--fg); border-color: var(--fg); }
+.chip.waiting { color: var(--warn); border-color: var(--warn); }
+.chip.blocked { color: var(--bad); border-color: var(--bad); }
+.chip.done { color: var(--ok); border-color: var(--ok); }
+.empty { font-size: .8rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+"""
+_CODE = re.compile(r"^[A-Z0-9]{1,8}$")
 
 
-def render(root, session, rows, final=False, environ=None, clock=time.time):
-    """Write status.json + state; return the push plan (a dict)."""
+def _esc(text):
+    return (str(text or "").replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def lane_lines(environ=None):
+    """v26 KIT-BOARD-LANES: the machine lane holders + queue as one-line items
+    from the sibling kit_lanes.py (status_lines), or [] when it cannot be
+    read. Never under pytest unless a test injects lanes= into render()."""
+    env = os.environ if environ is None else environ
+    if env.get("PYTEST_CURRENT_TEST"):
+        return []
+    try:
+        import importlib.util
+        here = Path(__file__).resolve().with_name("kit_lanes.py")
+        spec = importlib.util.spec_from_file_location("_board_lanes_card", str(here))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        doc = mod.status(admit=lambda: {"free_ram_mb": None, "cpu_pct": None})
+        return [ln for ln in mod.status_lines(doc)
+                if ln.startswith(("free slots:", "- slot ", "- waiting:"))]
+    except Exception:  # noqa: BLE001 - the card is optional; the board still renders
+        return []
+
+
+def page_html(title, rows, updated, lanes=()):
+    """board.html text: static, self-contained, ASCII (rows as build() made them)."""
+    t = _esc(_clip(title))
+    counts = {g: 0 for g in GROUPS}
+    for r in rows:
+        if r["group"] != "operator" or r["state"] == "waiting":
+            counts[r["group"]] += 1
+    out = [PAGE_HEAD.replace("__REFRESH__", str(REFRESH_S)).replace("__TITLE__", t)
+           + "<header><h1>" + t + "</h1>",
+           "<p class=\"take\">The session checklist: what waits on you, what runs now, "
+           "what comes next and what is done. Rendered locally " + _esc(updated) + ".</p></header>",
+           "<section class=\"tiles\" aria-label=\"Counts\">"]
+    for g, label in (("running", "Running now"), ("operator", "Waiting on you"),
+                     ("next", "Up next"), ("done", "Done")):
+        cls = "tile you" if g == "operator" else "tile"
+        out.append(f"<div class=\"{cls}\"><span class=\"lbl\">{label}</span>"
+                   f"<span class=\"num\">{counts[g]}</span></div>")
+    out.append("</section>")
+    out.append("<section class=\"grid\">")
+    for g, h2, note in GROUP_TITLES:
+        mine = sorted((r for r in rows if r["group"] == g),
+                      key=lambda r: -r["seq"] if g == "done" else r["seq"])
+        out.append(f"<article class=\"card\"><h2>{h2}</h2><p class=\"note\">{note}</p>")
+        if not mine:
+            out.append("<p class=\"empty\">Nothing here right now.</p></article>")
+            continue
+        out.append("<div class=\"wrap\"><table><thead><tr><th>ID</th><th>Task</th>"
+                   "<th>State</th><th>Note</th></tr></thead><tbody>")
+        for r in mine:
+            out.append("<tr><td class=\"id\">" + _esc(r["id"]) + "</td><td>" + _esc(r["task"])
+                       + "</td><td><span class=\"chip " + _esc(r["state"]) + "\">"
+                       + _esc(r["state"]) + "</span></td><td class=\"detail\">"
+                       + _esc(r["detail"]) + "</td></tr>")
+        out.append("</tbody></table></div></article>")
+    out.append("</section>")
+    if lanes:
+        out.append("<section class=\"card\" aria-label=\"Lanes\"><h2>Lanes</h2>"
+                   "<p class=\"note\">Machine lane slots and the queue (kit_lanes status)."
+                   "</p><ul>")
+        out.extend("<li class=\"detail\">" + _esc(_clip(ln)) + "</li>" for ln in lanes)
+        out.append("</ul></section>")
+    out.extend(("</main>", "</body>", "</html>"))
+    return "\n".join(out) + "\n"
+
+
+def render(root, session, rows, final=False, environ=None, clock=time.time, lanes=None):
+    """Write status.json, state.json and board.html locally; return a summary
+    dict. Nothing is pushed anywhere (v23)."""
     if is_headless(environ):
-        return {"push": False, "reason": "headless"}
+        return {"rendered": False, "reason": "headless"}
     root = main_checkout(root)
     cfg = _load(root / CONFIG_REL, {})
-    if not cfg.get("url") and not boards_of(cfg):
-        return {"push": False, "reason": f"no url in {CONFIG_REL.as_posix()}"}
-    label, board = board_for(cfg, environ)
-    if not board:
-        return {"push": False,
-                "reason": (f"no board for account {label} in {CONFIG_REL.as_posix()} "
-                           f"(boards.{label}); create it from this session, then "
-                           f"`kit_board.py account --url <url>`"),
-                "create": {"account": label, "title": f"{cfg.get('code') or root.name} status"}}
+    code = str(cfg.get("code") or "") if isinstance(cfg, dict) else ""
     sdir = root / STATE_REL
     state = _load(sdir / "state.json", {})
-    versions = state.get("versions") if isinstance(state.get("versions"), dict) else {}
-    if label is not None:
-        # v21: one dataset version per account board.
-        base = (cfg.get("dataset_versions") or {}).get(label) if isinstance(
-            cfg.get("dataset_versions"), dict) else None
-        if label == cfg.get("owner") and base is None:
-            base = cfg.get("dataset_version")
-        state["version"] = versions.get(label, state.get("version") if label == cfg.get("owner")
-                                        else None)
-        if state["version"] is None:
-            state["version"] = int(base or 1)
-    elif state.get("version") is None:
-        state["version"] = int(cfg.get("dataset_version") or 1)
+    state = state if isinstance(state, dict) else {}
     prog = running_progress(root, clock=clock)
     out, new_state = build(int(session), rows, state, final=final, progress=prog)
-    pin = int(new_state["version"])
-    new_state["version"] = pin + 1
-    if label is not None:
-        new_state["versions"] = dict(versions, **{label: pin + 1})
+    new_state.pop("version", None)
+    at = time.strftime("%Y-%m-%d %H:%M", time.localtime(clock()))
+    title = (code + " status" if _CODE.match(code) else "Status board") + \
+        f" - session {int(session)}"
     _write(sdir / "status.json", dumps_rows(out))
     _write(sdir / "state.json", json.dumps(new_state, indent=1, sort_keys=True) + "\n")
-    at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(clock()))
-    plan = {"push": True, "file": str(sdir / "status.json"), "board": board,
-            "if_version": pin, "rows": len(out),
-            "data": dataset_update(cfg.get("code") or root.name, session, at)}
-    if label is not None:
-        plan["account"] = label
-    return plan
-
-
-def pushed(root, version, environ=None):
-    """Record the server's current datasets/board version after a mismatch
-    (v21: for this session's account board when the config names boards)."""
-    root = main_checkout(root)
-    path = root / STATE_REL / "state.json"
-    state = _load(path, {})
-    state["version"] = int(version)
-    label, _board = board_for(_load(root / CONFIG_REL, {}), environ)
-    if label is not None:
-        versions = state.get("versions") if isinstance(state.get("versions"), dict) else {}
-        state["versions"] = dict(versions, **{label: int(version)})
-    _write(path, json.dumps(state, indent=1, sort_keys=True) + "\n")
-    return state["version"]
-
-
-def set_account_board(root, url, environ=None, label=None):
-    """v21: record <url> as this session's account board (boards.<label>) in
-    ops/status_board.json; in a config with no url it also becomes "url" +
-    "owner". A legacy url's owner is not guessed: set "owner" by hand (or
-    pass label to record the other account's board). Returns the label."""
-    root = main_checkout(root)
-    path = root / CONFIG_REL
-    cfg = _load(path, {})
-    label = label or account_label(environ)
-    if not re.match(r"^A\d+$", label):
-        raise ValueError(f"account label {label!r} must be A<n>")
-    if not str(url).startswith("https://claude.ai/"):
-        raise ValueError("board url must be a claude.ai artifact link")
-    boards = cfg.get("boards") if isinstance(cfg.get("boards"), dict) else {}
-    cfg["boards"] = dict(boards, **{label: str(url)})
-    if not cfg.get("url"):
-        cfg["url"] = str(url)
-        cfg["owner"] = label
-    _write(path, json.dumps(cfg, indent=1, sort_keys=True) + "\n")
-    return label
-
-
-def tool_calls(plan):
-    """The two tool calls (name, input) a session makes for a push plan."""
-    if not plan.get("push"):
-        return []
-    return [("Artifact", {"action": "publish", "url": plan["board"],
-                          "file_path": plan["file"], "asset": True}),
-            ("ArtifactData", {"action": "update", "url": plan["board"],
-                              "collection": "datasets", "doc_id": "board",
-                              "if_version": plan["if_version"], "data": plan["data"]})]
+    lns = list(lane_lines(environ) if lanes is None else lanes)
+    _write(sdir / HTML_NAME, page_html(title, out, at, lns))
+    return {"rendered": True, "file": str(sdir / "status.json"),
+            "html": str(sdir / HTML_NAME), "rows": len(out), "lanes": len(lns)}
 
 
 NL = chr(10)
 
 
 def calls_text(plan):
-    """Printable: one line per tool call plus one rule line; a no-push plan
-    prints one `no push: <reason>` line."""
-    calls = tool_calls(plan)
-    if not calls:
-        return "no push: " + str(plan.get("reason", "unknown")) + NL
-    out = [f"{i} {name} {json.dumps(inp, sort_keys=True, separators=(',', ':'))}"
-           for i, (name, inp) in enumerate(calls, 1)]
-    out.append(f"then: in call 2 replace {URL_PLACEHOLDER} with the url call 1 returns; "
-               "on a version mismatch run `kit_board.py pushed --version <current>` and "
-               "redo call 2 pinned to <current>")
-    return NL.join(out) + NL
-
-
-PAGE = r"""<style>
-.fb { display: flex; flex-direction: column; gap: var(--cds-gap-lg); font-family: var(--font-anthropic-sans); }
-.fb-head h1 { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; text-wrap: balance; }
-.fb-take { color: var(--color-fg-muted); font-size: var(--cds-font-size-body); margin: var(--cds-gap-xs) 0 0; }
-.fb-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: var(--cds-gap-md); }
-.fb-tile { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-md); display: flex; flex-direction: column; gap: var(--cds-gap-xs); }
-.fb-tile .lbl { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); letter-spacing: .02em; }
-.fb-tile .num { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); font-variant-numeric: tabular-nums; min-height: 1.2em; }
-.fb-tile.you { border-color: var(--color-warn); }
-.fb-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); gap: var(--cds-gap-md); }
-.fb-card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); min-width: 0; }
-.fb-card h2 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0; }
-.fb-note { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); margin: var(--cds-gap-xs) 0 var(--cds-gap-sm); }
-.fb-wrap { overflow-x: auto; }
-.fb-card table { width: 100%; border-collapse: collapse; font-size: var(--cds-font-size-body); }
-.fb-card th { text-align: left; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); font-weight: var(--cds-font-weight-medium); padding: var(--cds-pad-xs) var(--cds-pad-sm) var(--cds-pad-xs) 0; border-bottom: 1px solid var(--color-border-line); }
-.fb-card td { padding: var(--cds-pad-sm) var(--cds-pad-sm) var(--cds-pad-sm) 0; border-bottom: 1px solid var(--color-border-line); vertical-align: top; }
-.fb-card tbody tr:last-child td { border-bottom: none; }
-.fb-id { white-space: nowrap; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); font-variant-numeric: tabular-nums; }
-.fb-detail { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
-.fb-chip { display: inline-block; font-size: var(--cds-font-size-caption); padding: 0 var(--cds-pad-sm); border-radius: 999px; border: 1px solid var(--color-border-line); color: var(--color-fg-muted); white-space: nowrap; }
-.fb-chip[data-state=running] { color: var(--color-fg); border-color: var(--color-fg); }
-.fb-chip[data-state=waiting] { color: var(--color-warn); border-color: var(--color-warn); }
-.fb-chip[data-state=blocked] { color: var(--color-bad); border-color: var(--color-bad); }
-.fb-chip[data-state=done] { color: var(--color-ok); border-color: var(--color-ok); }
-.fb-empty { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); padding: var(--cds-pad-sm) 0; }
-.fb-fail { display: flex; align-items: center; justify-content: center; gap: var(--cds-gap-xs); color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); min-height: 3rem; }
-.fb-fail::before { content: ""; width: .375rem; height: .375rem; border-radius: 50%; background: var(--color-bad); }
-[data-dash-source-state=empty] { color: transparent; }
-[data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
-</style>
-<div class="fb">
-  <header class="fb-head" id="top">
-    <h1>__TITLE__</h1>
-    <p class="fb-take">The session checklist: what runs now, what waits on you, what comes next and what is done. Pushed at session start, every fourth completion and /done.</p>
-  </header>
-  <section class="fb-tiles" aria-label="Counts">
-    <div class="fb-tile"><span class="lbl">Running now</span><span class="num dash-skeleton" data-source="counts" data-field="n" data-where="group=running">&mdash;</span></div>
-    <div class="fb-tile you"><span class="lbl">Waiting on you</span><span class="num dash-skeleton" data-source="counts" data-field="n" data-where="group=operator">&mdash;</span></div>
-    <div class="fb-tile"><span class="lbl">Up next</span><span class="num dash-skeleton" data-source="counts" data-field="n" data-where="group=next">&mdash;</span></div>
-    <div class="fb-tile"><span class="lbl">Done</span><span class="num dash-skeleton" data-source="counts" data-field="n" data-where="group=done">&mdash;</span></div>
-  </section>
-  <section class="fb-grid">
-    <article class="fb-card" id="fb-operator"><h2>Waiting on you</h2><p class="fb-note">Physical acts and grants only you can do.</p><div class="fb-fail" hidden>Failed to load</div><div class="fb-wrap"><table data-source="board" data-row-key="id"><thead><tr><th data-field="id">ID</th><th data-field="task">Task</th><th data-field="state">State</th><th data-field="detail">Note</th></tr></thead><tbody></tbody></table></div></article>
-    <article class="fb-card" id="fb-running"><h2>Running now</h2><p class="fb-note">Background agents working at this moment.</p><div class="fb-fail" hidden>Failed to load</div><div class="fb-wrap"><table data-source="board" data-row-key="id"><thead><tr><th data-field="id">ID</th><th data-field="task">Task</th><th data-field="state">State</th><th data-field="detail">Note</th></tr></thead><tbody></tbody></table></div></article>
-    <article class="fb-card" id="fb-next"><h2>Up next</h2><p class="fb-note">In execution order.</p><div class="fb-fail" hidden>Failed to load</div><div class="fb-wrap"><table data-source="board" data-row-key="id"><thead><tr><th data-field="id">ID</th><th data-field="task">Task</th><th data-field="state">State</th><th data-field="detail">Note</th></tr></thead><tbody></tbody></table></div></article>
-    <article class="fb-card" id="fb-done"><h2>Done</h2><p class="fb-note">This session, newest first.</p><div class="fb-fail" hidden>Failed to load</div><div class="fb-wrap"><table data-source="board" data-row-key="id"><thead><tr><th data-field="id">ID</th><th data-field="task">Task</th><th data-field="state">State</th><th data-field="detail">Note</th></tr></thead><tbody></tbody></table></div></article>
-  </section>
-</div>
-<script>
-dash.calc('counts', {
-  inputs: ['board'],
-  title: 'Tasks per group',
-  description: 'Counts board rows per group; for the operator group, only rows still waiting.',
-  fn: (board) => ['running', 'operator', 'next', 'done'].map((g) => ({ group: g, n: board.filter((r) => r.group === g && (g !== 'operator' || r.state === 'waiting')).length }))
-});
-const FB_GROUPS = [['running', 'fb-running'], ['operator', 'fb-operator'], ['next', 'fb-next'], ['done', 'fb-done']];
-dash.onData(() => {
-  const b = dash.data('board');
-  const c = dash.data('counts');
-  document.querySelectorAll('[data-source="counts"]').forEach((el) => {
-    const g = new URLSearchParams(el.dataset.where).get('group');
-    const row = c.status === 'ok' ? c.data.find((r) => r.group === g) : null;
-    el.classList.toggle('dash-skeleton', b.status === 'loading');
-    el.textContent = row ? String(row.n) : '\u2014';
-  });
-  for (const [g, id] of FB_GROUPS) {
-    const card = document.getElementById(id);
-    const tbody = card.querySelector('tbody');
-    card.querySelector('.fb-fail').hidden = b.status !== 'error';
-    tbody.replaceChildren();
-    if (b.status !== 'ok') continue;
-    const rows = b.data.filter((r) => r.group === g).sort((x, y) => g === 'done' ? Number(y.seq) - Number(x.seq) : Number(x.seq) - Number(y.seq));
-    if (!rows.length) {
-      const tr = document.createElement('tr');
-      const td = document.createElement('td');
-      td.colSpan = 4; td.className = 'fb-empty'; td.textContent = 'Nothing here right now.';
-      tr.appendChild(td); tbody.appendChild(tr);
-      continue;
-    }
-    for (const r of rows) {
-      const tr = document.createElement('tr');
-      const cell = (text, cls) => { const e = document.createElement('td'); if (cls) e.className = cls; e.textContent = text; return e; };
-      tr.appendChild(cell(r.id, 'fb-id'));
-      tr.appendChild(cell(r.task));
-      const st = document.createElement('td');
-      const chip = document.createElement('span');
-      chip.className = 'fb-chip'; chip.dataset.state = r.state; chip.textContent = r.state;
-      st.appendChild(chip); tr.appendChild(st);
-      tr.appendChild(cell(r.detail, 'fb-detail'));
-      tbody.appendChild(tr);
-    }
-  }
-});
-</script>
-"""
-
-
-def page(title):
-    """The board's files/index.html text for a title (HTML-escaped, ASCII)."""
-    t = _clip(title).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    return PAGE.replace("__TITLE__", t)
+    """The `calls` verb's one line (v23: nothing to push)."""
+    if not plan.get("rendered"):
+        return "board not rendered: " + str(plan.get("reason", "unknown")) + NL
+    return "board: " + plan["html"] + " (local only, nothing to push)" + NL
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="kit_board")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for verb, hlp in (("render", "render status.json; print the push plan"),
-                      ("calls", "render status.json; print the two tool calls")):
+    for verb, hlp in (("render", "render the local board; print a JSON summary"),
+                      ("calls", "render the local board; print its path (v19-v22 name)")):
         r = sub.add_parser(verb, help=hlp)
         r.add_argument("--root", default=".")
         r.add_argument("--session", type=int)
         r.add_argument("--checklist", help="checklist text file (default stdin)")
         r.add_argument("--progress", help="a progress file whose 'checklist' rows to use")
-        r.add_argument("--final", action="store_true", help="/done: every task done")
-    p = sub.add_parser("pushed", help="record the server's datasets/board version")
+        r.add_argument("--final", action="store_true",
+                       help="/done render (v26: only rows passed as done move to done)")
+    p = sub.add_parser("pushed", help="v23 no-op (the board is local only)")
     p.add_argument("--root", default=".")
-    p.add_argument("--version", type=int, required=True)
-    ac = sub.add_parser("account", help="record this session's account board url (v21)")
+    p.add_argument("--version", type=int)
+    ac = sub.add_parser("account", help="v23 no-op (the board is local only)")
     ac.add_argument("--root", default=".")
-    ac.add_argument("--url", required=True)
-    ac.add_argument("--label", help="A<n>; default this session's account")
-    g = sub.add_parser("page", help="print the board index.html")
-    g.add_argument("--title", required=True)
+    ac.add_argument("--url")
+    ac.add_argument("--label")
     a = ap.parse_args(argv)
-    if a.cmd == "page":
-        sys.stdout.write(page(a.title))
+    if a.cmd in ("pushed", "account"):
+        print("v23: the status board is local only; nothing to record")
         return 0
-    if a.cmd == "pushed":
-        print(json.dumps({"version": pushed(a.root, a.version)}))
-        return 0
-    if a.cmd == "account":
-        print(json.dumps({"account": set_account_board(a.root, a.url, label=a.label)}))
+    if is_headless():  # v26: a headless run renders nothing, before any parse
+        plan = {"rendered": False, "reason": "headless"}
+        if a.cmd == "calls":
+            sys.stdout.write(calls_text(plan))
+        else:
+            print(json.dumps(plan, sort_keys=True))
         return 0
     if a.progress:
         d = _load(a.progress, {})
         session, rows = a.session, rows_from_progress_checklist(d.get("checklist"))
     else:
-        text = Path(a.checklist).read_text(encoding="utf-8") if a.checklist else sys.stdin.read()
-        session, rows = parse_checklist(text)
+        # v26 KIT-BOARD-EMPTY: bytes decoded as UTF-8, never the console code page.
+        raw = Path(a.checklist).read_bytes() if a.checklist else sys.stdin.buffer.read()
+        text = raw.decode("utf-8", errors="replace").lstrip("\ufeff")
+        try:
+            session, rows = parse_checklist(text, strict=True)
+        except ChecklistError as exc:
+            print(json.dumps({"rendered": False, "reason": str(exc)}))
+            return 2
         session = a.session if a.session is not None else session
     if session is None:
-        print(json.dumps({"push": False, "reason": "no session number"}))
+        print(json.dumps({"rendered": False, "reason": "no session number"}))
         return 2
     plan = render(a.root, session, rows, final=a.final)
     if a.cmd == "calls":

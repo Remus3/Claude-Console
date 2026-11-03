@@ -4,6 +4,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const { discoverProjects, isRepoRoot } = require('../server/discovery');
+const { expandHome } = require('../server/config');
 const { makeFixture, gitInit } = require('./helpers');
 
 test('discovers only git repo roots directly under the scan root', async () => {
@@ -84,5 +85,27 @@ test('a second scan root finds a moved repo with no junction, at its real path',
 test('shipped config scan roots are absolute paths (MIG-1)', () => {
   const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'config', 'console.json'), 'utf8'));
   assert.ok(Array.isArray(cfg.scanRoots) && cfg.scanRoots.length > 0, JSON.stringify(cfg.scanRoots));
-  for (const r of cfg.scanRoots) assert.ok(path.win32.isAbsolute(r), r);
+  for (const r of cfg.scanRoots) assert.ok(path.win32.isAbsolute(expandHome(r)), r);
+});
+
+test('a ~ scan root means the user folder, and a missing one is skipped', async (t) => {
+  const fx = makeFixture();
+  const home = path.join(fx.root || path.dirname(fx.scan), 'home');
+  gitInit(path.join(home, 'AtHome'));
+  gitInit(path.join(home, 'Documents', 'InDocs'));
+  const saved = process.env.USERPROFILE;
+  process.env.USERPROFILE = home;
+  t.after(() => { process.env.USERPROFILE = saved; });
+  const ps = await discoverProjects(Object.assign({}, fx.overrides, { projects: {}, scanRoots: ['~', '~/Documents', '~/code'] }));
+  assert.deepStrictEqual(ps.map((p) => p.name).sort(), ['AtHome', 'InDocs']);
+});
+
+test('two folders with one name under different roots keep separate ids', async () => {
+  const fx = makeFixture();
+  const other = path.join(path.dirname(fx.scan), 'other');
+  gitInit(path.join(other, 'Alpha'));
+  const ps = (await discoverProjects(Object.assign({}, fx.overrides, { scanRoots: [fx.scan, other] }))).filter((p) => p.name === 'Alpha');
+  assert.strictEqual(ps.length, 2);
+  assert.deepStrictEqual(ps.map((p) => p.id).sort(), ['alpha', 'alpha-2']);
+  assert.notStrictEqual(ps[0].dir, ps[1].dir);
 });

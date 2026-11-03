@@ -296,7 +296,8 @@
         {
           "kind": "task",
           "name": "ClaudeProfile-InboxResponder",
-          "template": "templates/tasks/inbox-responder.xml"
+          "template": "templates/tasks/inbox-responder.xml",
+          "deletes": "Nothing itself. A Claude run it starts for an order works in this project like any session"
         }
       ],
       "verify": [

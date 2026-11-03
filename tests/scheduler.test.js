@@ -121,7 +121,7 @@ test('list: rows normalized with owner, result text, boot notes; Microsoft folde
   assert.deepStrictEqual(boot.triggers.map((t) => t.kind), ['boot']);
   const alpha = r.tasks.find((t) => t.owner === 'alpha');
   assert.strictEqual(alpha.result.ok, false);
-  assert.ok(Array.isArray(r.facts) && r.facts.some((f) => /267009/.test(f)) && r.facts.some((f) => /Temp/.test(f)));
+  assert.ok(Array.isArray(r.facts) && r.facts.some((f) => /267009/.test(f)) && r.facts.some((f) => /Boot and logon/.test(f)));
   assert.deepStrictEqual(r.byProject, { main: 2, alpha: 1 });
   assert.ok(S.PS_LIST.includes("-notlike '\\Microsoft\\*'"));
   const only = await s.list({ project: 'alpha' });

@@ -53,6 +53,47 @@ function deleteVar(env, name) {
   for (const k of Object.keys(env)) if (k.toUpperCase() === name.toUpperCase()) delete env[k];
 }
 
+// SIDECAR-TEMP-SESSION (measured 2026-10-26): claude honours
+// CLAUDE_CODE_TMPDIR only from its PROCESS environment - a settings.json "env"
+// value reaches tool children but the session temp still lands in %TEMP%\claude.
+// So a claude pane gets the same temp root the kit gives a headless spawn
+// (the headless spawn helper's child env): <sidecar root>\<CODE>\Temp\claude, only when
+// <sidecar root>\<CODE> exists. CODE = the roster tree whose root holds the pane
+// cwd (longest root wins); anything else -> null (unchanged behaviour).
+function normDir(p) {
+  return path.resolve(String(p)).replace(/[\\/]+$/, '').toLowerCase();
+}
+
+function rosterTrees(rosterFile) {
+  try {
+    const doc = JSON.parse(fs.readFileSync(rosterFile, 'utf8'));
+    return [].concat(doc.repos || [], doc.extra_trees || [])
+      .filter((r) => r && r.code && r.root && !r.removed)
+      .map((r) => ({ code: String(r.code), root: String(r.root) }));
+  } catch (e) {
+    return [];
+  }
+}
+
+function paneTmpDir(cwd, opts) {
+  opts = opts || {};
+  if (!cwd) return null;
+  const trees = opts.trees || rosterTrees(opts.rosterFile);
+  const c = normDir(cwd);
+  let best = null;
+  for (const t of trees) {
+    const r = normDir(t.root);
+    if ((c === r || c.startsWith(r + path.sep)) && (!best || r.length > best.len)) best = { code: t.code, len: r.length };
+  }
+  if (!best) return null;
+  const env = opts.env || process.env;
+  const root = opts.sidecarRoot || (env.KIT_SIDECAR_ROOT || '').trim();
+  if (!root) return null;
+  const side = path.join(root, best.code);
+  const isDir = opts.isDir || ((d) => { try { return fs.statSync(d).isDirectory(); } catch (e) { return false; } });
+  return isDir(side) ? path.join(side, 'Temp', 'claude') : null;
+}
+
 function buildPaneEnv(base, opts) {
   opts = opts || {};
   const env = copyEnv(base);
@@ -69,11 +110,22 @@ function buildPaneEnv(base, opts) {
   if (opts.kind === 'claude') {
     const acct = opts.account || {};
     if (acct.configDir) env.CLAUDE_CONFIG_DIR = acct.configDir;
+    // CON-SCROLL-CONPTY: under the bundled conpty.dll claude picks its fullscreen
+    // (alternate screen) renderer; the console's scrollback, Find, input marks and
+    // composer-only crop read the normal buffer, so a pane keeps the classic renderer.
+    env.CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN = '1';
+    if (opts.tmpDir) {
+      deleteVar(env, 'CLAUDE_CODE_TMPDIR');
+      env.CLAUDE_CODE_TMPDIR = opts.tmpDir;
+    }
   }
   env.COLORTERM = 'truecolor';
   if (opts.paneId) env.CONSOLE_PANE = opts.paneId;
   if (opts.hookUrl) env.CONSOLE_HOOK_URL = opts.hookUrl;
   if (opts.hookSecret) env.CONSOLE_HOOK_SECRET = opts.hookSecret;
+  // CON-MACHINE-READ: claude panes learn where the Read machine result lives (hook.js
+  // names it once at SessionStart)
+  if (opts.kind === 'claude' && opts.machineFile) env.CONSOLE_MACHINE_FILE = opts.machineFile;
   return env;
 }
 
@@ -84,6 +136,9 @@ function hookSettings(nodePath, hookScript) {
   const cmd = (ev) => q(nodePath) + ' ' + q(hookScript) + ' ' + ev;
   const h = (ev) => [{ hooks: [{ type: 'command', command: cmd(ev), timeout: 5 }] }];
   return {
+    // CON-OSC-PROGRESS: Claude Code's OSC 9;4 progress (scope "any file", so the additive
+    // --settings file may set it); the pane draws it, the hook states stay the authority.
+    terminalProgressBarEnabled: true,
     hooks: {
       UserPromptSubmit: h('busy'),
       Stop: h('waiting'),
@@ -98,11 +153,11 @@ function hookSettings(nodePath, hookScript) {
 }
 
 // VMFIX: the one line a stranger needs when the Claude Code CLI is missing (the
-// official native installer), plus where to point the console at a claude.exe.
+// official native installer). A pane says it in plain words; pointing the console at a
+// claude.exe elsewhere is a README Troubleshooting line.
 const CLAUDE_MISSING = 'Claude Code CLI not found - install it with: irm https://claude.ai/install.ps1 | iex';
-function claudeMissingMessage(cfg) {
-  const file = path.join((cfg && cfg.dataDir) || path.join(__dirname, '..', 'data'), 'console.local.json');
-  return CLAUDE_MISSING + '. Already installed elsewhere? Set "claudePath" to the full path of claude.exe in ' + file;
+function claudeMissingMessage() {
+  return 'Claude Code is not installed. In PowerShell run: irm https://claude.ai/install.ps1 | iex   Then click the project again.';
 }
 
-module.exports = { resolveClaude, buildPaneEnv, hookSettings, SESSION_VARS, claudeCandidates, CLAUDE_MISSING, claudeMissingMessage };
+module.exports = { resolveClaude, buildPaneEnv, paneTmpDir, rosterTrees, hookSettings, SESSION_VARS, claudeCandidates, CLAUDE_MISSING, claudeMissingMessage };

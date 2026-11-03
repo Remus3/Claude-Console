@@ -94,7 +94,7 @@ test('path A: a skipped input turns off what needs it and its dependants, named'
   assert.ok(ps.ok);
   assert.deepStrictEqual(ps.offNeeds.map((x) => x.item), ['conv-handoff-file', 'conv-session-env']);
   assert.deepStrictEqual(ps.offNeeds[0].needs, ['repo_code']);
-  assert.match(ps.offNeeds[1].needs[0], /depends on conv-handoff-file/);
+  assert.deepStrictEqual(ps.offNeeds[1].needs, ['repo_code'], 'a dependant says what the item it depends on needs, no raw item id');
   const on = P.onIds(v1, ps.selection);
   assert.ok(on.includes('floor-no-ai-attribution'), 'locked floors stay on');
   assert.ok(!on.includes('conv-handoff-file'));

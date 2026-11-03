@@ -162,6 +162,127 @@ test('stop: a leftover server of an older version (listed by its command line) i
   assert.deepStrictEqual(r.killed, [77]);
 });
 
+// A server still starting: `stop` right after `update` (sandbox run 12, B-port-taken). The
+// last server's token is still in run/token; the booting server writes its own after it
+// listens. tokenAt = when it does, on the fake clock.
+const LIVE = 'live-token';
+function bootingServer(run, o) {
+  o = o || {};
+  w(path.join(run, 'token'), 'stale-token\n');
+  const f = fakeProcs(new Set([4242]));
+  const tokens = [];
+  let clock = 0;
+  let closePolls = 0;
+  return Object.assign(f, {
+    tokens,
+    clock: () => clock,
+    opts: {
+      run, port: 7800, token: 'stale-token', kill: f.kill, listServers: async () => [{ pid: 4242 }], now: () => clock,
+      isAlive: (p) => {
+        if (tokens.includes(LIVE) && ++closePolls > (o.closePolls || 2)) f.alive.delete(p);
+        return f.alive.has(p);
+      },
+      sleep: async (ms) => { clock += ms; if (o.tokenAt !== undefined && clock >= o.tokenAt) w(path.join(run, 'token'), LIVE + '\n'); },
+      postShutdown: async (port, token) => { tokens.push(token); clock += o.postMs || 0; return token === LIVE; },
+    },
+  });
+}
+
+test('stop: a server still starting, stale token first: the POST is repeated with the token it writes', async () => {
+  const run = tmpdir('cc-stop-');
+  const b = bootingServer(run, { tokenAt: 1000 });
+  const r = await stopper.stopServer(b.opts);
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.answered, true);
+  assert.deepStrictEqual(r.alive, []);
+  assert.strictEqual(b.tokens[0], 'stale-token');
+  assert.strictEqual(b.tokens[b.tokens.length - 1], LIVE);
+  assert.deepStrictEqual(b.calls.kill, [], 'it quit when asked, no kill');
+  assert.ok(b.clock() < 2500, 'it took ' + b.clock() + ' ms, not the 10 s timeout');
+  assert.strictEqual(stopper.stopLine(r, 7800), 'stopped');
+});
+
+test('stop: the token is read at the POST, not before the process list', async () => {
+  const run = tmpdir('cc-stop-');
+  const b = bootingServer(run);
+  const list = b.opts.listServers;
+  b.opts.listServers = async () => { w(path.join(run, 'token'), LIVE + '\n'); return list(); };
+  const r = await stopper.stopServer(b.opts);
+  assert.strictEqual(r.ok, true);
+  assert.deepStrictEqual(b.tokens, [LIVE], 'one POST, with the token written during the list');
+});
+
+test('stop: an answer late in the timeout gets a full wait for the exit', async () => {
+  const run = tmpdir('cc-stop-');
+  const b = bootingServer(run, { tokenAt: 9500, closePolls: 30 });
+  const r = await stopper.stopServer(b.opts);
+  assert.strictEqual(r.ok, true, 'answered at 9.5 s, closed 7.5 s later');
+  assert.deepStrictEqual(b.calls.kill, []);
+});
+
+test('stop: a server that never answers still ends at the timeout, exit 1 and the same line', async () => {
+  const run = tmpdir('cc-stop-');
+  const b = bootingServer(run);
+  const r = await stopper.stopServer(b.opts);
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.answered, false);
+  assert.deepStrictEqual(r.alive, [4242]);
+  assert.deepStrictEqual(b.calls.kill, [], 'no kill without --force');
+  assert.strictEqual(b.clock(), 10000);
+  assert.strictEqual(b.tokens.length, 21, 'the first POST, then one each 500 ms');
+  assert.match(stopper.stopLine(r, 7800), /still running after 10 s; run: claude-console stop --force/);
+  const k = await stopper.stopServer(Object.assign({}, b.opts, { force: true }));
+  assert.deepStrictEqual(k.killed, [4242], '--force kills after the same wait');
+});
+
+test('stop: a POST that hangs spends the timeout, so the wait stays bounded', async () => {
+  const run = tmpdir('cc-stop-');
+  const b = bootingServer(run, { postMs: 3000 });
+  const r = await stopper.stopServer(b.opts);
+  assert.strictEqual(r.ok, false);
+  assert.ok(b.clock() <= 16000, 'clock ' + b.clock());
+  assert.ok(b.tokens.length <= 5, 'POSTs ' + b.tokens.length);
+});
+
+test('stop: nothing listed and nothing answering is one POST and no wait', async () => {
+  const run = tmpdir('cc-stop-');
+  let posts = 0;
+  const r = await stopper.stopServer({ run, port: 7800, postShutdown: async () => { posts++; return false; }, isAlive: () => false, kill: () => false, sleep: async () => { throw new Error('no wait'); }, listServers: async () => [] });
+  assert.strictEqual(posts, 1);
+  assert.strictEqual(r.running, false);
+});
+
+test('stop: with run/token unreadable the token handed in is still sent', async () => {
+  const run = tmpdir('cc-stop-');
+  const seen = [];
+  await stopper.stopServer({ run, port: 7800, token: 'given', postShutdown: async (p, t) => { seen.push(t); return true; }, isAlive: () => false, kill: () => false, sleep: async () => {}, listServers: async () => [] });
+  assert.deepStrictEqual(seen, ['given']);
+});
+
+test('CLI stop on a server that first answers 401: exit 0 and "stopped", real POST, real server, injected process list', { timeout: 60000 }, async () => {
+  const cli = require('../installer/cli');
+  const fx = makeFixture();
+  const srv = await createConsoleServer({ port: 0, dataDir: fx.dataDir, runDir: fx.runDir, resources: false, overrides: fx.overrides });
+  const home = path.join(tmpdir('cc-stop-cli-'), 'home');
+  const L = paths.layout(home);
+  w(path.join(L.data, 'console.local.json'), JSON.stringify({ port: srv.port }));
+  w(path.join(L.run, 'token'), 'stale-token\n');
+  const lines = [];
+  const answers = [];
+  let slept = 0;
+  try {
+    const code = await cli.run(['stop', '--home', home], {
+      out: (s) => lines.push(s), listServers: async () => [{ pid: 4242 }], isAlive: () => srv.server.listening, kill: () => false,
+      postShutdown: async (port, token) => { assert.strictEqual(port, srv.port); const ok = await cli.postShutdown(port, token); answers.push(ok); return ok; },
+      sleep: async (ms) => { slept += ms; if (slept >= 500) w(path.join(L.run, 'token'), srv.token + '\n'); await sleep(10); },
+    });
+    assert.strictEqual(code, 0, lines.join('\n'));
+    assert.deepStrictEqual(lines, ['stopped']);
+    assert.strictEqual(answers[0], false, 'the stale token shut nothing');
+    assert.strictEqual(answers[answers.length - 1], true);
+  } finally { await srv.close(); }
+});
+
 test('listServers: matches node server.js processes under the home app dir only', () => {
   const home = 'C:\\Users\\x\\AppData\\Local\\Programs\\claude-console';
   const rows = [

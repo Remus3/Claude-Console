@@ -1,6 +1,8 @@
 'use strict';
 // Launcher files the installer writes into the install home (CON-PUBLIC B):
-//   launch.vbs          hidden start of the current version (the shortcuts point here)
+//   launch.vbs          hidden start of the current version (the shortcuts point here);
+//                       waits for the CLI and shows its failure line, so a start from a
+//                       shortcut is never silent (R1-12)
 //   claude-console.cmd  the CLI for a terminal (`claude-console start|stop|update|...`)
 // Both name the version, so install and every update rewrite them. ASCII and LF.
 // Shortcuts (Desktop + Start menu) are made by a PowerShell WScript.Shell call that the
@@ -12,16 +14,32 @@ const { layout } = require('./paths');
 
 const vbsQ = (s) => String(s).replace(/"/g, '""');
 
+// `claude-console start` writes its failure line here (UTF-16 with a BOM, so any path
+// survives) for launch.vbs to show; the next start removes it.
+const START_FAILED = 'start-failed.txt';
+
 function launcherFiles(home, version, nodePath) {
   const L = layout(home);
   const bin = path.join(L.app(version), 'bin', 'claude-console.js');
   const vbs = [
     "' Claude Console launcher (written by the installer; rewritten on every update).",
-    "' Starts the installed version hidden and opens its app window.",
+    "' Starts the installed version hidden and opens its app window; a failed start shows why.",
     'Option Explicit',
-    'Dim sh',
+    'Dim sh, fso, f, rc, msg',
     'Set sh = CreateObject("WScript.Shell")',
-    'sh.Run """' + vbsQ(nodePath) + '"" ""' + vbsQ(bin) + '"" start --open --home ""' + vbsQ(L.home) + '""", 0, False',
+    'rc = sh.Run("""' + vbsQ(nodePath) + '"" ""' + vbsQ(bin) + '"" start --open --home ""' + vbsQ(L.home) + '""", 0, True)',
+    'If rc <> 0 Then',
+    '  msg = "Claude Console could not start. Details: ' + vbsQ(path.join(L.run, 'server.log')) + '"',
+    '  Set fso = CreateObject("Scripting.FileSystemObject")',
+    '  On Error Resume Next',
+    '  If fso.FileExists("' + vbsQ(path.join(L.run, START_FAILED)) + '") Then',
+    '    Set f = fso.OpenTextFile("' + vbsQ(path.join(L.run, START_FAILED)) + '", 1, False, -1)',
+    '    msg = f.ReadAll',
+    '    f.Close',
+    '  End If',
+    '  On Error GoTo 0',
+    '  MsgBox msg, vbExclamation, "Claude Console"',
+    'End If',
     '',
   ].join('\n');
   const cmd = [
@@ -105,6 +123,21 @@ function userPathPs(dir, add) {
 // CON-0.1.3: the Apps & features version values. Install writes them with the key;
 // update and rollback rewrite them (the entry showed the first installed version
 // forever). VersionMajor / VersionMinor are the DWORDs Windows also reads.
+// R1-14: Apps & features opens a visible window that stays open, so a refusal can be
+// read; the quiet string never stops on a profile. Double quotes: cmd /c strips the outer
+// pair and keeps the quoted path.
+function arpUninstallStrings(home) {
+  const cmdPath = path.join(home, 'claude-console.cmd');
+  return { uninstall: 'cmd.exe /c ""' + cmdPath + '" uninstall & pause"', quiet: '"' + cmdPath + '" uninstall --keep-profile' };
+}
+function arpUninstallLines(home) {
+  const u = arpUninstallStrings(home);
+  return [
+    'Set-ItemProperty -Path $k -Name UninstallString -Value ' + psQ(u.uninstall),
+    'Set-ItemProperty -Path $k -Name QuietUninstallString -Value ' + psQ(u.quiet),
+  ];
+}
+
 function arpVersionLines(version) {
   const m = /^(\d+)\.(\d+)/.exec(String(version));
   return [
@@ -116,12 +149,15 @@ function arpVersionLines(version) {
 
 // Refresh only: an install made with --no-shortcuts has no entry, and an update never
 // creates one. The last line is the read-back: ARP=absent or ARP=<DisplayVersion>.
-function arpVersionScript(version) {
+// With home, the uninstall strings follow too: an entry written by an older version would
+// otherwise flash a refusal shut.
+function arpVersionScript(version, home) {
   return [
     "$ErrorActionPreference = 'Stop'",
     '$k = ' + psQ(ARP_KEY),
     "if (-not (Test-Path $k)) { Write-Output 'ARP=absent'; exit 0 }",
     ...arpVersionLines(version),
+    ...(home ? arpUninstallLines(home) : []),
     "Write-Output ('ARP=' + (Get-ItemProperty -Path $k -Name DisplayVersion).DisplayVersion)",
     '',
   ].join('\n');
@@ -138,7 +174,7 @@ function parseArpReadBack(lines) {
 // -> {present, version, ok}; ok = absent, or the read-back equals the version.
 async function writeArpWindows(home, version) {
   if (process.platform !== 'win32') return { present: null, version: null, ok: true, skipped: 'not Windows' };
-  const rb = parseArpReadBack(await runPs(home, 'arp', arpVersionScript(version)));
+  const rb = parseArpReadBack(await runPs(home, 'arp', arpVersionScript(version, layout(home).home)));
   return Object.assign(rb, { ok: rb.present === false || rb.version === version });
 }
 
@@ -147,7 +183,6 @@ async function writeArpWindows(home, version) {
 function shortcutScript(vbsPath, iconPath, info) {
   info = info || {};
   const home = info.home || path.dirname(vbsPath);
-  const cmdPath = path.join(home, 'claude-console.cmd');
   const lines = [
     "$ErrorActionPreference = 'Stop'",
     '$sh = New-Object -ComObject WScript.Shell',
@@ -171,8 +206,7 @@ function shortcutScript(vbsPath, iconPath, info) {
       ...arpVersionLines(info.version),
       'Set-ItemProperty -Path $k -Name Publisher -Value ' + psQ(info.repo ? info.repo.split('/')[0] : 'Claude Console'),
       'Set-ItemProperty -Path $k -Name InstallLocation -Value ' + psQ(home),
-      'Set-ItemProperty -Path $k -Name UninstallString -Value ' + psQ('"' + cmdPath + '" uninstall'),
-      'Set-ItemProperty -Path $k -Name QuietUninstallString -Value ' + psQ('"' + cmdPath + '" uninstall'),
+      ...arpUninstallLines(home),
       info.repo ? 'Set-ItemProperty -Path $k -Name URLInfoAbout -Value ' + psQ('https://github.com/' + info.repo) : '',
       'Set-ItemProperty -Path $k -Name NoModify -Value 1 -Type DWord',
       'Set-ItemProperty -Path $k -Name NoRepair -Value 1 -Type DWord',
@@ -233,4 +267,4 @@ async function refreshArpForInstall(appRoot, version, write) {
   return (write || writeArpWindows)(home, version);
 }
 
-module.exports = { launcherFiles, writeLaunchers, shortcutScript, unshellScript, makeShortcutsWindows, removeShellWindows, pathWith, pathWithout, ARP_KEY, arpVersionLines, arpVersionScript, parseArpReadBack, writeArpWindows, refreshArpForInstall };
+module.exports = { launcherFiles, writeLaunchers, shortcutScript, unshellScript, makeShortcutsWindows, removeShellWindows, pathWith, pathWithout, ARP_KEY, START_FAILED, arpUninstallStrings, arpVersionLines, arpVersionScript, parseArpReadBack, writeArpWindows, refreshArpForInstall };

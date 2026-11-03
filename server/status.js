@@ -5,7 +5,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { execFile } = require('child_process');
-const { resolveBoard, readBoardsFile } = require('./boards');
+const { resolveBoard, BOARD_HTML_REL } = require('./boards');
 
 const MAX_STR = 400;
 
@@ -108,7 +108,7 @@ function readHeadless(project, opts) {
 function findHandoffFile(project) {
   let names = [];
   try {
-    names = fs.readdirSync(project.dir).filter((n) => /-NEXT-SESSION\.txt$/i.test(n));
+    names = fs.readdirSync(project.dir).filter((n) => /(^|-)NEXT-SESSION\.txt$/i.test(n));
   } catch (e) {
     names = [];
   }
@@ -251,6 +251,40 @@ function readProgress(project, opts) {
   const rank = (it) => (it.status === 'running' && !it.stale ? 0 : it.stale ? 1 : it.status === 'failed' ? 2 : 3);
   items.sort((a, b) => rank(a) - rank(b) || b.updated - a.updated);
   return { total: items.length, items: items.slice(0, maxN) };
+}
+
+// ---------- session checklist (PANE-CHECKLIST) ----------
+// Kit v23 fleet_board.py render writes <repo>/ops/loop/control/board/status.json, a JSON
+// array of {id, group: running|operator|next|done, seq, task, state, detail}, at session
+// start, at every item-13 b reprint and at /done (--final). Only read here. The remaining
+// rows (not done) ride the snapshot as projects[].checklist {updated, rows}; a tree before
+// v23 has no file: null, and the pane strip keeps showing progress files only.
+const CHECKLIST_REL = path.join('ops', 'loop', 'control', 'board', 'status.json');
+const CHECKLIST_GROUPS = new Set(['running', 'operator', 'next']);
+const checklistCache = new Map(); // file -> { mtime, size, result }
+
+function readChecklist(project) {
+  if (!project || !project.dir) return null;
+  const file = path.join(project.dir, CHECKLIST_REL);
+  const st = statSafe(file);
+  if (!st || !st.isFile() || st.size > 262144) return null;
+  const hit = checklistCache.get(file);
+  if (hit && hit.mtime === st.mtimeMs && hit.size === st.size) return hit.result;
+  let arr = null;
+  try { arr = JSON.parse(readText(file, 262144)); } catch (e) { arr = null; }
+  let result = null;
+  if (Array.isArray(arr)) {
+    const rows = [];
+    for (const r of arr) {
+      if (!r || typeof r !== 'object' || !CHECKLIST_GROUPS.has(r.group)) continue;
+      if (typeof r.id !== 'string' || !r.id) continue;
+      rows.push({ id: clip(r.id, 40), group: r.group, task: clip(r.task || '', 200), state: clip(r.state || '', 20), detail: clip(r.detail || '', 200) });
+      if (rows.length >= 20) break;
+    }
+    result = { updated: st.mtimeMs, rows };
+  }
+  checklistCache.set(file, { mtime: st.mtimeMs, size: st.size, result });
+  return result;
 }
 
 // ---------- inbox ----------
@@ -501,8 +535,6 @@ class StatusService {
   refreshFiles() {
     const now = Date.now();
     const markers = {};
-    let boardMap = {};
-    try { boardMap = readBoardsFile(this.cfg); } catch (e) { boardMap = {}; }
     const projects = this.getProjects().map((p) => {
       let handoff = null;
       let progress = { total: 0, items: [] };
@@ -526,9 +558,12 @@ class StatusService {
       try { marker = readDoneMarker(p); } catch (e) { marker = null; }
       markers[p.id] = marker;
       const done = marker ? { verdict: marker.verdict, session: marker.session, reason: marker.reason, at: marker.at } : null;
+      // CON-BOARD-LOCAL: the relative board page path when the tree has one (no absolute path).
       let board = null;
-      try { board = resolveBoard(p, this.cfg, { mapping: boardMap }); } catch (e) { board = null; }
-      const row = { id: p.id, name: p.name, code: p.code, retired: p.retired, self: this.isSelf(p.dir), handoff, progress, inbox, headless, done, board, git: this.git[p.id] || null };
+      try { board = resolveBoard(p) ? BOARD_HTML_REL.split(path.sep).join('/') : null; } catch (e) { board = null; }
+      let checklist = null;
+      try { checklist = readChecklist(p); } catch (e) { checklist = null; }
+      const row = { id: p.id, name: p.name, code: p.code, retired: p.retired, self: this.isSelf(p.dir), handoff, progress, checklist, inbox, headless, done, board, git: this.git[p.id] || null };
       return row;
     });
     this.markers = markers;
@@ -568,5 +603,5 @@ class StatusService {
 module.exports = {
   StatusService, readHandoff, parseHandoff, findHandoffFile, readProgress, normalizeProgress,
   readInbox, readGit, readQuota, accountUuidFor, clip, readHeadless, readHead, readDoneMarker,
-  readDoneAt, noteLabel,
+  readDoneAt, noteLabel, readChecklist,
 };

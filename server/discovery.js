@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
+const { expandHome } = require('./config');
 
 function norm(p) {
   let r = path.resolve(p);
@@ -55,7 +56,7 @@ function slug(name) {
 }
 
 async function discoverProjects(cfg) {
-  const roots = cfg.scanRoots || [];
+  const roots = (cfg.scanRoots || []).map(expandHome);
   const exclude = new Set((cfg.excludeDirs || []).map((s) => s.toLowerCase()));
   const overrides = cfg.projects || {};
   const candidates = [];
@@ -78,6 +79,7 @@ async function discoverProjects(cfg) {
   const seen = new Set();
   const checks = await Promise.all(candidates.map(async (dir) => ({ dir, ok: await isRepoRoot(dir) })));
   const out = [];
+  const ids = new Set(); // two folders with one name under different roots stay two projects
   for (const { dir, ok } of checks) {
     if (!ok) continue;
     const key = norm(dir);
@@ -90,8 +92,11 @@ async function discoverProjects(cfg) {
     const name = path.basename(real);
     const o = overrides[name] || {};
     if (o.hidden) continue;
+    let id = slug(name);
+    for (let n = 2; ids.has(id); n++) id = slug(name) + '-' + n;
+    ids.add(id);
     out.push({
-      id: slug(name),
+      id,
       name,
       dir: real,
       code: o.code || null,

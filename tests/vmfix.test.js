@@ -7,6 +7,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const EventEmitter = require('events');
 const { tmpdir } = require('./helpers');
 
 const manifest = require('../installer/manifest');
@@ -55,20 +56,25 @@ test('prereq: no claude and no git still installs; each says exactly what happen
   assert.strictEqual(p.ok, true, 'a missing claude CLI never refuses the install');
   assert.ok(p.warnings.includes(prereq.CLAUDE_MISSING), p.warnings.join(' | '));
   assert.strictEqual(prereq.CLAUDE_MISSING, 'Claude Code CLI not found - install it with: irm https://claude.ai/install.ps1 | iex');
-  assert.ok(p.warnings.some((x) => /^Git not found: /.test(x) && /skipped/.test(x) && /git status/.test(x)), p.warnings.join(' | '));
+  assert.ok(p.warnings.some((x) => x === prereq.GIT_MISSING && /^Git not found: /.test(x) && /git status/.test(x) && /winget install Git\.Git/.test(x)), p.warnings.join(' | '));
   assert.ok(!p.warnings.concat(p.problems).some((x) => /npm install -g/.test(x)), 'no npm -g suggestion');
   const old = prereq.checkPrereqs({ env: { PATH: '' }, nodeVersion: '20.0.0', gitCheck: () => true, edge: () => null });
   assert.strictEqual(old.ok, false);
   assert.match(old.problems[0], /Node 24 or newer/);
 });
 
-test('claude pane without claude: the install command plus the full config file path', () => {
+test('claude pane without claude: the plain message, the command, no config file', () => {
   const dataDir = path.join(tmpdir('cc-vm-'), 'data');
   const msg = claudeenv.claudeMissingMessage({ dataDir });
-  assert.ok(msg.startsWith(prereq.CLAUDE_MISSING), msg);
-  assert.ok(msg.includes(path.join(dataDir, 'console.local.json')), msg);
+  assert.strictEqual(msg, 'Claude Code is not installed. In PowerShell run: irm https://claude.ai/install.ps1 | iex   Then click the project again.');
+  assert.ok(!/claudePath|console\.local\.json/.test(msg), msg);
   const m = new PaneManager({ runDir: tmpdir('cc-vm-'), dataDir, accounts: { acct1: {} }, defaultAccount: 'acct1', shells: {}, idleSeconds: 1 }, {});
-  assert.throws(() => m.buildSpec({ kind: 'claude', cwd: dataDir }), (e) => e.message === msg);
+  // R1-1 re-resolves at open, so the real claude.exe of this box stays out of the search
+  const saved = { PATH: process.env.PATH, APPDATA: process.env.APPDATA, USERPROFILE: process.env.USERPROFILE };
+  Object.assign(process.env, { PATH: '', APPDATA: dataDir, USERPROFILE: dataDir });
+  try {
+    assert.throws(() => m.buildSpec({ kind: 'claude', cwd: dataDir }), (e) => e.message === msg);
+  } finally { Object.assign(process.env, saved); }
 });
 
 // ------------------------------------------------------------- no git
@@ -163,7 +169,8 @@ test('install: --repo sets updates.repo; shell integration gets the version; a r
   assert.strictEqual(await cli.run(['install', '--home', home, '--source', src, '--repo', 'Remus3/claude-console'], deps), 0);
   assert.ok(lines.includes('install: installed v1.0.0'), lines.join('\n'));
   assert.ok(lines.includes(prereq.CLAUDE_MISSING), 'the one claude line');
-  assert.ok(lines.some((l) => l === 'command: ' + path.join(home, 'claude-console.cmd')), 'full path of the CLI');
+  assert.ok(!lines.some((l) => /^(report|launcher|command): /.test(l)), 'R1-16: no paths on a good install');
+  assert.ok(!lines.some((l) => /claude-console setup/.test(l)), 'R1-16: no setup report');
   const local = JSON.parse(r(path.join(home, 'data', 'console.local.json')));
   assert.strictEqual(local.updates.repo, 'Remus3/claude-console');
   assert.deepStrictEqual(fk.calls.shell[0][2], { version: '1.0.0', repo: 'Remus3/claude-console' });
@@ -229,7 +236,248 @@ test('uninstall: the shell-integration scripts (shortcuts, Apps & features, user
   assert.strictEqual(launcher.pathWithout('C:\\a;c:\\H;C:\\b', 'C:\\h'), 'C:\\a;C:\\b');
 });
 
+// ------------------------------------------------------------- R1-14: uninstall guard
+
+function installedHome(lock, targets) {
+  const home = tmpdir('cc-guard-');
+  const L = paths.layout(home);
+  w(path.join(L.app('1.0.0'), 'server', 'server.js'), '//\n');
+  w(L.marker, JSON.stringify({ version: '1.0.0', path: L.app('1.0.0') }));
+  w(path.join(home, 'claude-console.cmd'), '@echo off\n');
+  if (lock) w(path.join(L.data, 'profile', 'locks', lock.name), lock.text);
+  if (targets) w(path.join(L.data, 'profile', 'targets.json'), JSON.stringify({ schema: 1, repos: targets }));
+  return { home, L };
+}
+function guardDeps(extra) {
+  const lines = [];
+  const shell = [];
+  return Object.assign({ lines, shell, out: (s) => lines.push(s), postShutdown: async () => false, isAlive: () => false, kill: () => true, sleep: async () => {}, listServers: async () => [],
+    removeShell: async (h) => { shell.push(h); return []; }, deleteLater: () => {}, retryMs: 1 }, extra || {});
+}
+const USER_LOCK = { name: 'user.json', text: JSON.stringify({ schema: 1, items: ['hl-env-base-url'] }) };
+
+test('uninstall: a profile in the user lock refuses, exit 1, the exact line, nothing touched', async () => {
+  const { home, L } = installedHome(USER_LOCK);
+  const d = guardDeps({ postShutdown: async () => { throw new Error('must not stop the console'); } });
+  assert.strictEqual(await cli.run(['uninstall', '--home', home], d), 1);
+  assert.deepStrictEqual(d.lines, ['Your setup profile is still applied. See what it would remove: claude-console profile uninstall --all. Add --apply --yes to remove it, then uninstall again. To leave it in place: claude-console uninstall --keep-profile']);
+  assert.deepStrictEqual(d.shell, [], 'shell integration untouched');
+  assert.ok(fs.existsSync(L.app('1.0.0')) && fs.existsSync(L.marker));
+  assert.strictEqual(await cli.run(['uninstall', '--home', home, '--purge'], guardDeps()), 1, '--purge is refused too');
+  assert.ok(fs.existsSync(L.data));
+});
+
+test('uninstall --keep-profile: gets past the refusal, removes the code, keeps the lock and says so', async () => {
+  const { home, L } = installedHome(USER_LOCK);
+  const d = guardDeps();
+  assert.strictEqual(await cli.run(['uninstall', '--home', home, '--keep-profile'], d), 0, d.lines.join('\n'));
+  assert.ok(!fs.existsSync(L.appRoot));
+  assert.ok(fs.existsSync(path.join(L.data, 'profile', 'locks', 'user.json')));
+  assert.ok(d.lines.some((l) => /^Your setup profile stays applied/.test(l)), d.lines.join('\n'));
+});
+
+test('uninstall: no profile, or one fully removed, goes ahead; the last line names what stays', async () => {
+  for (const lock of [null, { name: 'user.json', text: JSON.stringify({ schema: 1, items: [] }) }]) {
+    const { home, L } = installedHome(lock);
+    const d = guardDeps();
+    assert.strictEqual(await cli.run(['uninstall', '--home', home], d), 0, d.lines.join('\n'));
+    assert.ok(!fs.existsSync(L.appRoot));
+    assert.strictEqual(d.lines[d.lines.length - 1], 'Claude Code, Node.js and Git stay installed.');
+    assert.match(d.lines[d.lines.length - 2], /statusLine entry/);
+    assert.ok(!d.lines.some((l) => /stays applied/.test(l)));
+  }
+});
+
+test('uninstall guard: repo locks from targets.json and other accounts name their way out; a vanished repo does not hold it', async () => {
+  const repo = tmpdir('cc-guard-repo-');
+  w(path.join(repo, '.claude', 'profile.lock.json'), JSON.stringify({ items: ['x'] }));
+  const gone = path.join(repo, 'gone');
+  const { home } = installedHome({ name: 'user-abc123.json', text: JSON.stringify({ items: ['y'], configDir: 'C:\\acct2' }) }, [repo, gone]);
+  const d = guardDeps();
+  assert.strictEqual(await cli.run(['uninstall', '--home', home], d), 1);
+  assert.ok(d.lines.includes('Also applied to a project: claude-console profile uninstall --all --target repo:"' + repo + '"'), d.lines.join('\n'));
+  assert.ok(d.lines.includes('Also applied for another account: C:\\acct2'), d.lines.join('\n'));
+  assert.ok(!d.lines.some((l) => l.includes(gone)));
+  const only = installedHome(null, [gone]);
+  assert.strictEqual(uninstall.profileApplied(only.L.data).applied, false);
+});
+
+test('uninstall guard: the repo lock path is the engine\'s, and an unreadable lock fails closed', () => {
+  assert.strictEqual(path.join('R', '.claude', 'profile.lock.json'), require('../installer/profile-plan').repoLockFile('R'));
+  const { L } = installedHome({ name: 'user.json', text: '{broken' });
+  const p = uninstall.profileApplied(L.data);
+  assert.strictEqual(p.applied, true);
+  assert.strictEqual(p.unreadable.length, 1);
+});
+
+test('uninstall: the Edge profile is removed when it can be, named in one line when it stays, never fatal', async () => {
+  const root = tmpdir('cc-edge-');
+  const dir = path.join(root, 'ClaudeConsole', 'edge-profile');
+  w(path.join(dir, 'Default', 'x'), 'x');
+  assert.strictEqual(uninstall.edgeProfileDir({ LOCALAPPDATA: root }), dir);
+  assert.strictEqual(uninstall.edgeProfileDir({}), null);
+  assert.strictEqual(uninstall.removeEdgeProfileDir(dir, () => { throw new Error('EBUSY'); }), dir, 'stays, no throw');
+  assert.ok(fs.existsSync(dir));
+  assert.strictEqual(uninstall.removeEdgeProfileDir(dir), null);
+  assert.ok(!fs.existsSync(path.join(root, 'ClaudeConsole')), 'the emptied parent goes too');
+  assert.strictEqual(uninstall.removeEdgeProfileDir(dir), null, 'absent: nothing to say');
+  const kept = installedHome(null);
+  const d = guardDeps({ removeEdgeProfile: () => 'C:\\held\\edge-profile' });
+  assert.strictEqual(await cli.run(['uninstall', '--home', kept.home], d), 0, d.lines.join('\n'));
+  assert.ok(d.lines.some((l) => l.includes('C:\\held\\edge-profile')), d.lines.join('\n'));
+  assert.strictEqual(d.lines[d.lines.length - 1], 'Claude Code, Node.js and Git stay installed.');
+});
+
+test('Apps & features: a visible window that stays open, a quiet string with --keep-profile, both refreshed on update', () => {
+  const home = 'C:\\Users\\x y\\claude-console';
+  const cmd = home + '\\claude-console.cmd';
+  const u = launcher.arpUninstallStrings(home);
+  assert.strictEqual(u.uninstall, 'cmd.exe /c ""' + cmd + '" uninstall & pause"');
+  assert.strictEqual(u.quiet, '"' + cmd + '" uninstall --keep-profile');
+  for (const s of [launcher.shortcutScript(home + '\\launch.vbs', null, { home, version: '0.1.5' }), launcher.arpVersionScript('0.1.5', home)]) {
+    assert.ok(s.includes("-Name UninstallString -Value '" + u.uninstall + "'"), s);
+    assert.ok(s.includes("-Name QuietUninstallString -Value '" + u.quiet + "'"), s);
+  }
+  assert.ok(!launcher.arpVersionScript('0.1.5').includes('UninstallString'), 'no home: version values only');
+});
+
+// ------------------------------------------------------------- R1-12: start
+
+function startHome() {
+  const home = tmpdir('cc-start-');
+  const L = paths.layout(home);
+  w(path.join(L.app('1.0.0'), 'server', 'server.js'), '//\n');
+  w(L.marker, JSON.stringify({ version: '1.0.0', path: L.app('1.0.0') }));
+  return { home, L };
+}
+// A server child that "exits" as told, after writing its log line like server.js main().
+function fakeChild(code, logFile, line) {
+  return () => {
+    const c = new EventEmitter();
+    c.unref = () => {};
+    setImmediate(() => {
+      if (line) w(logFile, (fs.existsSync(logFile) ? r(logFile) : '') + '2026-11-02T00:00:00.000Z ' + line + '\n');
+      if (code !== null) c.emit('exit', code, null);
+    });
+    return c;
+  };
+}
+
+test('start: port taken: exit 1, the exact line, naming the port and the file; launch.vbs gets it', async () => {
+  const { home, L } = startHome();
+  const log = path.join(L.run, 'server.log');
+  w(log, '2026-01-01T00:00:00.000Z start failed: an old failure, not this start\n');
+  const lines = [];
+  const code = await cli.run(['start', '--home', home], { out: (s) => lines.push(s), spawn: fakeChild(1, log, 'start failed: listen EADDRINUSE: address already in use 127.0.0.1:7811'), startWatchMs: 5000 });
+  assert.strictEqual(code, 1);
+  const want = 'Claude Console could not start: port 7811 is used by another program. Set a free "port" in ' + path.join(L.data, 'console.local.json') + ', then start again. Details: ' + log;
+  assert.deepStrictEqual(lines, ['starting v1.0.0', want]);
+  const b = fs.readFileSync(path.join(L.run, launcher.START_FAILED));
+  assert.deepStrictEqual([b[0], b[1]], [0xff, 0xfe], 'a BOM for the vbs reader');
+  assert.strictEqual(b.subarray(2).toString('utf16le'), want);
+});
+
+test('start: another failure gives its own reason; only this start\'s log lines count; no log gives the exit code', async () => {
+  const a = startHome();
+  const log = path.join(a.L.run, 'server.log');
+  w(log, 'x start failed: old\n');
+  const lines = [];
+  assert.strictEqual(await cli.run(['start', '--home', a.home], { out: (s) => lines.push(s), spawn: fakeChild(1, log, 'start failed: bad config.'), startWatchMs: 5000 }), 1);
+  assert.strictEqual(lines[1], 'Claude Console could not start: bad config. Details: ' + log);
+  const c = startHome();
+  const clog = path.join(c.L.run, 'server.log');
+  w(clog, 'x start failed: old\n');
+  lines.length = 0;
+  assert.strictEqual(await cli.run(['start', '--home', c.home], { out: (s) => lines.push(s), spawn: fakeChild(3), startWatchMs: 5000 }), 1);
+  assert.strictEqual(lines[1], 'Claude Console could not start: the server stopped with exit code 3. Details: ' + clog);
+});
+
+test('start: exit 0 (already running) and no exit within the watch are success; a stale failure file goes', async () => {
+  const { home, L } = startHome();
+  const fail = path.join(L.run, launcher.START_FAILED);
+  w(fail, 'old');
+  const lines = [];
+  assert.strictEqual(await cli.run(['start', '--home', home], { out: (s) => lines.push(s), spawn: fakeChild(0), startWatchMs: 5000 }), 0);
+  assert.deepStrictEqual(lines, ['starting v1.0.0']);
+  assert.ok(!fs.existsSync(fail));
+  const t0 = Date.now();
+  assert.strictEqual(await cli.run(['start', '--home', home], { out: () => {}, spawn: fakeChild(null), startWatchMs: 50 }), 0);
+  assert.ok(Date.now() - t0 < 4000, 'bounded by the watch');
+  assert.ok(!fs.existsSync(fail));
+});
+
+test('start --json: one object either way', async () => {
+  const { home, L } = startHome();
+  const lines = [];
+  assert.strictEqual(await cli.run(['start', '--home', home, '--json'], { out: (s) => lines.push(s), spawn: fakeChild(1), startWatchMs: 5000 }), 1);
+  assert.strictEqual(lines.length, 1);
+  assert.strictEqual(JSON.parse(lines[0]).started, false);
+  lines.length = 0;
+  assert.strictEqual(await cli.run(['start', '--home', home, '--json'], { out: (s) => lines.push(s), spawn: fakeChild(null), startWatchMs: 20 }), 0);
+  assert.deepStrictEqual(JSON.parse(lines[0]), { started: true, version: '1.0.0', app: L.app('1.0.0') });
+});
+
+test('start: a real detached, unref\'d child\'s nonzero exit is seen (a throwaway node -e, no server)', async () => {
+  const { home } = startHome();
+  const real = (exe, args, opts) => require('child_process').spawn(process.execPath, ['-e', 'process.exit(5)'], opts);
+  const lines = [];
+  assert.strictEqual(await cli.run(['start', '--home', home], { out: (s) => lines.push(s), spawn: real, startWatchMs: 10000 }), 1);
+  assert.match(lines[1], /exit code 5/);
+});
+
+// ------------------------------------------------------------- R1-28, R1-16, R1-18
+
+test('npm ci failure: the headline says the cause; npm\'s last 3 lines are in the report only', async () => {
+  const root = tmpdir('cc-npm-');
+  const reportDir = path.join(root, 'reports');
+  const err = ['a', 'b', 'npm error code ECONNRESET', 'npm error network', 'npm error last'].join('\n');
+  await assert.rejects(upd.defaultNpmCi(path.join(root, 'app', '1.0.0'), { run: async () => ({ code: 1, out: '', err }), reportDir }), (e) => {
+    const m = /^Could not download the program's libraries\. Check your internet connection and run the command again\. Details: (.+)$/.exec(e.message);
+    assert.ok(m, e.message);
+    assert.ok(!/ECONNRESET/.test(e.message));
+    assert.strictEqual(path.dirname(m[1]), reportDir);
+    assert.strictEqual(r(m[1]), 'npm error code ECONNRESET\nnpm error network\nnpm error last\n');
+    return true;
+  });
+  assert.strictEqual(await upd.defaultNpmCi(root, { run: async () => ({ code: 0, out: '', err: '' }) }), true);
+});
+
+test('install: --verbose shows the paths; --ignore-prereqs leaves the Claude line to install.ps1', async () => {
+  const root = tmpdir('cc-vm-');
+  const home = path.join(root, 'home');
+  const fk = fakes();
+  const lines = [];
+  const deps = { out: (s) => lines.push(s), prereqs: Object.assign({}, okPre, { claude: null, warnings: [prereq.CLAUDE_MISSING] }), npmCi: fk.npmCi, selftest: fk.selftest, makeShortcuts: fk.makeShortcuts, nodePath: 'C:\\node.exe', detectOpts: noDetect };
+  assert.strictEqual(await cli.run(['install', '--home', home, '--source', makeRelease(root, '1.0.0', {}), '--verbose', '--ignore-prereqs'], deps), 0);
+  assert.ok(lines.includes('command: ' + path.join(home, 'claude-console.cmd')), lines.join('\n'));
+  assert.ok(lines.some((l) => /^report: /.test(l)) && lines.some((l) => /^launcher: /.test(l)), lines.join('\n'));
+  assert.ok(!lines.includes(prereq.CLAUDE_MISSING), lines.join('\n'));
+});
+
+test('install.ps1: plain words, the literals phase A reads, the done line last, a refused prompt named', () => {
+  const s = r(PS1);
+  for (const k of ["'Downloading Claude Console.'", "'Installing Git. Windows may ask for permission.'", 'Installing Node.js (the console needs it).', 'SHA-256 ok: ',
+    "Say 'Claude Code CLI not found - install it with: irm https://claude.ai/install.ps1 | iex'", 'You said no to the Windows permission prompt, so ', "'Node.js'", "'Git'",
+    'Run the same command again when that is fixed; it picks up where it stopped.']) assert.ok(s.includes(k), k);
+  for (const k of ["Say 'winget install", "Say ('nodejs.org MSI", "Say ('download", "Say ('command:", 'started: the console', "Say ('install to"]) assert.ok(!s.includes(k), k);
+  const hint = s.indexOf("Say 'Claude Code CLI not found");
+  const done = s.indexOf("Say 'Done. Claude Console is opening in its own window. Next time, start it from the Start menu or the Desktop. You can close this window.'");
+  assert.ok(hint > 0 && done > hint, 'the hint, then the done line');
+});
+
 // ------------------------------------------------------------- CLI text
+
+test('CLI text: help leads with the everyday commands; unknown command points at help; prereq Git line', async () => {
+  const lines = [];
+  await cli.run(['help'], { out: (s) => lines.push(s) });
+  assert.strictEqual(lines[0], 'Claude Console. Everyday: start --open, stop, status, update --yes. Everything below is for troubleshooting.');
+  lines.length = 0;
+  assert.strictEqual(await cli.run(['nope'], { out: (s) => lines.push(s) }), 2);
+  assert.deepStrictEqual(lines, ['unknown command: nope. See: claude-console help']);
+  assert.ok(!r(path.join(ROOT, 'installer', 'cli.js')).includes('waits for the operator'));
+  assert.strictEqual(prereq.GIT_MISSING, 'Git not found: installing anyway. Projects show without git status, and an update keeps a file changed on both sides aside instead of merging it. To fix: winget install Git.Git, then run the install command again.');
+});
+
 
 test('CLI: help shows the reinstall confirm phrase and uninstall; update --yes restarts or hints', async () => {
   const lines = [];
@@ -287,7 +535,7 @@ test('install.ps1: the one-command install, read statically (never run on this h
 // PREPUB-FIX (pre-publish scrub 2026-10-18): every download is checked against a SHA-256
 // its publisher posts, and no installer runs unverified (fail closed: one line with the
 // manual link, then stop); the UAC prompt of the fallback installers is said up front.
-const UAC = 'If Node.js or Git is missing and winget is unavailable, Windows will ask for permission once to install it.';
+const UAC = 'If Node.js or Git is missing, Windows may ask for permission to install each one.';
 
 test('install.ps1: fail closed - no download runs or installs without a published SHA-256', () => {
   const s = r(PS1);
@@ -308,7 +556,7 @@ test('install.ps1: fail closed - no download runs or installs without a publishe
   assert.match(zip, /if \(-not \$Sums\) \{ Say [^\n]*releases[^\n]*; return \}/);
 });
 
-test('install.ps1 header and the README quickstart say the fallback installers ask for UAC once', () => {
+test('install.ps1 header and the README quickstart say Windows may ask for each install', () => {
   const s = r(PS1);
   const header = s.slice(0, s.indexOf('param('));
   assert.ok(header.replace(/\n#\s*/g, ' ').includes(UAC), 'header sentence');

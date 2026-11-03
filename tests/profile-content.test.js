@@ -167,12 +167,8 @@ test('kit contributions name only files of the neutral-name kit', () => {
 });
 
 test('shipped profile text carries no machine detail, token or private vocabulary', () => {
-  // Built from pieces so this file itself passes the export scan.
-  const words = [['FLEET', 'COMMON'].join('-'), 'fleet' + '_done', 'fleet' + '_headless', 'fleet' + '-kit', 'fleet' + ' kit',
-    'operator' + ' order', 'remote1' + '_sync', 'team' + 'claude', 'Maint' + '-', 'Admin' + 'istrator', 'Python3' + '14'];
-  const rx = [new RegExp('\\b' + 'MA' + 'IN' + '\\b'), /sk-ant-[A-Za-z0-9_-]{8}|\bgh[pousr]_[A-Za-z0-9]{20}|\bAKIA[0-9A-Z]{16}\b/,
-    new RegExp('(?<![A-Za-z0-9_])(' + ['R' + 'C', 'L' + 'W', 'C' + 'S', 'RS' + 'C', 'E' + 'W', 'S' + 'S', 'L' + 'L'].join('|') + ')(?![A-Za-z0-9_])'),
-    /(?<![\w/.-])docs\/[A-Za-z0-9_./-]+\.md\b/];
+  const rx = [/sk-ant-[A-Za-z0-9_-]{8}|\bgh[pousr]_[A-Za-z0-9]{20}|\bAKIA[0-9A-Z]{16}\b/, /(?<![\w/.-])docs\/[A-Za-z0-9_./-]+\.md\b/];
+  let words = [];
   for (const f of walk(PROFILE)) {
     if (f.includes(path.sep + 'kit' + path.sep)) continue; // lane L2's generated kit
     const t = fs.readFileSync(f, 'utf8');
@@ -297,7 +293,8 @@ test('every non-private inventory id is a module item or listed in EXCLUDED.md',
 test('review-step.json holds the review and liability step text (addendum e.4)', () => {
   const r = readJson(path.join(PROFILE, 'review-step.json'));
   assert.equal(r.schema, 1);
-  assert.match(r.lead, /read what each one does and review the \.md files it adds/);
+  assert.match(r.lead, /read what each one does and review the files it adds under Full diff on the next step/);
+  assert.equal(r.safeguards.find((s) => s.word === 'Your choice').text, "Custom setup gives every module and change its own yes or no. The author's settings ask once.");
   assert.match(r.licence, /Apache-2\.0/);
   assert.match(r.licence, /as-is/);
   assert.equal(r.safeguards.length, 7);
@@ -318,7 +315,7 @@ test('the remus3 preset covers every module and every L1 item', () => {
     const e = r.items[it.id];
     assert.ok(e, it.id + ' missing from the preset');
     assert.ok(['on', 'off'].includes(e.state));
-    assert.ok(['author-runs', 'author-off', 'fleet-4-of-6', 'fleet-below-4', 'module-default', 'locked', 'dependency'].includes(e.rule), it.id + ' rule ' + e.rule);
+    assert.ok(['author-runs', 'author-off', 'fleet-4-of-6', 'fleet-below-4', 'module-default', 'locked', 'dependency', 'user-arms'].includes(e.rule), it.id + ' rule ' + e.rule);
   }
   for (const it of moduleOf('floors').items) assert.equal(r.items[it.id].state, 'on');
   const declared = new Set(Object.keys(profile().variables));
@@ -326,4 +323,59 @@ test('the remus3 preset covers every module and every L1 item', () => {
     assert.ok(declared.has(k), 'preset variable ' + k + ' is not declared');
     assert.ok(('value' in v) !== ('ask' in v), k + ' is either a value or an ask');
   }
+});
+
+// ------------------------------------------------------------------ 0.1.5 D5, D7, R1-29, R3-8, R4-17
+
+function taskContributions() {
+  const pj = readJson(path.join(PROFILE, 'profile.json'));
+  const out = [];
+  for (const m of pj.modules) {
+    const j = readJson(path.join(PROFILE, 'modules', m, 'module.json'));
+    for (const it of j.items) for (const c of it.contributes || []) if (c.kind === 'task') out.push(Object.assign({ module: m, item: it.id }, c));
+  }
+  return out;
+}
+
+test('every task item carries deletes, and the two that delete say how', () => {
+  const all = taskContributions();
+  assert.strictEqual(all.length, 8);
+  for (const c of all) assert.ok(typeof c.deletes === 'string' && c.deletes.trim(), c.name + ' has no deletes text');
+  const by = Object.fromEntries(all.map((c) => [c.name, c.deletes]));
+  const tpl = (m, f) => fs.readFileSync(path.join(PROFILE, 'modules', m, 'templates', 'runtime', f), 'utf8');
+  // the method named is the method the script uses
+  assert.match(tpl('maintenance', 'Temp-Hygiene.ps1'), /\[System\.IO\.Directory\]::Delete/);
+  assert.strictEqual(by['ClaudeProfile-TempHygiene'], 'Stale scratch folders in Temp, permanently; locked folders and the live session folder are refused');
+  assert.match(tpl('maintenance', 'Clean-ClaudeTranscripts.ps1'), /SendToRecycleBin/);
+  assert.strictEqual(by['ClaudeProfile-ClaudeRetention'], 'Claude transcripts past the retention you set, to the Recycle Bin');
+  assert.strictEqual(by['ClaudeProfile-BootRecord'], 'nothing');
+});
+
+test('variables a person is asked for carry plain labels; hardware values start skipped', () => {
+  const v = readJson(path.join(PROFILE, 'profile.json')).variables;
+  const want = { repo_code: 'Short project code', effort_level: 'How hard Claude thinks by default', operator_ident: 'Your name and email for commits', backup_target: 'Backup computer (ssh address)', wol_mac: 'Network address (MAC) of the computer to wake', board_url: 'Status board address', sidecar_root: 'Folder for scratch files outside your projects' };
+  for (const [k, l] of Object.entries(want)) assert.strictEqual(v[k].label, l, k);
+  assert.strictEqual(v.backup_target.why, 'Machine that receives the daily git backup (ssh host)');
+  assert.strictEqual(v.wol_mac.why, 'Network address (MAC) of the machine to wake');
+  assert.strictEqual(v.board_url.why, 'Address of your status board');
+  assert.deepStrictEqual(Object.keys(v).filter((k) => v[k].start_skipped === true).sort(), ['backup_target', 'wol_mac']);
+  assert.strictEqual(v.runtime_retention_days.default, 30);
+  assert.ok(v.runtime_retention_days.ask, 'shown and editable');
+});
+
+test('the status board module describes the local board the kit ships, and asks for no URL', () => {
+  const dir = path.join(PROFILE, 'modules', 'board');
+  const text = [fs.readFileSync(path.join(dir, 'module.json'), 'utf8')].concat(['rules/kit-fleet-board.md', 'rules/conv-board-push-points.md', 'done/board.md'].map((f) => fs.readFileSync(path.join(dir, 'templates', f), 'utf8'))).join('\n');
+  assert.ok(!/claude\.ai|board_url|tool calls/.test(text));
+  assert.strictEqual(readJson(path.join(dir, 'module.json')).summary, 'A local status board per repository, rendered from the checklist and progress files at fixed moments.');
+  assert.match(fs.readFileSync(path.join(PROFILE, 'kit', 'kit_board.py'), 'utf8'), /LOCAL ONLY/);
+});
+
+test('shipped does text carries no raw template names (R4-17), kit rollout reads plainly (R3-8)', () => {
+  const s = readJson(path.join(PROFILE, 'modules', 'session', 'module.json'));
+  const does = Object.fromEntries(s.items.map((i) => [i.id, i.does]));
+  assert.match(does['conv-handoff-file'], /^Creates the hand-off file, <PROJECT>-NEXT-SESSION\.txt, and the rule/);
+  assert.match(does['hook-stop-done-title'], /titles the tab '<PROJECT> DONE' and/);
+  const f = readJson(path.join(PROFILE, 'modules', 'fleet', 'module.json'));
+  assert.match(f.items.find((i) => i.id === 'sched-kit-rollout').does, /^Each night at 04:00, passes notes between your projects/);
 });

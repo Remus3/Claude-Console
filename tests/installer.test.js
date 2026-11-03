@@ -322,10 +322,22 @@ test('launcher: ASCII LF launchers name the version; shortcut script targets wsc
     assert.ok(s.includes(path.join('C:\\cc', 'app', '1.2.3', 'bin', 'claude-console.js')));
   }
   assert.ok(f.vbs.includes('start --open --home'));
-  assert.ok(f.vbs.includes(', 0, False'), 'hidden window');
+  assert.ok(f.vbs.includes(', 0, True)'), 'hidden window, and it waits for the CLI');
   const ps = launcher.shortcutScript('C:\\cc\\launch.vbs');
   assert.ok(ps.includes("'C:\\cc\\launch.vbs'") && ps.includes('wscript.exe') && ps.includes("GetFolderPath('Programs')"));
   assert.ok(/^[\x0a\x20-\x7e]*$/.test(ps));
+});
+
+test('launch.vbs: a nonzero start shows the CLI line in a MsgBox, read from run/start-failed.txt as UTF-16', () => {
+  const home = 'C:\\cc';
+  const f = launcher.launcherFiles(home, '1.2.3', 'C:\\node.exe');
+  const run = path.join(home, 'run');
+  assert.ok(/^rc = sh\.Run\(/m.test(f.vbs));
+  const gate = f.vbs.indexOf('If rc <> 0 Then');
+  assert.ok(gate > 0 && gate < f.vbs.indexOf('MsgBox'), 'only on a failed start');
+  assert.ok(f.vbs.includes('msg = "Claude Console could not start. Details: ' + path.join(run, 'server.log') + '"'), 'its own line when the file is missing');
+  assert.ok(f.vbs.includes('OpenTextFile("' + path.join(run, launcher.START_FAILED) + '", 1, False, -1)'), 'TristateTrue reads the BOM file');
+  assert.ok(f.vbs.includes('MsgBox msg, vbExclamation, "Claude Console"'));
 });
 
 test('install: clean install lays out app, base, data, launchers, marker', async () => {

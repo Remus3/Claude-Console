@@ -13,7 +13,8 @@ const toolsMod = require('./tools');
 const boards = require('./boards');
 const { sanitizeGroups } = require('./groups');
 const uiprefs = require('./uiprefs');
-const { discoverProjects } = require('./discovery');
+const RA = require('./route-accounts'); // kit v26 KIT-ROUTE-ACCOUNTS
+const { discoverProjects, isRepoRoot, slug, norm } = require('./discovery');
 const { StatusService } = require('./status');
 const { PaneManager } = require('./panes');
 const { resolveClaude } = require('./claudeenv');
@@ -45,6 +46,10 @@ const VENDOR = {
   'addon-fit.js': path.join(NM, '@xterm', 'addon-fit', 'lib', 'addon-fit.js'),
   'addon-search.js': path.join(NM, '@xterm', 'addon-search', 'lib', 'addon-search.js'),
   'addon-web-links.js': path.join(NM, '@xterm', 'addon-web-links', 'lib', 'addon-web-links.js'),
+  // CON-OSC-PROGRESS: OSC 9;4 progress (Claude Code terminalProgressBarEnabled)
+  'addon-progress.js': path.join(NM, '@xterm', 'addon-progress', 'lib', 'addon-progress.js'),
+  // CON-WEBGL-MEASURE: GPU renderer for visible panes (measured gain 2026-10-31)
+  'addon-webgl.js': path.join(NM, '@xterm', 'addon-webgl', 'lib', 'addon-webgl.js'),
 };
 const STATIC = {
   '/': 'index.html',
@@ -68,7 +73,12 @@ const DEFAULT_SETTINGS = {
   fontFamily: '"Cascadia Mono", "Cascadia Code", Consolas, monospace',
   lineHeight: 1.2,
   defaultAccount: null, // "Main / orchestrator account": new claude panes start on it
-  headlessAccount: null, // "Headless lane account" (v19.1 B): same as main = single, else split
+  headlessAccount: null, // "Headless lane account" (CON-ROUTE-ACCT): the only pick that sets the kit route
+  // kit v26 KIT-ROUTE-ACCOUNTS: the ordered headless list (1-3 account ids; [0] mirrors
+  // headlessAccount) and the fallback switch. null = not chosen in the console: the Save
+  // keeps the LIVE route's switch (CON-ROUTE-FALLBACK: a Save never disarms silently).
+  headlessAccounts: null,
+  headlessFallback: null,
   defaultShell: null,
   scrollback: 10000,
   idleBadge: true,
@@ -202,18 +212,46 @@ async function createConsoleServer(opts) {
   });
   // Account config dir as the kit route needs it (null configDir = the default ~/.claude).
   const acctDir = (id) => (hasAcct(id) ? cfg.accounts[id].configDir || path.join(os.homedir(), '.claude') : null);
-  // The account the second-account proxy pin bills (config `headlessProxy: true`).
+  // The account the variable's own proxy pin bills (config `headlessProxy: true`).
   const proxyAcct = () => Object.keys(cfg.accounts || {}).find((k) => cfg.accounts[k] && cfg.accounts[k].headlessProxy === true) || null;
-  // v19.1 B: the route the two SAVED picks ask for. Explicit only: no stored headless
-  // pick = none; same pick = single; split only onto the proxy account.
+  const acctName = (id) => (hasAcct(id) ? cfg.accounts[id].label || id : null);
+  // kit v26 KIT-ROUTE-ACCOUNTS (ruling 2026-10-31; replaces CON-ROUTE-ACCT's one-pick,
+  // proxy-only model and its "not available" refusal): any configured account, the
+  // interactive one included, 1 to 3 in order, plus the fallback switch. Each maps to a
+  // kit entry from the console's own config (server/route-accounts.js): the proxy-pin
+  // account = the variable's pin, an account with a `headlessPin` (data/console.local.json,
+  // never shown) = a pinned proxy entry, any other = its own config dir.
+  const routeFile = opts.routeFile || path.join(os.homedir(), '.fleet', 'headless_route.json');
+  const live = () => RA.liveRoute(routeFile, cfg.accounts, acctDir);
+  const kitMin = () => (typeof opts.fleetKitMin === 'function' ? opts.fleetKitMin() : mainCfg ? RA.fleetKitMin(mainCfg.root) : null);
   function routeDesired(s) {
-    const main = s.defaultAccount;
-    const hl = s.headlessAccount;
-    if (!hasAcct(hl) || !hasAcct(main)) return { mode: null, main, headless: null, error: 'choose the headless lane account first' };
-    if (hl === main) return { mode: 'single', main, headless: hl };
-    if (hl === proxyAcct()) return { mode: 'split', main, headless: hl };
-    return { mode: null, main, headless: hl, error: 'split sends headless runs through the proxy, which bills ' + (proxyAcct() ? (cfg.accounts[proxyAcct()].label || proxyAcct()) : 'no configured account') + '; pick that account or the main account' };
+    const ids = s.headlessAccounts || (s.headlessAccount ? [s.headlessAccount] : []);
+    const got = RA.entriesFor(ids, cfg.accounts, acctDir);
+    const lv = live();
+    // CON-ROUTE-FALLBACK: no switch chosen here = the live route's switch is kept
+    const armed = typeof s.headlessFallback === 'boolean' ? s.headlessFallback : !!(lv && lv.armed);
+    const out = { ids, labels: ids.map(acctName), entries: got.entries, armed: ids.length > 1 && armed, error: got.error };
+    if (!got.error && RA.needsV2(got.entries)) {
+      out.v2 = true;
+      const min = kitMin();
+      if (min === null || min < RA.V2_FROM) out.error = 'this headless list needs the v2 route file, offered only while every live tree runs kit v' + RA.V2_FROM + ' or later (drift reads ' + (min === null ? 'unknown' : 'v' + min) + ')';
+    }
+    return out;
   }
+  // Which account the LIVE route bills now: the entry in use (kit route show "entry",
+  // else 1) mapped to the console account from the live route file; never the path or pin.
+  function routeBills(kit) {
+    if (!kit || !kit.supported || !kit.valid || !kit.mode) return null;
+    const lv = live();
+    const n = kit.entry || (kit.fallbackActive ? 2 : 1);
+    const e = lv && lv.entries[n - 1];
+    if (!e) return kit.mode === 'split' && proxyAcct() ? acctName(proxyAcct()) : 'an account outside the console list';
+    if (e.id) return acctName(e.id);
+    return e.via === 'proxy' && !e.pinned ? 'the proxy-pin account (none marked in config)' : 'an account outside the console list';
+  }
+  const liveIds = () => { const lv = live(); return lv ? { ids: lv.entries.map((e) => e.id), armed: lv.armed, version: lv.version } : null; };
+    let routeRefusal = null; // the last refused Save, until a Save applies (GET shows it too)
+  const withBills = (kit) => (kit ? Object.assign({}, kit, { bills: routeBills(kit) }) : kit);
   function hasAcct(id) {
     return typeof id === 'string' && !!cfg.accounts && Object.prototype.hasOwnProperty.call(cfg.accounts, id) && !!cfg.accounts[id];
   }
@@ -291,12 +329,48 @@ async function createConsoleServer(opts) {
     const s = Object.assign({}, DEFAULT_SETTINGS, readJson(settingsFile, {}));
     if (!hasAcct(s.defaultAccount)) s.defaultAccount = cfg.defaultAccount;
     if (!hasAcct(s.headlessAccount)) s.headlessAccount = null;
+    if (Array.isArray(s.headlessAccounts)) {
+      const ids = s.headlessAccounts.filter((id, i, a) => hasAcct(id) && a.indexOf(id) === i).slice(0, RA.MAX);
+      s.headlessAccounts = ids.length ? ids : null;
+    } else s.headlessAccounts = null;
+    if (s.headlessAccounts) s.headlessAccount = s.headlessAccounts[0];
+    if (typeof s.headlessFallback !== 'boolean') s.headlessFallback = null;
     if (!s.defaultShell || !(cfg.shells || {})[s.defaultShell]) s.defaultShell = cfg.defaultShell;
     return uiprefs.sanitizeUiPrefs(s);
   }
 
   function projectById(id) {
     return projects.find((p) => p.id === id) || null;
+  }
+
+  // R2-13: what Hide took off the list, so Settings > Projects can offer it back.
+  function hiddenProjects() {
+    const o = cfg.projects || {};
+    return Object.keys(o).filter((n) => o[n] && o[n].hidden).map((n) => ({ id: slug(n), name: n }));
+  }
+
+  // R1-11: a pane opened in a git repo that is not listed adds the folder to extraProjects
+  // in console.local.json, so it stays listed with no hand edit. Null when there is nothing
+  // to list: already listed, not a repo root, or hidden on purpose (Show brings that back).
+  // A local file that does not parse is left alone: the pane still opens, the row does not.
+  async function listOpenedFolder(dir) {
+    const key = norm(dir);
+    if (projects.some((x) => norm(x.dir) === key)) return null;
+    if (!(await isRepoRoot(dir))) return null;
+    const name = path.basename(fs.realpathSync.native(path.resolve(dir)));
+    if (cfg.projects && cfg.projects[name] && cfg.projects[name].hidden) return null;
+    const localFile = path.join(cfg.dataDir, 'console.local.json');
+    const local = readJson(localFile, fs.existsSync(localFile) ? null : {});
+    if (!local || typeof local !== 'object' || Array.isArray(local)) return null;
+    // a local list replaces the base list on merge, so it starts from what is in force
+    const list = Array.isArray(local.extraProjects) ? local.extraProjects : (Array.isArray(cfg.extraProjects) ? cfg.extraProjects : []);
+    local.extraProjects = list.some((x) => norm(x) === key) ? list : list.concat([path.resolve(dir)]);
+    writeJsonAtomic(localFile, local);
+    cfg.extraProjects = local.extraProjects;
+    projects = await discoverProjects(cfg);
+    status.refreshFiles();
+    status.refreshGit();
+    return projects.find((x) => norm(x.dir) === key) || null;
   }
 
   async function api(req, res, url) {
@@ -326,16 +400,17 @@ async function createConsoleServer(opts) {
     }
 
     if (p === '/api/info' && m === 'GET') {
+      const claudeNow = panes.claudePath || resolveClaude(cfg); // R1-1: the footer clears by itself
       return send(res, 200, {
-        version: VERSION, claudePath, claudeFound: !!claudePath, hooks: !!cfg.useHooks,
-        accounts: (() => { const pb = accountProblems(cfg.accounts); return Object.entries(cfg.accounts).map(([id, a]) => ({ id, label: a.label || id, headlessProxy: a.headlessProxy === true, problem: pb[id] || null })); })(),
+        version: VERSION, claudePath: claudeNow, claudeFound: !!claudeNow, hooks: !!cfg.useHooks,
+        accounts: (() => { const pb = accountProblems(cfg.accounts); return Object.entries(cfg.accounts).map(([id, a]) => ({ id, label: a.label || id, headlessProxy: a.headlessProxy === true, pinned: typeof a.headlessPin === 'string' && RA.PIN_RE.test(a.headlessPin), problem: pb[id] || null })); })(),
         defaultAccount: cfg.defaultAccount,
         shells: Object.entries(cfg.shells || {}).filter(([, s]) => fs.existsSync(s.file)).map(([id, s]) => ({ id, label: s.label || id })),
         defaultShell: cfg.defaultShell, idleSeconds: cfg.idleSeconds, pid: process.pid,
         uploadMaxBytes: uploadMax,
       });
     }
-    if (p === '/api/projects' && m === 'GET') return send(res, 200, { projects });
+    if (p === '/api/projects' && m === 'GET') return send(res, 200, { projects, hidden: hiddenProjects() });
     // Remove a project LISTING (CON-7): the project gets `hidden: true` in
     // data/console.local.json (merged over config/console.json, so a rescan keeps it
     // out). Its folder and files are never touched. Refused while it has live panes.
@@ -366,6 +441,28 @@ async function createConsoleServer(opts) {
       status.refreshFiles();
       status.refreshGit();
       return send(res, 200, { ok: true, removed: proj.id, projects });
+    }
+    // R2-13: the way back from a Hide. A hidden project is not in `projects`, so the id is
+    // matched against the names that carry `hidden` (the id is the name's slug).
+    const sh = /^\/api\/projects\/([a-z0-9-]{1,80})\/show$/.exec(p);
+    if (sh && m === 'POST') {
+      if (!isLoopback(req)) return send(res, 403, { error: 'localhost only' });
+      const names = hiddenProjects().filter((x) => x.id === sh[1]).map((x) => x.name);
+      if (!names.length) return send(res, 404, { error: 'no hidden project with that id' });
+      const localFile = path.join(cfg.dataDir, 'console.local.json');
+      const local = readJson(localFile, {});
+      if (!local.projects || typeof local.projects !== 'object' || Array.isArray(local.projects)) local.projects = {};
+      cfg.projects = Object.assign({}, cfg.projects);
+      for (const n of names) {
+        // false, not deleted: a base config entry saying hidden must lose to this too
+        local.projects[n] = Object.assign({}, local.projects[n], { hidden: false });
+        cfg.projects[n] = Object.assign({}, cfg.projects[n], { hidden: false });
+      }
+      writeJsonAtomic(localFile, local);
+      projects = await discoverProjects(cfg);
+      status.refreshFiles();
+      status.refreshGit();
+      return send(res, 200, { ok: true, shown: sh[1], projects, hidden: hiddenProjects() });
     }
     // New-pane folder picker (CON-4): drive letters and subfolders, read-only.
     if ((p === '/api/fs/drives' || p === '/api/fs/list') && m === 'GET') {
@@ -508,13 +605,14 @@ async function createConsoleServer(opts) {
       const r = await toolsMod.launchTool(t, { spawn: opts.toolSpawn, portOpen: opts.toolPortOpen, waitMs: opts.toolWaitMs });
       return send(res, r.ok ? 200 : 400, r.ok ? { ok: true } : { error: r.error });
     }
-    // CON-BOARD-LINK: open a project's status board. The server resolves the URL
-    // itself (no URL from the page) and boards.openBoard re-validates it.
+    // CON-BOARD-LOCAL: open a project's local status board (<repo>/ops/loop/control/
+    // board/board.html, kit v23). The server resolves the path from the project itself;
+    // the page never sends one.
     const bm = /^\/api\/projects\/([a-z0-9-]{1,80})\/board$/.exec(p);
     if (bm && m === 'POST') {
       const proj = projectById(bm[1]);
       if (!proj) return send(res, 404, { error: 'unknown project' });
-      const r = boards.openBoard(boards.resolveBoard(proj, cfg), opts.toolSpawn);
+      const r = boards.openBoard(proj, opts.toolSpawn);
       return send(res, r.ok ? 200 : 404, r.ok ? { ok: true } : { error: r.error });
     }
     if (p === '/api/projects/rescan' && m === 'POST') {
@@ -557,19 +655,31 @@ async function createConsoleServer(opts) {
       plog('health run ' + (r.run ? '#' + r.run.id + ' ' + r.run.steps.map((x) => x.id).join(',') : 'refused ' + r.status + ' ' + r.error));
       return send(res, r.status, r.run ? { run: r.run } : { error: r.error });
     }
-    // v19.1 B: the headless route. Desired mode comes from the saved settings only;
-    // the kit CLI is the only writer of the route file (plugin).
+    // CON-ROUTE-ACCT: the headless route. Desired mode comes from the saved headless pick
+    // only; the kit CLI is the only writer of the route file (plugin). A refused pick
+    // is logged and answered with its one-line reason, never dropped.
     if (p === '/api/route' && (m === 'GET' || m === 'POST')) {
       if (!isLoopback(req)) return send(res, 403, { error: 'localhost only' });
       const want = routeDesired(settings());
       const why = want.error ? { error: want.error } : {};
-      if (!mainPl) return send(res, 200, Object.assign({ plugin: false, desired: want.mode, kit: { supported: false, mode: null, valid: false, reason: 'no plugin: the choice is stored only' } }, why));
-      if (m === 'GET') return send(res, 200, Object.assign({ plugin: true, desired: want.mode, kit: await mainPl.routeShow() }, why));
-      if (!want.mode) return send(res, 400, { plugin: true, desired: null, error: want.error });
+      const min = kitMin();
+      const base = Object.assign({ desired: want.ids.length ? { headless: want.labels, armed: want.armed, v2: !!want.v2 } : null, headless: want.labels[0] || null, live: liveIds(), gate: { v2: min !== null && min >= RA.V2_FROM, kitMin: min } }, routeRefusal ? { refused: routeRefusal } : {});
+      if (!mainPl) return send(res, 200, Object.assign({ plugin: false, kit: { supported: false, mode: null, valid: false, reason: 'no plugin: the choice is stored only' } }, base, why));
+      if (m === 'GET') return send(res, 200, Object.assign({ plugin: true, kit: withBills(await mainPl.routeShow()) }, base, why));
+      if (want.error) {
+        routeRefusal = want.error;
+        base.refused = routeRefusal;
+        plog('headless route refused: ' + want.error);
+        return send(res, 400, Object.assign({ plugin: true, kit: withBills(await mainPl.routeShow()) }, base, why));
+      }
       const allowed = Object.keys(cfg.accounts).map(acctDir);
-      const r = await mainPl.routeSet(want.mode, want.mode === 'single' ? acctDir(want.main) : null, allowed);
-      plog('headless route set ' + want.mode + ' -> ' + r.status);
-      return send(res, r.status, Object.assign({ plugin: true, desired: want.mode, kit: r.route || null }, r.error ? { error: r.error } : {}));
+      const pins = want.entries.filter((e) => e.pin).map((e) => e.pin);
+      const r = await mainPl.routeSetAccounts(want.entries, want.armed, allowed, pins);
+      plog('headless route set ' + want.labels.join(' > ') + (want.armed ? ' (fallback armed)' : '') + ' -> ' + r.status + (r.error ? ' refused: ' + r.error : ''));
+      routeRefusal = r.error || null;
+      if (routeRefusal) base.refused = routeRefusal; else delete base.refused;
+      base.live = liveIds();
+      return send(res, r.status, Object.assign({ plugin: true, kit: withBills(r.route || null) }, base, r.error ? { error: r.error } : {}));
     }
     if (p === '/api/settings' && m === 'GET') return send(res, 200, settings());
     if (p === '/api/settings' && m === 'PUT') {
@@ -579,7 +689,9 @@ async function createConsoleServer(opts) {
       cur.sidebarGroups = sanitizeGroups(cur.sidebarGroups);
       uiprefs.sanitizeUiPrefs(cur);
       writeJsonAtomic(settingsFile, cur);
-      return send(res, 200, settings());
+      const saved = settings();
+      panes.setRingLines(saved.scrollback); // CON-SCROLLBACK
+      return send(res, 200, saved);
     }
     // CON-PUBLIC D/E/F: Settings > "Updates & repair" (server/updates.js). apply only stages
     // the new version; the restart stays the operator's (or the auto-updater's when idle).
@@ -613,14 +725,26 @@ async function createConsoleServer(opts) {
       const b = await readBody(req);
       let cwd = b.cwd;
       let title = b.title;
-      const proj = b.projectId ? projectById(b.projectId) : null;
+      let proj = b.projectId ? projectById(b.projectId) : null;
       if (b.projectId && !proj) return send(res, 404, { error: 'unknown project' });
+      const s = settings();
+      // R1-11: only a pane that can actually open lists its folder (the dry run throws what
+      // create would), and it then joins the new row like any project pane.
+      let listed = false;
+      if (!proj && typeof cwd === 'string' && cwd && b.kind !== 'log' && b.kind !== 'run') {
+        try {
+          panes.buildSpec({ kind: b.kind, cwd, account: b.account || s.defaultAccount, shell: b.shell || s.defaultShell });
+          proj = await listOpenedFolder(cwd);
+          listed = !!proj;
+        } catch (e) {
+          plog('pane folder not listed: ' + e.message);
+        }
+      }
       if (proj) {
         cwd = proj.dir;
         if (!title) title = proj.name;
       }
       if (!cwd) cwd = cfg.root;
-      const s = settings();
       try {
         const pane = panes.create({
           kind: b.kind, projectId: proj ? proj.id : null, cwd, title,
@@ -630,12 +754,12 @@ async function createConsoleServer(opts) {
           svc: typeof b.svc === 'string' ? b.svc : null, recipe: typeof b.recipe === 'string' ? b.recipe : null, // CON-HOM-5
         });
         plog('pane ' + pane.id + ' open ' + pane.kind + ' "' + pane.title + '" by ' + (pane.openedBy ? 'page ' + pane.openedBy : 'api ' + who(req)));
-        return send(res, 201, pane.info());
+        return send(res, 201, listed ? Object.assign({}, pane.info(), { listed: true }) : pane.info());
       } catch (e) {
         return send(res, 400, { error: e.message });
       }
     }
-    const pm = /^\/api\/panes\/([0-9a-f]{8})(?:\/(restart|seen|input|resize))?$/.exec(p);
+    const pm =/^\/api\/panes\/([0-9a-f]{8})(?:\/(restart|seen|input|resize))?$/.exec(p);
     if (pm) {
       const pane = panes.get(pm[1]);
       if (!pane) return send(res, 404, { error: 'no such pane' });
@@ -757,7 +881,9 @@ async function createConsoleServer(opts) {
     const out = (d) => { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'out', d })); };
     const onExit = (code) => { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'exit', code })); };
     const onClosed = () => { try { ws.close(4000, 'pane closed'); } catch (e) { /* gone */ } };
-    ws.send(JSON.stringify({ t: 'replay', d: pane.replay(), info: pane.info() }));
+    // CON-SCROLL-REPLAY: segs = the ring split at each pty resize, oldest first.
+    const segs = typeof pane.replaySegments === 'function' ? pane.replaySegments() : null;
+    ws.send(JSON.stringify({ t: 'replay', segs, info: pane.info() }));
     pane.on('data', out);
     pane.on('exit', onExit);
     pane.on('closed', onClosed);
@@ -800,6 +926,7 @@ async function createConsoleServer(opts) {
   });
   panes.hookUrl = 'http://127.0.0.1:' + port + '/';
   panes.clearMode = () => settings().clearMode; // CON-CLEAR-MODE (Settings "After /clear")
+  panes.setRingLines(settings().scrollback); // CON-SCROLLBACK: replay ring follows Settings lines
   status.start();
   if (credits) credits.start(); // CON-CREDITS: first read now, then every 15 min
   resources.start();
@@ -859,16 +986,20 @@ async function createConsoleServer(opts) {
 }
 
 // ---------- CLI entry ----------
-function openWindow(cfg, port, token) {
-  const edge = cfg.edgePath;
+// deps: {spawn, findEdge}, tests only. R1-13: an Edge install after the console's is picked
+// up here; no Edge at all opens the default browser, the plain tab the docs promise.
+function openWindow(cfg, port, token, deps) {
+  const run = (deps && deps.spawn) || spawn;
+  const findEdge = (deps && deps.findEdge) || require('../installer/prereq').findEdge;
+  const edge = (cfg.edgePath && fs.existsSync(cfg.edgePath)) ? cfg.edgePath : findEdge();
   const url = 'http://127.0.0.1:' + port + '/#t=' + token;
   const profile = path.join(process.env.LOCALAPPDATA || cfg.runDir, 'ClaudeConsole', 'edge-profile');
   const args = ['--app=' + url, '--user-data-dir=' + profile, '--window-size=1680,1020', '--no-first-run', '--no-default-browser-check'];
-  if (!edge || !fs.existsSync(edge)) {
-    console.error('Edge not found; open ' + url + ' manually');
+  if (!edge) {
+    run('cmd.exe', ['/c', 'start', '', url.replace(/&/g, '^&')], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
     return;
   }
-  const child = spawn(edge, args, { detached: true, stdio: 'ignore' });
+  const child = run(edge, args, { detached: true, stdio: 'ignore' });
   child.unref();
 }
 
@@ -927,4 +1058,4 @@ async function main() {
 
 if (require.main === module) main();
 
-module.exports = { createConsoleServer, DEFAULT_SETTINGS };
+module.exports = { createConsoleServer, DEFAULT_SETTINGS, openWindow };

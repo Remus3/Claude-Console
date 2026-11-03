@@ -33,7 +33,15 @@ test('header: badge button hidden by default, in the top actions; Settings has U
   const top = /<div class="top-actions">[\s\S]*?<\/div>/.exec(h)[0];
   assert.match(top, /<button id="upd-badge"[^>]*hidden[^>]*>/);
   assert.match(h, /<fieldset[^>]*id="set-updates"/);
-  for (const id of ['upd-state', 'btn-upd-check', 'btn-upd-apply', 'upd-last', 'btn-upd-contrib', 'btn-upd-repair', 'upd-auto']) assert.match(h, new RegExp('id="' + id + '"'), id);
+  for (const id of ['upd-state', 'btn-upd-check', 'btn-upd-apply', 'upd-last', 'btn-upd-contrib', 'btn-upd-repair']) assert.match(h, new RegExp('id="' + id + '"'), id);
+  // R3-5: no promise of an automatic check; R1-25: the way out is named
+  assert.doesNotMatch(h, /upd-auto|Auto-update|update window/);
+  assert.match(h, /id="upd-how">Nothing checks in the background\. Press Check now to look for a new version\.</);
+  assert.match(h, /To remove the console: Apps &amp; features &gt; Claude Console &gt; Uninstall\./);
+  assert.doesNotMatch(h, /id="upd-state"[^>]*>Checking/, 'nothing is checking when the page loads');
+  // CON-CONTRIB-LABEL: the patch button says what it does, with a one-line help beside it
+  assert.doesNotMatch(h, /Contribute\?/);
+  assert.match(h, /<span class="muted small" id="upd-contrib-help">[^<]*scrubbed patch file in reports\/[^<]*nothing is sent\.<\/span><button type="button" id="btn-upd-contrib" class="small">Save my edits as a patch<\/button>/);
   const css = fs.readFileSync(path.join(PUB, 'app.css'), 'utf8');
   assert.match(css, /#upd-badge \{[^}]*font-size: var\(--fs-badge\)/);
   const js = fs.readFileSync(path.join(PUB, 'app.js'), 'utf8');

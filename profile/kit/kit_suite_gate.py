@@ -95,6 +95,9 @@ v18 RM737-GATE (a recorded ruling):
      names "commit" and the shortfall. The
      WAIT_S fail-closed timeout still applies. Where commit cannot be read
      (POSIX, an API error) admission is a no-op.
+     v26 KIT-GATE-CMD-SPLIT: a (tree, cmd) with fewer than COMMIT_MIN_RUNS
+     sampled runs takes the median of the TREE's last COMMIT_WINDOW sampled
+     regular runs (any command) before the default.
 KIT-GATE-HOL (FIX, train-exempt; SUPERVISOR ROADMAP S49): head-of-line. A waiter
 short of commit used to block the whole FIFO even with a slot free (2026-10-18:
 lane-eligible SB and SUPERVISOR runs waited 827-1477 s behind an SA -n 8 suite at
@@ -142,6 +145,16 @@ a recorded ruling):
      holds slot 0 alone (no regular slot or lane for anyone else), and a
      newer waiter never passes an exclusive ticket; the line gains
      "exclusive": true. LANE_MIN_RUNS 3 -> 1.
+v21 KIT-COMMIT-SCALE (SC FIX 2026-10-22, folded into unqueued v21):
+ 18. the commit default and margin scale with the machine: COMMIT_DEFAULT_MB
+     is capped at CommitLimit / COMMIT_DEFAULT_DIV (5) and COMMIT_MARGIN_MB
+     at CommitLimit / COMMIT_MARGIN_DIV (10). At CommitLimit >= 40960 MB
+     both caps are above the absolute values, so nothing changes there; on a
+     smaller box (an 8 GB machine, CommitLimit under 12288 MB) a run with no
+     history no longer needs more free commit than the box can ever have, so
+     a lone run is not refused after WAIT_S. An explicit
+     KIT_SUITE_COMMIT_MARGIN_MB stays absolute. Where CommitLimit cannot be
+     read the absolute values apply (and admission is a no-op anyway).
 Pure stdlib plus the sibling kit files kit_claims.py and kit_gitlock.py.
 """
 
@@ -168,6 +181,8 @@ LANE_OVERRUN_S = 200.0  # v18 KIT-15-REPICK (was 240)
 ENV_COMMIT_MARGIN = "KIT_SUITE_COMMIT_MARGIN_MB"
 COMMIT_MARGIN_MB = 4096
 COMMIT_DEFAULT_MB = 8192
+COMMIT_DEFAULT_DIV = 5  # v21 KIT-COMMIT-SCALE: default <= CommitLimit / 5
+COMMIT_MARGIN_DIV = 10  # v21 KIT-COMMIT-SCALE: margin <= CommitLimit / 10
 COMMIT_WINDOW = 5
 COMMIT_MIN_RUNS = 3
 SAMPLE_S = 2.0
@@ -796,6 +811,23 @@ def status_lines(state):
 def free_commit_mb():
     """CommitLimit - CommitTotal in MB (GetPerformanceInfo), or None where it
     cannot be read (POSIX, an API error): admission is then a no-op."""
+    pi = _perf_info()
+    if pi is None:
+        return None
+    return (pi.CommitLimit - pi.CommitTotal) * pi.PageSize / float(1 << 20)
+
+
+def commit_limit_mb():
+    """v21 KIT-COMMIT-SCALE: the machine's CommitLimit in MB, or None where it
+    cannot be read (the absolute default and margin then apply)."""
+    pi = _perf_info()
+    if pi is None:
+        return None
+    return pi.CommitLimit * pi.PageSize / float(1 << 20)
+
+
+def _perf_info():
+    """GetPerformanceInfo as a ctypes struct, or None (POSIX, an API error)."""
     if sys.platform != "win32":
         return None
     try:
@@ -815,7 +847,7 @@ def free_commit_mb():
         k32 = ctypes.WinDLL("kernel32", use_last_error=True)
         if not k32.K32GetPerformanceInfo(ctypes.byref(pi), pi.cb):
             return None
-        return (pi.CommitLimit - pi.CommitTotal) * pi.PageSize / float(1 << 20)
+        return pi
     except (OSError, AttributeError, ValueError):
         return None
 
@@ -891,23 +923,41 @@ def tree_private_mb(root):
         return None
 
 
-def commit_margin_mb(env=None):
+def _scaled(absolute, limit, div):
+    """v21 KIT-COMMIT-SCALE: absolute, capped at limit / div when the
+    machine's CommitLimit (MB) is known and positive."""
+    if isinstance(limit, (int, float)) and limit > 0:
+        return min(float(absolute), float(limit) / div)
+    return absolute
+
+
+def commit_margin_mb(env=None, limit=None):
+    """KIT_SUITE_COMMIT_MARGIN_MB (absolute), else COMMIT_MARGIN_MB capped
+    at limit / COMMIT_MARGIN_DIV (v21 KIT-COMMIT-SCALE)."""
     env = os.environ if env is None else env
     try:
         v = int(str(env.get(ENV_COMMIT_MARGIN, "")).strip())
         return max(0, v)
     except ValueError:
-        return COMMIT_MARGIN_MB
+        return _scaled(COMMIT_MARGIN_MB, limit, COMMIT_MARGIN_DIV)
 
 
-def required_commit_mb(d, tree, chash, window=COMMIT_WINDOW, min_runs=COMMIT_MIN_RUNS):
+def required_commit_mb(d, tree, chash, window=COMMIT_WINDOW, min_runs=COMMIT_MIN_RUNS,
+                       limit=None):
     """Median peak_commit_mb of the (tree, cmd)'s last `window` sampled runs
-    (at least min_runs), else COMMIT_DEFAULT_MB."""
-    peaks = [float(r["peak_commit_mb"]) for r in read_durations(d)
-             if r.get("tree") == tree and r.get("cmd") == chash
-             and isinstance(r.get("peak_commit_mb"), (int, float))][-window:]
+    (at least min_runs); v26 KIT-GATE-CMD-SPLIT: else the median of the same
+    TREE's last `window` sampled regular (non-lane) runs of any command, so a
+    re-spelled command is not admitted at the default when the tree's suites
+    are known to peak higher; else COMMIT_DEFAULT_MB capped at limit /
+    COMMIT_DEFAULT_DIV (v21 KIT-COMMIT-SCALE)."""
+    rows = [r for r in read_durations(d)
+            if r.get("tree") == tree and isinstance(r.get("peak_commit_mb"), (int, float))
+            and not isinstance(r.get("peak_commit_mb"), bool)]
+    peaks = [float(r["peak_commit_mb"]) for r in rows if r.get("cmd") == chash][-window:]
     if len(peaks) < min_runs:
-        return float(COMMIT_DEFAULT_MB)
+        peaks = [float(r["peak_commit_mb"]) for r in rows if not r.get("lane")][-window:]
+    if len(peaks) < min_runs:
+        return float(_scaled(COMMIT_DEFAULT_MB, limit, COMMIT_DEFAULT_DIV))
     peaks.sort()
     m = len(peaks) // 2
     return peaks[m] if len(peaks) % 2 else (peaks[m - 1] + peaks[m]) / 2.0
@@ -1342,6 +1392,25 @@ def median_hold(d, tree, chash, window=LANE_WINDOW, min_runs=LANE_MIN_RUNS):
     return holds[m] if len(holds) % 2 else (holds[m - 1] + holds[m]) / 2.0
 
 
+TREE_HOLD_WINDOW = 10  # v27 KIT-DRIFT-HOLD
+
+
+def tree_median_hold(d, tree, window=TREE_HOLD_WINDOW):
+    """v27 KIT-DRIFT-HOLD: (median hold_s, runs counted) of the last `window`
+    runs of `tree` (any command; tree names compared case-folded), or (None, 0)."""
+    want = str(tree).casefold()
+    holds = [float(r["hold_s"]) for r in read_durations(d)
+             if str(r.get("tree") or "").casefold() == want
+             and isinstance(r.get("hold_s"), (int, float))
+             and not isinstance(r.get("hold_s"), bool)][-window:]
+    if not holds:
+        return None, 0
+    holds.sort()
+    m = len(holds) // 2
+    med = holds[m] if len(holds) % 2 else (holds[m - 1] + holds[m]) / 2.0
+    return med, len(holds)
+
+
 def lane_eligible(d, tree, chash):
     m = median_hold(d, tree, chash)
     return m is not None and m <= LANE_MAX_S
@@ -1386,8 +1455,9 @@ def run(argv, cwd=None, runner=None, dirty=dirty_paths, d=None, **kw):
     n_of = (lambda: n_fixed) if n_fixed is not None else (lambda: live_slots(d))
     n = n_of()
     lane = (not exclusive and lane_index(n) is not None and lane_eligible(d, tree, chash))
-    own = required_commit_mb(d, tree, chash)
-    need = own + commit_margin_mb()
+    limit = kw.pop("commit_limit", commit_limit_mb)()
+    own = required_commit_mb(d, tree, chash, limit=limit)
+    need = own + commit_margin_mb(limit=limit)
     probe = kw.pop("probe", None)
     kw.setdefault("commit", commit_check(
         need, kw.pop("free_commit", free_commit_mb),

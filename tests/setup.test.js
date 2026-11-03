@@ -22,7 +22,7 @@ test('shipped files: setup.json items point at real ASCII files', () => {
     const t = r(path.join(ROOT, ...it.src.split('/')));
     assert.ok(/^[\x0a\x20-\x7e]*$/.test(t), it.src + ' ASCII + LF');
   }
-  assert.ok(/^[\x0a\x20-\x7e]*$/.test(r(path.join(ROOT, 'claude', 'first-run.md'))));
+  assert.ok(!fs.existsSync(path.join(ROOT, 'claude', 'first-run.md')), 'R1-21: the dead guided file stays gone');
 });
 
 test('config dir: CLAUDE_CONFIG_DIR first, else ~/.claude', () => {
@@ -166,4 +166,47 @@ test('CLI setup on the shipped profile: user-target dry run exits 0, no {repo_co
   assert.strictEqual(await cli.run(['setup', '--home', path.join(root, 'h'), '--config-dir', cd], deps), 0, lines.join('\n'));
   assert.ok(!lines.some((l) => /refused/.test(l)), lines.join('\n'));
   assert.ok(!fs.existsSync(cd), 'dry run writes nothing');
+});
+
+// CON-SETUP-ROUTE: the shipped build has nothing to write here, so the output says that and
+// names the wizard; no apply hint, no "applied" line, no lock that would stop uninstall.
+test('CLI setup on the shipped profile says it writes nothing and names the wizard', async () => {
+  const root = tmpdir('cc-setup-');
+  const cd = path.join(root, '.claude');
+  const data = path.join(root, 'data');
+  const deps = (lines) => ({ out: (s) => lines.push(s), consoleRoot: ROOT, dataDir: data, noDefaultAdapters: true });
+  const base = ['setup', '--home', path.join(root, 'h'), '--config-dir', cd];
+  let lines = [];
+  assert.strictEqual(await cli.run(base, deps(lines)), 0, lines.join('\n'));
+  assert.ok(lines.some((l) => /^Nothing to set up: .*writes nothing/.test(l)), lines.join('\n'));
+  assert.ok(lines.some((l) => /the \.\.\. menu, Run setup/.test(l)), lines.join('\n'));
+  assert.ok(lines.some((l) => /no repo target/.test(l)), 'the plan rows stay');
+  assert.ok(!lines.some((l) => /^apply with: /.test(l)), lines.join('\n'));
+  for (const extra of [['--apply'], ['--apply', '--yes']]) {
+    lines = [];
+    assert.strictEqual(await cli.run(base.concat(extra), deps(lines)), 0, lines.join('\n'));
+    assert.ok(lines[0].startsWith('Nothing to set up: '), lines.join('\n'));
+    assert.ok(!lines.some((l) => /^applied tx /.test(l)), lines.join('\n'));
+  }
+  lines = [];
+  assert.strictEqual(await cli.run(base.concat(['--apply', '--yes', '--json']), deps(lines)), 0);
+  assert.deepStrictEqual(JSON.parse(lines[0]).written, []);
+  lines = [];
+  assert.strictEqual(await cli.run(base.concat(['--json']), deps(lines)), 0);
+  assert.strictEqual(JSON.parse(lines[0]).counts.new, 0);
+  assert.ok(!fs.existsSync(cd), 'no Claude config');
+  assert.ok(!fs.existsSync(path.join(data, 'profile', 'locks')), 'no lock');
+  assert.ok(!fs.existsSync(path.join(data, 'profile', 'tx')), 'no transaction');
+});
+
+test('the two console items say what the code does', () => {
+  const mod = (id) => JSON.parse(r(path.join(ROOT, 'profile', 'modules', id, 'module.json'))).items;
+  const chip = mod('console').find((x) => x.id === 'console-done-chip');
+  assert.match(chip.does, /only when that pane's project or account has a \/done command/);
+  assert.deepStrictEqual(chip.contributes, []);
+  const line = mod('output').find((x) => x.id === 'console-statusline-basic');
+  assert.match(line.does, /writes nothing/);
+  assert.deepStrictEqual(line.contributes, []);
+  const doc = r(path.join(ROOT, 'docs', 'profile.md'));
+  for (const it of [chip, line]) assert.ok(doc.includes(it.does), it.id + ' in docs/profile.md');
 });

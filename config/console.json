@@ -3,7 +3,13 @@
   "host": "127.0.0.1",
   "port": 7800,
   "scanRoots": [
-    "C:\\"
+    "C:\\",
+    "~",
+    "~/Documents",
+    "~/Desktop",
+    "~/source/repos",
+    "~/Projects",
+    "~/code"
   ],
   "excludeDirs": [
     "Windows",
@@ -15,7 +21,6 @@
   ],
   "projects": {},
   "extraProjects": [],
-  "boardsFile": null,
   "defaultProgressDirs": [
     "ops/loop/control/progress"
   ],

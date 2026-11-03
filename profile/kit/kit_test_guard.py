@@ -50,6 +50,7 @@ install() adds two autouse fixtures to the conftest namespace:
     (ops/loop/control/board/state.json and status.json), and no ignore glob
     hides a path the tree declares in ops/stop_sentinels.json: a declared
     stop sentinel created, changed or removed by a suite always fails it.
+    v23: IGNORE adds ops/loop/control/board/board.html (the local board).
 env KIT_TEST_GUARD=off disables both (never in a gate run).
 
 v16 (KIT-16), OPT-IN: budget(seconds) for a timing test. It returns
@@ -77,7 +78,8 @@ IGNORE = ("*.jsonl", "*.tmp", "*.log", "ops/loop/control/progress/*",
           "ops/loop/control/lanes/*", "ops/loop/control/inbox_status.json",
           "ops/loop/control/session_done*", "ops/loop/control/governor/*",
           "*.lock", "ops/loop/control/headless_budget.json",
-          "ops/loop/control/board/state.json", "ops/loop/control/board/status.json")
+          "ops/loop/control/board/state.json", "ops/loop/control/board/status.json",
+          "ops/loop/control/board/board.html")
 SENTINELS_REL = "ops/stop_sentinels.json"  # = kit_headless.SENTINELS_REL
 SHOW = 5
 

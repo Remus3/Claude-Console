@@ -30,7 +30,7 @@
       "id": "console-done-chip",
       "order": 1502,
       "title": "/done chip in the composer",
-      "does": "Offers a /done chip in each pane's composer that runs the repository's own /done, or the console's plain one when there is none.",
+      "does": "Shows a /done chip in a pane's composer only when that pane's project or account has a /done command. It adds no command itself; cmd-done adds one to a project.",
       "why": "Ending a session cleanly should be one click, not a command to remember.",
       "risk": "low",
       "default": "on",
@@ -45,7 +45,7 @@
       ],
       "conflicts_with": [],
       "contributes": [],
-      "notes": "The repository's own /done (from the session module) wins over the console's."
+      "notes": "Built into the console; nothing is written by the profile. The project's own /done comes from the session module."
     },
     {
       "id": "console-done-band",

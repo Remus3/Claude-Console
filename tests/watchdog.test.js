@@ -25,7 +25,8 @@ function raw(t, procs, mem, events) {
   return JSON.stringify({ procs, mem: mem || { 'pages/sec': 10, 'page reads/sec': 1, 'available mbytes': 8000, '% committed bytes in use': 40 }, events: events || [] });
 }
 
-const CTX = { projects: PROJECTS, consoleRoot: 'C:\\Work\\console', seeds: W.DEFAULT_SEEDS, topN: 3 };
+const SEEDS = Object.freeze([{ id: 'SEED-A', name: 'powershell.exe', cmd: 'Leaky.ps1', known: 'sample' }, { id: 'SEED-B', name: 'leakysvc.exe', cmd: null, known: 'sample' }]);
+const CTX = { projects: PROJECTS, consoleRoot: 'C:\\Work\\console', seeds: SEEDS, topN: 3 };
 
 // ---------------------------------------------------------------- config
 
@@ -35,7 +36,8 @@ test('wdConfig: observe-only, thresholds null by default, interval clamped, seed
   assert.strictEqual(c.enabled, true);
   assert.strictEqual(c.intervalSec, 600);
   for (const k of Object.keys(c.thresholds)) assert.strictEqual(c.thresholds[k], null, k);
-  assert.deepStrictEqual(c.seeds.map((s) => s.id), ['DIALVOL-LEAK', 'BT-LEAK']);
+  assert.strictEqual(c.seeds, W.DEFAULT_SEEDS, 'no config: the build default (the public build ships none)');
+  assert.deepStrictEqual(W.wdConfig({ watchdog: { seeds: SEEDS } }).seeds.map((s) => s.id), ['SEED-A', 'SEED-B']);
   assert.strictEqual(W.wdConfig({ watchdog: { intervalSec: 5 } }).intervalSec, 60);
   assert.strictEqual(W.wdConfig({ watchdog: { enabled: false } }).enabled, false);
   const t = W.wdConfig({ watchdog: { thresholds: { privMBh: 5, handlesH: 'x', pagesPerSec: -1 } } }).thresholds;
@@ -50,20 +52,20 @@ test('wdConfig: observe-only, thresholds null by default, interval clamped, seed
 test('parseSample: top-N by private bytes and by handles, plus seed / owner rows; command line dropped', () => {
   const procs = [
     proc(1, 'big1.exe', 900 * MB, 10), proc(2, 'big2.exe', 800 * MB, 10), proc(3, 'big3.exe', 700 * MB, 10), proc(4, 'big4.exe', 600 * MB, 10),
-    proc(5, 'MTKBTSVC.exe', 5 * MB, 7000000), proc(6, 'h2.exe', 1 * MB, 50000), proc(7, 'h3.exe', 1 * MB, 40000), proc(8, 'h4.exe', 1 * MB, 30000),
-    proc(9, 'powershell.exe', 64 * MB, 900, { cmd: 'powershell.exe -File "C:\\Work\\ops\\runtime\\DialVolume.ps1" -Secret abc', path: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe' }),
+    proc(5, 'leakysvc.exe', 5 * MB, 7000000), proc(6, 'h2.exe', 1 * MB, 50000), proc(7, 'h3.exe', 1 * MB, 40000), proc(8, 'h4.exe', 1 * MB, 30000),
+    proc(9, 'powershell.exe', 64 * MB, 900, { cmd: 'powershell.exe -File "C:\\Work\\ops\\runtime\\Leaky.ps1" -Secret abc', path: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe' }),
     proc(10, 'python.exe', 1 * MB, 10, { cmd: 'python D:\\Repos\\Alpha\\x.py', path: 'C:\\Python\\python.exe' }),
     proc(11, 'tiny.exe', 1, 1),
   ];
   const s = W.parseSample(raw(T0, procs), T0, CTX);
   const names = s.procs.map((p) => p.n).sort();
   assert.ok(names.includes('big1.exe') && names.includes('big3.exe') && !names.includes('big4.exe'));
-  assert.ok(names.includes('MTKBTSVC.exe') && names.includes('h3.exe') && !names.includes('h4.exe'));
+  assert.ok(names.includes('leakysvc.exe') && names.includes('h3.exe') && !names.includes('h4.exe'));
   assert.ok(!names.includes('tiny.exe'));
   const dv = s.procs.find((p) => p.pid === 9);
-  assert.strictEqual(dv.s, 'DIALVOL-LEAK');
+  assert.strictEqual(dv.s, 'SEED-A');
   assert.strictEqual(dv.o, 'main');
-  assert.strictEqual(s.procs.find((p) => p.pid === 5).s, 'BT-LEAK');
+  assert.strictEqual(s.procs.find((p) => p.pid === 5).s, 'SEED-B');
   assert.strictEqual(s.procs.find((p) => p.pid === 10).o, 'alpha');
   const text = JSON.stringify(s);
   assert.ok(!text.includes('Secret') && !text.includes('-File') && !/"cmd"/.test(text), 'no command line is kept');
@@ -91,38 +93,39 @@ function series(hours, fn) {
 }
 
 const LEAKY = (h) => [
-  proc(9, 'powershell.exe', (64 + 6 * h) * MB, 900, { cmd: 'powershell -File C:\\Work\\ops\\runtime\\DialVolume.ps1' }),
-  proc(5, 'MTKBTSVC.exe', 5 * MB, 500 + 40000 * h),
+  proc(9, 'powershell.exe', (64 + 6 * h) * MB, 900, { cmd: 'powershell -File C:\\Work\\ops\\runtime\\Leaky.ps1' }),
+  proc(5, 'leakysvc.exe', 5 * MB, 500 + 40000 * h),
   proc(3, 'steady.exe', 300 * MB + (h % 1 < 0.5 ? MB : 0), 1000),
 ];
 
 test('analyze: trends ranked, seeds measured, nothing flagged while thresholds are unset', () => {
-  const a = W.analyze(series(6, LEAKY), W.wdConfig({}).thresholds, { seeds: W.DEFAULT_SEEDS });
+  const a = W.analyze(series(6, LEAKY), W.wdConfig({}).thresholds, { seeds: SEEDS });
   assert.strictEqual(a.samples, 37);
   assert.strictEqual(a.spanH, 6);
   assert.strictEqual(a.privGrowth[0].name, 'powershell.exe');
   assert.ok(Math.abs(a.privGrowth[0].mbPerH - 6) < 0.2, String(a.privGrowth[0].mbPerH));
   assert.strictEqual(a.privGrowth[0].owner, 'main');
-  assert.strictEqual(a.handleGrowth[0].name, 'MTKBTSVC.exe');
+  assert.strictEqual(a.handleGrowth[0].name, 'leakysvc.exe');
   assert.ok(Math.abs(a.handleGrowth[0].perH - 40000) < 100);
-  const bt = a.seeds.find((s) => s.id === 'BT-LEAK');
+  const bt = a.seeds.find((s) => s.id === 'SEED-B');
   assert.ok(bt.seen && Math.abs(bt.handlesPerH - 40000) < 100 && bt.handles > 200000);
-  assert.ok(a.seeds.find((s) => s.id === 'DIALVOL-LEAK').seen);
+  assert.ok(a.seeds.find((s) => s.id === 'SEED-A').seen);
   assert.deepStrictEqual(a.wouldReport, []);
   assert.ok(a.measuring.length >= 3, 'says what still needs measuring');
   assert.ok(a.measuring.some((m) => /baseline/i.test(m)));
+  assert.ok(!a.measuring.some((m) => /SEED-|seeds/.test(m)), 'the measuring lines name no seed');
 });
 
 test('analyze: configured thresholds produce wouldReport candidates (observe-only: never sent)', () => {
   const th = W.wdConfig({ watchdog: { thresholds: { privMBh: 5, handlesH: 10000, r2: 0.9, minSpanH: 2 } } }).thresholds;
-  const a = W.analyze(series(6, LEAKY), th, { seeds: W.DEFAULT_SEEDS });
+  const a = W.analyze(series(6, LEAKY), th, { seeds: SEEDS });
   const kinds = a.wouldReport.map((r) => r.kind + ':' + r.name).sort();
-  assert.deepStrictEqual(kinds, ['handles:MTKBTSVC.exe', 'private-bytes:powershell.exe']);
+  assert.deepStrictEqual(kinds, ['handles:leakysvc.exe', 'private-bytes:powershell.exe']);
   const ps = a.wouldReport.find((r) => r.kind === 'private-bytes');
   assert.strictEqual(ps.owner, 'main');
   assert.strictEqual(ps.to, 'HOME', 'the owning tree is main; an unowned process also goes to HOME');
   // too short a window: nothing, whatever the slope
-  const short = W.analyze(series(1, LEAKY), th, { seeds: W.DEFAULT_SEEDS });
+  const short = W.analyze(series(1, LEAKY), th, { seeds: SEEDS });
   assert.deepStrictEqual(short.wouldReport, []);
 });
 

@@ -3,15 +3,15 @@
  "preset": "remus3",
  "title": "Remus3's current settings",
  "profile_version": "1.0.0",
- "kit_source_version": 21,
- "generated_from": "24f0853ed42065bd573f19745f2c386115394044",
- "source_sha": "38e4fba958a84a9859fc5fd364ef5527a24f6d7a357142ca43b412032ddc2971",
+ "kit_source_version": 28,
+ "generated_from": "2817fa4f9297ef6beea6a9b7b3189314f1277f85",
+ "source_sha": "70b5347de94475e19e4c64291c35d2a8f6e78aaf49a8509c76b425e4f171b068",
  "counts": {
   "modules": 22,
   "modules_on": 22,
   "items": 300,
-  "on": 239,
-  "off": 61
+  "on": 237,
+  "off": 63
  },
  "modules": {
   "floors": "on",
@@ -137,8 +137,8 @@
    "rule": "author-runs"
   },
   "set-bypass-permissions": {
-   "state": "on",
-   "rule": "author-runs"
+   "state": "off",
+   "rule": "user-arms"
   },
   "set-workflows": {
    "state": "on",
@@ -153,8 +153,8 @@
    "rule": "author-runs"
   },
   "set-skip-danger-prompt": {
-   "state": "on",
-   "rule": "author-runs"
+   "state": "off",
+   "rule": "user-arms"
   },
   "set-allow-maintenance": {
    "state": "on",
@@ -558,7 +558,7 @@
   },
   "os-self-apply-grant": {
    "state": "off",
-   "rule": "author-off"
+   "rule": "user-arms"
   },
   "sched-kit-rollout": {
    "state": "on",
@@ -610,7 +610,7 @@
   },
   "hl-fallback-armed": {
    "state": "off",
-   "rule": "author-off"
+   "rule": "user-arms"
   },
   "hl-account-quiet": {
    "state": "on",
@@ -1343,7 +1343,7 @@
    "ask": "wizard"
   },
   "runtime_retention_days": {
-   "ask": "wizard"
+   "ask": "wizard.step.sidecar"
   }
  }
 }

@@ -10,11 +10,13 @@
     if (!r) return '';
     if (!r.ok) return '[x] ' + (r.reason || r.error || 'refused');
     if (r.action === 'issue') return '[+] opened the GitHub issue form in your browser' + (r.truncated ? ' (report cut to fit: save the report to a file and attach it)' : '');
-    if (r.action === 'claude') return '[+] opened a Claude pane with the report in its composer; review it and press Enter';
+    if (r.action === 'claude') return '[+] opened a Claude pane with the report in its message box; review it and press Enter';
     if (r.action === 'save') return '[+] saved to ' + r.file;
     return '[+] done';
   }
-  const api = { sizeText, actionLine };
+  // R3-4: what the Stop dialog says when an earlier stop has not been resumed.
+  function openStopLine(line) { return 'A stop is still open. ' + String(line || '').replace(' - confirm to go ahead', ''); }
+  const api = { sizeText, actionLine, openStopLine };
   if (typeof module === 'object' && module.exports) module.exports.Recovery = api;
   else root.CCRecovery = api;
 })(this);
@@ -53,31 +55,70 @@
   }
 
   // ---- Stop everything: step 1 shows what it would do, step 2 does it
+  // stopGen: an answer that arrives after the dialog moved on never overwrites its line.
+  let stopGen = 0;
+  function setResume(on, title) {
+    const b = $('#st-resume');
+    b.disabled = !on;
+    b.title = on ? (title || '') : 'Available after Stop everything';
+  }
+  // R3-4: the Resume button follows the records on disk, not this dialog's own history. A
+  // stop run earlier (a closed dialog, another window, a restart, the terminal) can be
+  // undone here; the route without confirm is a dry run. Stop stays off until it answered.
   async function stop() {
+    const gen = ++stopGen;
     U.open($('#dlg-stop'));
     const line = $('#st-line');
     const go = $('#st-go');
     go.textContent = 'Stop everything';
     go.dataset.step = '1';
     go.disabled = true;
-    $('#st-resume').disabled = true;
+    setResume(false);
+    U.note($('#st-confirm'), '');
     U.note(line, 'Checking...');
-    try { const r = await api('POST', '/api/recover/stop', {}); U.note(line, r.line); go.disabled = false; } catch (e) { U.note(line, '[x] ' + e.message, true); }
+    let can = false;
+    try { const r = await api('POST', '/api/recover/stop', {}); if (gen !== stopGen) return; U.note(line, r.line); can = true; } catch (e) { if (gen !== stopGen) return; U.note(line, '[x] ' + e.message, true); }
+    try {
+      const x = await api('POST', '/api/recover/resume', {});
+      if (gen !== stopGen) return;
+      if (x.ok && x.dryRun) { const t = RV.openStopLine(x.line); setResume(true, t); U.note(line, t); }
+    } catch (e) { /* the line above stands; Resume stays off */ }
+    if (gen === stopGen) go.disabled = !can;
   }
   async function stopGo() {
     const go = $('#st-go');
     const line = $('#st-line');
-    if (go.dataset.step === '1') { go.dataset.step = '2'; go.textContent = 'Yes, stop everything now'; U.note($('#st-confirm'), 'Second step: every console pane and headless run (background Claude session) ends, profile tasks are disabled and profile hooks (scripts Claude runs around its actions) go off. Resume undoes the tasks and hooks.'); go.focus(); return; }
+    if (go.dataset.step === '1') { go.dataset.step = '2'; go.textContent = 'Yes, stop everything now'; U.note($('#st-confirm'), 'Second step: every console pane and headless run (background Claude session) ends, profile tasks are disabled and profile hooks (scripts Claude runs around its actions) go off. Resume undoes the tasks and hooks. Open panes are not reopened by Resume.'); go.focus(); return; }
+    stopGen++;
     go.disabled = true;
     U.note($('#st-confirm'), '');
     try {
       const r = await api('POST', '/api/recover/stop', { confirm: true });
       U.note(line, (r.ok ? '[+] ' : '[x] ') + r.line, !r.ok);
-      $('#st-resume').disabled = false;
+      if (r.id) setResume(true);
     } catch (e) { U.note(line, '[x] ' + e.message, true); }
   }
+  // A second stop writes its own (often empty) record and the route takes the newest open
+  // one, so one press undoes every open stop, newest first, as recover.ps1 -Resume does.
   async function resume() {
-    try { const r = await api('POST', '/api/recover/resume', { confirm: true }); U.note($('#st-line'), (r.ok ? '[+] ' : '[x] ') + r.line, !r.ok); } catch (e) { U.note($('#st-line'), '[x] ' + e.message, true); }
+    stopGen++;
+    const line = $('#st-line');
+    $('#st-resume').disabled = true;
+    let r = null;
+    let n = 0;
+    let open = null;
+    try {
+      for (let i = 0; i < 50; i++) {
+        r = await api('POST', '/api/recover/resume', { confirm: true });
+        n++;
+        if (r.nothing) break;
+        const x = await api('POST', '/api/recover/resume', {});
+        open = x.ok && x.dryRun ? x : null;
+        if (!r.ok || !open) break;
+      }
+      U.note(line, (r.ok ? '[+] ' : '[x] ') + r.line + (n > 1 ? ' (' + n + ' open stops undone)' : ''), !r.ok);
+      if (open) setResume(true, RV.openStopLine(open.line)); else setResume(false);
+    } catch (e) { U.note(line, '[x] ' + e.message, true); $('#st-resume').disabled = false; }
   }
 
   // ---- Get help in the browser: preview the prompt, then copy + open claude.ai
@@ -88,7 +129,7 @@
     ta.value = 'Building the prompt...';
     $('#gh-go').disabled = true;
     U.note($('#gh-note'), '');
-    try { const r = await api('POST', '/api/recover/prompt', {}); ta.value = r.text; $('#gh-size').textContent = RV.sizeText(r.bytes) + ', scrubbed: no names, paths, keys or values.'; $('#gh-go').disabled = false; } catch (e) { ta.value = ''; U.note($('#gh-note'), '[x] ' + e.message, true); }
+    try { const r = await api('POST', '/api/recover/prompt', {}); ta.value = r.text; $('#gh-size').textContent = RV.sizeText(r.bytes) + ', scrubbed: setting, hook and project folder names only; no user names, paths, keys or values.'; $('#gh-go').disabled = false; } catch (e) { ta.value = ''; U.note($('#gh-note'), '[x] ' + e.message, true); }
   }
   async function helpGo() {
     let r;

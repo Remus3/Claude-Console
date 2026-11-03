@@ -10,6 +10,20 @@ v19 (SC FIX 2026-10-18-1213 item 2): pre-push scans a NEW remote ref against
 what `git ls-remote <remote>` really advertises (shas present locally), not
 the local remote-tracking refs; ls-remote failing refuses the push.
 
+v22 (SC FIX 2026-10-23-2023, SC-1345): an UPDATE of an existing ref also
+excludes the remote's advertised shas (`<lsha> ^<rsha> ^a ^b ...`), so a PR
+branch that merged already-published upstream commits is not refused for
+their authors. ls-remote failing on an update-only push falls back to the v19
+`rsha..lsha` range (stricter, never looser); a new ref still refuses.
+
+v28 (KIT-PREPUSH-REWRITE, SD ANSWER 2026-11-01-0150 KIT DEFECT 2): after a
+history rewrite the remote's old tip is absent from the local object store and
+`^rsha` made git log fail, so a clean force-push was refused with "could not
+list the pushed commits". An absent old tip is now scanned like a NEW ref:
+every commit of lsha except what the remote advertises and this clone holds
+(wider than an update's range, never looser). ls-remote failing with an absent
+old tip refuses, as for a new ref: nothing would bound the range.
+
 Why: GitHub lists a contributor for every identity in default-branch history,
 including co-author trailers. Claude and bot identities entered through
 harness trailers, Claude-authored commits, Dependabot merges and workflow
@@ -250,12 +264,14 @@ def violations(rows, idents):
     return out
 
 
-def push_ranges(stdin_text, remote, advertised=None):
+def push_ranges(stdin_text, remote, advertised=None, absent=()):
     """git rev-list argument lists for each pushed ref (deletes skipped).
     v19 (SC FIX 2026-10-18-1213 item 2): with advertised (the shas the remote
     really advertises, present locally) a NEW ref excludes only those
     (`<sha> ^a ^b ...`), never the local remote-tracking refs, which can
-    still name pre-rewrite commits after a remote is deleted and recreated."""
+    still name pre-rewrite commits after a remote is deleted and recreated.
+    v28: absent = remote old tips missing from the local object store; such an
+    update is ranged like a new ref (the caller refuses it without advertised)."""
     ranges = []
     for ln in (stdin_text or "").splitlines():
         parts = ln.split()
@@ -264,11 +280,19 @@ def push_ranges(stdin_text, remote, advertised=None):
         _lref, lsha, _rref, rsha = parts
         if ZERO.match(lsha):
             continue
-        if ZERO.match(rsha):
+        if rsha in absent and advertised is not None:
+            ranges.append([lsha] + ["^" + s for s in advertised if s != rsha])
+        elif ZERO.match(rsha):
             if advertised is not None:
                 ranges.append([lsha] + ["^" + s for s in advertised])
             else:
                 ranges.append([lsha, "--not", "--remotes=" + remote] if remote else [lsha])
+        elif advertised is not None:
+            # v22 (SC FIX 2026-10-23-2023, SC-1345): an existing-branch update
+            # excludes every commit the remote already has, as a new ref does,
+            # so already-published foreign commits merged into a PR branch are
+            # not scanned. Without the advertisement: the v19 rsha..lsha range.
+            ranges.append([lsha, "^" + rsha] + ["^" + s for s in advertised])
         else:
             ranges.append([rsha + ".." + lsha])
     return ranges
@@ -376,12 +400,41 @@ def remote_advertised(cwd, remote, reader=None):
                    if len(ln.split()) == 2 and ln.split()[1] in ("commit", "tag")})
 
 
+def _has_pushed_ref(stdin_text):
+    """v22: any non-delete ref (new or update) - the advertisement is read for
+    both; only a NEW ref refuses when it cannot be read."""
+    for ln in (stdin_text or "").splitlines():
+        parts = ln.split()
+        if len(parts) == 4 and not ZERO.match(parts[1]):
+            return True
+    return False
+
+
 def _has_new_ref(stdin_text):
     for ln in (stdin_text or "").splitlines():
         parts = ln.split()
         if len(parts) == 4 and not ZERO.match(parts[1]) and ZERO.match(parts[3]):
             return True
     return False
+
+
+def absent_old_tips(cwd, stdin_text):
+    """v28: the remote old tips of the pushed updates that this clone's object
+    store does not hold. Empty when git cannot tell: the listing then fails and
+    the push is refused, so an unknown answer is never looser."""
+    olds = set()
+    for ln in (stdin_text or "").splitlines():
+        parts = ln.split()
+        if len(parts) == 4 and not ZERO.match(parts[1]) and not ZERO.match(parts[3]):
+            olds.add(parts[3])
+    if not olds:
+        return set()
+    out = _git_in(cwd, ["cat-file", "--batch-check=%(objectname) %(objecttype)"],
+                  "\n".join(sorted(olds)) + "\n")
+    if out is None:
+        return set()
+    return {ln.split()[0] for ln in out.splitlines()
+            if len(ln.split()) == 2 and ln.split()[1] == "missing"} & olds
 
 
 def pre_push(remote, stdin_text, cwd=None, idents=None, runner=None, advertised_reader=None):
@@ -391,14 +444,20 @@ def pre_push(remote, stdin_text, cwd=None, idents=None, runner=None, advertised_
         _no_operator(cwd, "pre-push")
         return 1
     advertised = None
-    if remote and _has_new_ref(stdin_text):
+    if remote and _has_pushed_ref(stdin_text):
         advertised = remote_advertised(cwd, remote, advertised_reader)
-        if advertised is None:
+        if advertised is None and _has_new_ref(stdin_text):
             _say("IDENTITY: push refused - could not read the remote's advertised refs "
                  "(git ls-remote); a new ref is never scanned against local tracking refs")
             return 1
+    # A runner is a test double with no object store behind it.
+    absent = set() if runner else absent_old_tips(cwd, stdin_text)
+    if absent and advertised is None:
+        _say("IDENTITY: push refused - the remote's old tip is not in this clone and its "
+             "advertised refs could not be read (git ls-remote); nothing bounds the scan")
+        return 1
     found = []
-    for rng in push_ranges(stdin_text, remote, advertised):
+    for rng in push_ranges(stdin_text, remote, advertised, absent):
         rows = commits(cwd, rng, runner)
         if rows is None:
             _say("IDENTITY: push refused - could not list the pushed commits")

@@ -1,5 +1,8 @@
 'use strict';
-// `claude-console uninstall [--purge]` (VMFIX). Stops a running console, removes the
+// `claude-console uninstall [--purge] [--keep-profile]` (VMFIX). A setup profile that is
+// still applied refuses the uninstall (R1-14): its tasks and hooks would keep running
+// with the tool that can remove them gone; --keep-profile overrides. Else it stops a
+// running console, removes the
 // shell integration (Desktop + Start-menu shortcuts, the Apps & features entry, the
 // user PATH entry, the auto-update task) and the code (app/, .base/, cache/, reports/,
 // run/, the launchers, the install marker). User data (data/, drops/, backups/) stays
@@ -16,7 +19,59 @@ const CODE = ['app', '.base', 'cache', 'reports', 'run'];
 const FILES = ['install.json', 'launch.vbs', 'claude-console.cmd', 'statusline.js', 'autoupdate.vbs', 'register-autoupdate.ps1'];
 const USER = ['data', 'drops', 'backups'];
 
-// o: home, purge, port, removeShell(home), recycle(path), postShutdown(port, token),
+const PROFILE_REFUSAL = 'Your setup profile is still applied. See what it would remove: claude-console profile uninstall --all. Add --apply --yes to remove it, then uninstall again. To leave it in place: claude-console uninstall --keep-profile';
+
+// A lock's item count; a lock that exists but cannot be read counts as applied (the guard
+// fails closed and --keep-profile still gets past it).
+function lockState(file) {
+  let raw;
+  try { raw = fs.readFileSync(file, 'utf8'); } catch (e) { return e.code === 'ENOENT' ? { items: 0 } : { items: 1, unreadable: true }; }
+  try {
+    const j = JSON.parse(raw);
+    return { items: j && Array.isArray(j.items) ? j.items.length : 0, configDir: j && j.configDir };
+  } catch (e) { return { items: 1, unreadable: true }; }
+}
+
+// What `profile status` calls applied: an item in a user lock (one per account's config
+// dir) or in the lock of a repo the profile was applied to. Read from the files only, so
+// a broken profile engine can not make the uninstall throw.
+function profileApplied(dataDir) {
+  const root = path.join(dataDir, 'profile');
+  const out = { applied: false, repos: [], accounts: [], unreadable: [] };
+  const seen = (file, s) => { if (s.unreadable) out.unreadable.push(file); if (s.items) out.applied = true; return !!s.items; };
+  let names = [];
+  try { names = fs.readdirSync(path.join(root, 'locks')).filter((n) => /^user(-[0-9a-f]+)?\.json$/.test(n)); } catch (e) { names = []; }
+  for (const n of names) {
+    const file = path.join(root, 'locks', n);
+    const s = lockState(file);
+    if (seen(file, s) && n !== 'user.json' && s.configDir) out.accounts.push(String(s.configDir));
+  }
+  let repos = [];
+  try { repos = JSON.parse(fs.readFileSync(path.join(root, 'targets.json'), 'utf8')).repos; } catch (e) { repos = []; }
+  for (const r of Array.isArray(repos) ? repos : []) {
+    const file = path.join(String(r), '.claude', 'profile.lock.json');
+    if (seen(file, lockState(file))) out.repos.push(String(r));
+  }
+  return out;
+}
+
+// The app window's Edge profile (server.js openWindow), and its parent when that leaves it
+// empty. Returns null, or the folder when it stays (an open window holds its files).
+function removeEdgeProfileDir(dir, rm) {
+  if (!dir || !exists(dir)) return null;
+  try { (rm || fs.rmSync)(dir, { recursive: true, force: true, maxRetries: 3 }); } catch (e) { /* named below */ }
+  if (exists(dir)) return dir;
+  try { fs.rmdirSync(path.dirname(dir)); } catch (e) { /* not empty */ }
+  return null;
+}
+
+function edgeProfileDir(env) {
+  const local = (env || process.env).LOCALAPPDATA;
+  return local ? path.join(local, 'ClaudeConsole', 'edge-profile') : null; // no LOCALAPPDATA: it is under run/
+}
+
+// o: home, purge, keepProfile, port, removeShell(home), recycle(path), removeEdgeProfile()
+// (default real, except where a test injected removeShell), postShutdown(port, token),
 // and the stop.js probes (isAlive, kill, sleep, listServers, timeoutMs), rm, retryMs.
 // Anything left behind = ok false and ONE "uninstall incomplete: ..." line.
 async function uninstall(o) {
@@ -25,6 +80,16 @@ async function uninstall(o) {
   const rep = { kind: 'uninstall', home: L.home, removed: [], kept: [], ok: true, lines };
   if (!exists(L.home)) {
     lines.push('nothing to uninstall: ' + L.home + ' does not exist');
+    return rep;
+  }
+  const profile = profileApplied(L.data);
+  if (profile.applied && !o.keepProfile) {
+    rep.ok = false;
+    rep.refused = 'profile';
+    lines.push(PROFILE_REFUSAL);
+    for (const r of profile.repos) lines.push('Also applied to a project: claude-console profile uninstall --all --target repo:"' + r + '"');
+    for (const c of profile.accounts) lines.push('Also applied for another account: ' + c);
+    for (const f of profile.unreadable) lines.push('Could not read this record of it: ' + f);
     return rep;
   }
   const sleep = o.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
@@ -80,6 +145,11 @@ async function uninstall(o) {
   }
   const cmdFile = path.join(L.home, 'claude-console.cmd');
   if (exists(cmdFile)) rep.removed.push('claude-console.cmd');
+  const rmEdge = o.removeEdgeProfile !== undefined ? o.removeEdgeProfile : (o.removeShell ? null : () => removeEdgeProfileDir(edgeProfileDir()));
+  if (typeof rmEdge === 'function') {
+    const stays = await rmEdge();
+    if (stays) lines.push("The console window's browser data stays in " + stays + '. Close that window, then delete the folder.');
+  }
   const user = USER.filter((d) => exists(path.join(L.home, d)));
   if (o.purge) {
     const recycle = o.recycle || recycleWindows;
@@ -94,7 +164,9 @@ async function uninstall(o) {
     lines.push('uninstalled the code from ' + L.home);
     if (user.length) lines.push('kept your data: ' + user.map((d) => path.join(L.home, d)).join(', ') + ' (remove it too with: claude-console uninstall --purge, or delete the folder)');
   }
+  if (profile.applied) lines.push('Your setup profile stays applied: its files, settings and scheduled tasks remain.');
   lines.push('Claude Code settings (~/.claude) are not touched; a statusLine entry that points at ' + path.join(L.home, 'statusline.js') + ' can be removed by hand.');
+  lines.push('Claude Code, Node.js and Git stay installed.');
   // claude-console.cmd is the batch file running this very command, and cmd.exe checks
   // it again after node exits ("The system cannot find the path specified." / "The batch
   // file cannot be found." and exit 1 once it is gone). CON-0.1.2: it, and for --purge
@@ -196,4 +268,4 @@ function deleteLaterWindows(files, emptyDir, o) {
   return file;
 }
 
-module.exports = { uninstall, CODE, FILES, USER, deleteLaterWindows, cleanupScript };
+module.exports = { uninstall, CODE, FILES, USER, PROFILE_REFUSAL, profileApplied, removeEdgeProfileDir, edgeProfileDir, deleteLaterWindows, cleanupScript };

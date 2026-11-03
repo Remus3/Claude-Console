@@ -6,6 +6,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const http = require('http');
 const H = require('../server/health');
@@ -317,16 +318,34 @@ test('dialog progress: per-step percent from status and ETA, overall weighted', 
   assert.match(HV.lastLine({ endedAt: 1, steps: [{ status: 'done' }, { status: 'failed' }], findings: 3, deleted: 2 }), /2 steps, 1 failed, 3 findings, 2 removed\./);
 });
 
-test('route line: split onto a non-proxy account is not allowed', () => {
-  assert.match(HV.routeText(null, 'Account 1', 'Account 3', 'Account 2'), /^Not allowed: split sends headless runs through the proxy, which bills Account 2/);
-  assert.match(HV.routeText(null, 'Account 1', 'Account 2', 'Account 2'), /split \(Account 1 interactive, Account 2 headless/);
+// R3-16 + D14 + D11: the dialog talks to a stranger; controls that do nothing here start hidden
+test('R3-16: plain words in the health dialog; D14 and D11 rows start hidden', () => {
+  const h = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+  assert.match(h, /id="hc-intro">Tick the steps to run\. None of these use Claude or cost anything\. Anything deleted goes to the Recycle Bin unless the step says otherwise\.</);
+  assert.doesNotMatch(h, /Deterministic|LLM/);
+  assert.match(h, /<fieldset id="hs-box"[^>]*\shidden>/);
+  assert.match(h, /id="health-sched-row" hidden>/);
+  assert.match(h, /<div id="set-hl-box" hidden>/);
+  const temp = H.MACHINE_STEPS ? H.MACHINE_STEPS.find((s) => s.id === 'machine.temp') : null;
+  if (temp) assert.strictEqual(temp.label, 'Temp folder: how many files it holds (many files slow down start-up)');
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'server', 'health.js'), 'utf8'), /label: 'Temp folder: how many files it holds \(many files slow down start-up\)'/);
 });
 
-test('route line: single / split wording, not-set refuses, mismatch says Save applies', () => {
-  assert.match(HV.routeText(null, 'Account 2', 'Account 2'), /single \(both on Account 2\)/);
-  assert.match(HV.routeText({ plugin: false, desired: 'split' }, 'Account 2', 'Account 1', 'Account 1'), /Stored only/);
-  assert.match(HV.routeText({ plugin: true, desired: 'split', kit: { supported: true, mode: null, valid: false } }, 'A', 'B', 'B'), /NOT SET: every headless run refuses/);
-  assert.match(HV.routeText({ plugin: true, desired: 'single', kit: { supported: true, mode: 'split', valid: true } }, 'A', 'A'), /Save applies/);
-  assert.match(HV.routeText({ plugin: true, desired: 'single', kit: { supported: true, mode: 'single', valid: true } }, 'A', 'A'), /^Kit route: single \(headless runs bill the main account\)\.$/);
-  assert.match(HV.routeText({ plugin: true, desired: 'split', kit: { supported: false, reason: 'the kit has no route command yet' } }, 'A', 'B', 'B'), /not applied: the kit has no route command yet/);
+test('route line: a dirty pick says what Save applies; a v2-only list waiting for kit v26 says so', () => {
+  assert.strictEqual(HV.routeText(null, { label: 'Account 2' }), '');
+  assert.strictEqual(HV.routeText(null, { label: 'Account 2', dirty: true }), 'Save applies headless on Account 2.');
+  assert.strictEqual(HV.routeText(null, { label: 'Account 2', labels: ['Account 2', 'Account 1'], armed: true, dirty: true }), 'Save applies headless on Account 2 > Account 1 (fallback on).');
+  assert.strictEqual(HV.routeText(null, { label: 'Account 2', v2Blocked: true, dirty: true }), 'This list ' + HV.UNAVAIL + '.');
+});
+
+test('route line: the live route names the account it bills, the list and the switch; refusals are one line', () => {
+  const kit = (k) => ({ plugin: true, kit: Object.assign({ supported: true, valid: true }, k) });
+  assert.strictEqual(HV.routeText(kit({ mode: 'split', bills: 'Account 2' }), {}), 'Kit route: split - headless runs bill Account 2 (through the proxy).');
+  assert.strictEqual(HV.routeText(kit({ mode: 'split', accounts: '1 proxy, 2 config', armed: true, bills: 'Account 2' }), {}), 'Kit route: split [1 proxy, 2 config, fallback armed] - headless runs bill Account 2 (through the proxy).');
+  assert.match(HV.routeText(kit({ mode: 'split', accounts: '1 proxy, 2 config', armed: true, fallback: 'single', fallbackActive: true, entry: 2, bills: 'Account 1' }), {}), /^Kit route: split \[1 proxy, 2 config, fallback armed\] \(fallback to entry 2 active\) - headless runs bill Account 1 \(directly; bare runs lean\)/);
+  const refused = Object.assign(kit({ mode: 'split', bills: 'Account 2' }), { refused: 'x' });
+  assert.strictEqual(HV.routeText(refused, {}), 'Kit route: split - headless runs bill Account 2 (through the proxy). Refused: x.');
+  assert.match(HV.routeText({ plugin: false }, {}), /^Stored only/);
+  assert.match(HV.routeText({ plugin: true, kit: { supported: true, mode: null, valid: false } }, {}), /^Kit route NOT SET: every headless run refuses/);
+  assert.match(HV.routeText({ plugin: true, kit: { supported: false, reason: 'the kit has no route command yet' } }, {}), /not applied: the kit has no route command yet/);
 });

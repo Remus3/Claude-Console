@@ -12,6 +12,13 @@ columns: **Default** is the state the module turns the item to; **Risk** is `low
 `medium` or `high` (high-risk items ask for a typed confirmation); **Where** says
 `Windows only` when the item needs Windows.
 
+Words used below. A **hand-off** is the file a session leaves for the next one. A
+**floor** is a rule that stays on. The **kit** is the set of helper scripts the profile
+copies into your project. A **lane** is a background worker with its own git worktree;
+the **governor** shares the machine between lanes. A **sidecar** is a folder outside the
+repository for scratch and temp files. The **supervisor** is the one repository that
+speaks for you to the others, listed in the **roster**.
+
 ## Presets
 
 | Preset | Modules |
@@ -19,7 +26,7 @@ columns: **Default** is the state the module turns the item to; **Risk** is `low
 | `recommended` | `floors`, `core-rules`, `session`, `output`, `attribution`, `tdd-agents`, `docs-memory`, `console`, `ci-gates`, `recall`, `lessons`, `permissions-context` |
 | `minimal` | `floors`, `core-rules`, `session`, `attribution`, `lessons` |
 | `full` | all modules |
-| `remus3` | the author's current settings, item by item: what the author's own setup runs, plus every item the author ships on by default (`profile/presets/remus3.json`; each item records its rule) |
+| `remus3` | the author's current settings, item by item: most of what the author's own setup runs, plus every item the author ships on by default (`profile/presets/remus3.json`; each item records its rule). Items that turn off permission prompts or grant the OS rights stay off for you to arm yourself. |
 
 ## Modules at a glance
 
@@ -116,14 +123,14 @@ columns: **Default** is the state the module turns the item to; **Risk** is `low
 
 | Item | What it does | Default | Risk | Where |
 |---|---|---|---|---|
-| `conv-handoff-file` Hand-off file at the repo root | Creates {handoff_name} and the rule that every session reads it first and /done rewrites it, carrying forward every open item. | on | low | any |
+| `conv-handoff-file` Hand-off file at the repo root | Creates the hand-off file, <PROJECT>-NEXT-SESSION.txt, and the rule that every session reads it first and /done rewrites it, carrying forward every open item. | on | low | any |
 | `conv-dnr-reversal` Settled items name what would reverse them | Adds the rule that every do-not-re-litigate entry states its reversal condition and is re-checked when it depends on someone else. | on | low | any |
 | `conv-session-counter` SESSION counter in the hand-off | Adds the rule that the hand-off starts with SESSION: n and that /done writes n+1. | on | low | any |
 | `conv-session-checklist` Numbered session checklist | Adds the rule that each session prints its task list at the start, reprints the remainder after every four completions, and runs /done when the list is empty. | on | low | any |
 | `kit-fleet-checklist` Checklist helper | Copies kit_checklist.py, which prints the checklist in the fixed format and writes the remaining tasks into a background run's progress file. | on | low | any |
 | `cmd-done` /done end-of-session command | Installs a /done command that runs pre-flight, checks, the hand-off rewrite, one commit and the done marker; other modules add their own steps inside it. | on | low | any |
 | `kit-fleet-done` Verified done marker | Copies kit_done.py and adds the marker step to /done: it records HEAD, the hand-off hash and the session number, and refuses a hand-off over the size budget. | on | low | any |
-| `hook-stop-done-title` DONE in the terminal title | Adds a Stop hook that, once the marker is valid and nothing runs in the background, titles the tab '{repo_code} DONE' and sends one notification. | on | low | any |
+| `hook-stop-done-title` DONE in the terminal title | Adds a Stop hook that, once the marker is valid and nothing runs in the background, titles the tab '<PROJECT> DONE' and sends one notification. | on | low | any |
 | `hook-sessionstart-checklist` Session number at start-up | Adds a SessionStart hook that reads SESSION: n from the hand-off and tells Claude which checklist number to print. | on | low | any |
 | `conv-session-start` Fixed start-up order | Adds the start-up order: read the hand-off, switch to quiet output, print the checklist, run the enabled start-up checks, then work. | on | low | any |
 | `conv-session-end` Unprompted /done, then your /clear | Adds the rule that /done runs by itself when work runs out or context gets heavy, and that only you type /clear. | on | low | any |
@@ -147,7 +154,7 @@ columns: **Default** is the state the module turns the item to; **Risk** is `low
 | `set-env-display` No flicker, no survey | Sets CLAUDE_CODE_NO_FLICKER=1 and CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY=1 in your Claude settings. | on | low | any |
 | `set-statusline` Fixed-slot status line | Copies kit_statusline.js and points the repository's local settings at it: state, branch, context and quota in fixed positions, plus one row per running workflow; colour only on problems. | on | low | any |
 | `set-subagent-statusline` Agent rows in the same grammar | Copies kit_subagent_status.js and sets it as the agent panel's status line, so each agent row reads like the main status line when it has a progress file. | on | low | any |
-| `console-statusline-basic` The console's simple status line | Keeps the simpler line the console ships: account, model, repository, context and quota. | off | low | any |
+| `console-statusline-basic` The console's simple status line | Records that you prefer the simpler line the console ships (account, model, repository, context and quota) and writes nothing: to use it, add a statusLine entry for statusline.js in the install folder to your Claude settings yourself. | off | low | any |
 | `kit-tokens` Shared state vocabulary and colours | Copies tokens.json and tokens.css: the light and dark colours and the state words, glyphs and rows every surface uses. | on | low | any |
 | `kit-cli-display` Display keys at account level | Keeps every display key in your account settings and none in a repository, so a project cannot override the calm display by accident. | on | low | any |
 | `rule-hook-output` Silent hooks | Adds the hook output rules: exit 0 and stay silent by default; when there is something to say, one short line, no colour codes, never blocking Stop. | on | low | any |
@@ -296,7 +303,7 @@ columns: **Default** is the state the module turns the item to; **Risk** is `low
 | `kit-train` At most one kit version a week | Adds the rule: one new profile version per seven days, built on a worktree branch, the next only after all repositories adopted the last; fixes exempt. | on | low | any |
 | `kit-fleet-watch` Watcher helper | Copies kit_watch.py: a watcher primitive that takes a baseline first, advances only after delivery, runs once at a time and reports going stale once. | on | low | any |
 | `os-self-apply-grant` Agent applies OS settings itself | Adds the grant that firewall, network adapter, service and UAC changes are made by the agent instead of being handed to you to paste. | off | high | any |
-| `sched-kit-rollout` Nightly note delivery and drift record | Registers a nightly task (04:00, 55-minute limit) that delivers queued notes to every repository and records each one's profile drift; it applies nothing. | off | high | Windows only |
+| `sched-kit-rollout` Nightly note delivery and drift record | Each night at 04:00, passes notes between your projects and records which ones differ from your setup. It changes nothing else in them. | off | high | Windows only |
 
 ## 11 headless
 
@@ -321,7 +328,7 @@ columns: **Default** is the state the module turns the item to; **Risk** is `low
 | `hl-halt-files` Halt files pause loops | Adds the halt-file rule and the /done step that pauses the responder for the whole ritual. | off | low | any |
 | `cmd-headless-family` Background run contract | Installs /headless-run: the fixed prompt contract for one long background unit, with a merger, worktree agents, a verifier and its own /done fold. | off | high | any |
 | `hl-fallback-armed` Armed fallback after a weekly limit | Adds the armed-fallback rule: only when you arm it, a confirmed 7-day limit on one account moves the next runs to the other, one hop, logged. | off | high | any |
-| `hl-account-quiet` Quiet keys for the background account | Sets feedbackDrafts to quiet and turns off auto mode during planning in your Claude settings. | off | low | any |
+| `hl-account-quiet` Quiet keys for the background account | Sets feedbackDrafts to quiet and turns off auto mode during planning in the second account's Claude settings only (the main account is left as it is). | off | low | any |
 
 ## 12 maintenance
 
@@ -368,17 +375,17 @@ columns: **Default** is the state the module turns the item to; **Risk** is `low
 
 ## 14 board
 
-**Status board.** A claude.ai status board per repository, rendered from the checklist and progress files at fixed moments.
+**Status board.** A local status board per repository, rendered from the checklist and progress files at fixed moments.
 
-- Why: A board you can open on a phone shows every repository's plan and progress at the cost of two tool calls per push.
+- Why: A page you open in a browser shows a repository's plan and progress, and rendering it costs no model time.
 - Default: off; 0 of 2 items on when the module is on.
 - Pairings: needs items of `session`; no usual partners outside the module.
-- Enable later because: Off by default because it needs a page on claude.ai that you create. Turn it on once you want to follow a session's checklist from your phone.
+- Enable later because: Turn it on once you want to follow a session's checklist outside the chat. Everything stays on this computer.
 
 | Item | What it does | Default | Risk | Where |
 |---|---|---|---|---|
-| `kit-fleet-board` Status board renderer | Copies kit_board.py, which renders the board deterministically from the checklist and progress files and prints the two tool calls that publish it; the board link is yours, entered in the wizard. | off | low | any |
-| `conv-board-push-points` Board pushed only at fixed moments | Adds the rule that the board is pushed at session start, after each checklist reprint and at /done, and the /done step for the final push. | off | low | any |
+| `kit-fleet-board` Status board renderer | Copies kit_board.py, which renders the board deterministically from the checklist and progress files into one local page; nothing is published. | off | low | any |
+| `conv-board-push-points` Board rendered only at fixed moments | Adds the rule that the board is rendered at session start, after each checklist reprint and at /done, and the /done step for the final render. | off | low | any |
 
 ## 15 console
 
@@ -392,7 +399,7 @@ columns: **Default** is the state the module turns the item to; **Risk** is `low
 | Item | What it does | Default | Risk | Where |
 |---|---|---|---|---|
 | `console-pane-hooks` Turn-state hooks for console panes | Passes the console's turn-state hooks to each pane as an additive settings file, so nothing is installed globally. | on | low | any |
-| `console-done-chip` /done chip in the composer | Offers a /done chip in each pane's composer that runs the repository's own /done, or the console's plain one when there is none. | on | low | any |
+| `console-done-chip` /done chip in the composer | Shows a /done chip in a pane's composer only when that pane's project or account has a /done command. It adds no command itself; cmd-done adds one to a project. | on | low | any |
 | `console-done-band` DONE band from the verified marker | Shows a DONE band on a pane only when the done marker validates against the pane, HEAD, the hand-off hash and the last prompt time. | on | low | any |
 | `console-scheduler` Scheduler view with backup and read-back | Lists, adds, changes and removes Windows scheduled tasks with an XML backup first and a read-back after; every profile task goes through it. | on | medium | Windows only |
 
@@ -559,7 +566,7 @@ columns: **Default** is the state the module turns the item to; **Risk** is `low
 | `sc-move-protocol` Move protocol: copy, compare, recycle, HOLD on consumer | Adds tools/sidecar_move.py: it holds when a tracked file still names the source, copies without following links, compares count, bytes and sha256, proves the Recycle Bin can take the source, then recycles it. | off | low | any |
 | `sc-cleanup-policy` Retention per sidecar area | Adds tools/sidecar_reap.py: a dry run by default, an age histogram per area, and recycling of per-run folders older than a retention measured from that histogram; Archive is never cleaned automatically. | off | medium | any |
 | `sc-outside-repo-register` Register of everything written outside the repo | Creates a register file that lists every path the repo writes outside its own folder, why and how it is cleaned, and a rule to update it in the same change that adds a path. | on | low | any |
-| `sc-runtime-ignored-reaped` In-repo runtime dir gitignored and reaped | Gitignores a .runtime folder and log files and adds tools/reap_runtime.py, which removes regenerable runtime files past a measured age and keeps the folder under a 100 MB cap. | on | low | any |
+| `sc-runtime-ignored-reaped` In-repo runtime dir gitignored and reaped | Gitignores a .runtime folder and log files and adds tools/reap_runtime.py, which removes regenerable runtime files past a set age (30 days unless you change it) and keeps the folder under a 100 MB cap. | on | low | any |
 
 ## 21 runtime-agents
 

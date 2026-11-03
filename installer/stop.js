@@ -8,9 +8,20 @@
 // server, which no longer owns the port). A pid is killed only when it is in that
 // command-line list, so a stale server.json pid reused by another program is never hit;
 // when the list cannot be read (no PowerShell), the server.json pid is trusted.
+//
+// A server still starting (update, rollback and a shortcut return at spawn) cannot take
+// the first POST: its port is shut, or it listens while run/token still holds the last
+// server's token, so the POST is refused or gets a 401. A stop that posted once then
+// waited its whole timeout for a server nobody had told to quit, and exited 1. So the
+// token is read at each POST and the POST is repeated inside the same timeout while a
+// listed server lives and has not answered. An answer starts the wait for its exit
+// afresh: the server only begins to close at that moment.
 const path = require('path');
 const { execFile } = require('child_process');
 const { readJson } = require('./fsutil');
+const { readToken } = require('./detect');
+
+const POST_EVERY_MS = 500;
 
 function readServerPid(runDir) {
   const j = readJson(path.join(runDir, 'server.json'), null);
@@ -73,14 +84,16 @@ function listServersWindows(home) {
   });
 }
 
-// o: run, home, port, token, force, timeoutMs (10000), postShutdown(port, token),
-// isAlive(pid), kill(pid), sleep(ms), listServers(home) -> [{pid}] | null.
+// o: run, home, port, token (used when run/token cannot be read), force, timeoutMs (10000),
+// postShutdown(port, token), isAlive(pid), kill(pid), sleep(ms), now(),
+// listServers(home) -> [{pid}] | null.
 // Returns {answered, running, pids, alive, killed, ok}:
 //   running = there was something to stop; ok = it is all gone.
 async function stopServer(o) {
   const alive = o.isAlive || isAlive;
   const kill = o.kill || killPid;
   const sleep = o.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const now = o.now || Date.now;
   const timeoutMs = o.timeoutMs || 10000;
   const step = 250;
   const listed = await (o.listServers || listServersWindows)(o.home);
@@ -90,14 +103,24 @@ async function stopServer(o) {
   if (filePid && (!listed || listed.some((x) => x.pid === filePid))) add(filePid);
   for (const x of listed || []) add(x.pid);
   const post = o.postShutdown || require('./cli').postShutdown;
-  const answered = await post(o.port || 7800, o.token);
-  const waitGone = async (ms) => {
+  const postNow = () => post(o.port || 7800, readToken(o.run) || o.token);
+  let answered = await postNow();
+  const waitGone = async (ms, repost) => {
+    let sincePost = 0;
     for (let t = 0; t < ms; t += step) {
       if (!pids.some((p) => alive(p))) return;
       await sleep(step);
+      sincePost += step;
+      if (repost && !answered && sincePost >= POST_EVERY_MS) {
+        sincePost = 0;
+        const t0 = now();
+        answered = await postNow();
+        // A POST that hangs for its own 3 s spends this timeout too.
+        t = answered ? -step : t + Math.max(0, now() - t0);
+      }
     }
   };
-  if (pids.length) await waitGone(timeoutMs);
+  if (pids.length) await waitGone(timeoutMs, true);
   const killed = [];
   if (o.force) {
     for (const p of pids.filter((x) => alive(x))) if (kill(p)) killed.push(p);

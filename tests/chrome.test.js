@@ -1,5 +1,5 @@
 'use strict';
-// Composer-only claude panes: the pure detector for claude's bottom chrome (input box,
+// Message box only panes: the pure detector for claude's bottom chrome (input box,
 // rules, status / permission / agent rows) that the UI hides and summarizes.
 const test = require('node:test');
 const assert = require('node:assert');

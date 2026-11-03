@@ -5,7 +5,7 @@
 
 The gitignored .runtime/ folder holds regenerable output only: logs, journals, caches.
 Files older than the retention go, then the oldest files until the folder is under the
-size cap. The retention was proposed from the measured age histogram of this folder.
+size cap. The retention is a setup value, 30 days unless you chose another.
 Only regenerable runtime files live here, so they are deleted, not recycled; anything
 worth keeping belongs in the sidecar Archive area instead.
 """
